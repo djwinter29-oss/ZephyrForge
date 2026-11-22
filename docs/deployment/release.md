@@ -109,6 +109,10 @@ The release publishes:
 | `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
 | `SHA256SUMS.txt` | SHA-256 of every package |
 
+W firmware packages include Infineon HAL and blob license notices. Their frozen manifest records the HAL revision,
+and `BUILD-INFO.txt` records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
+These images provide Wi-Fi only; a release build does not qualify the radio hardware.
+
 Install the wheel with `python -m pip install zephyrforge-VERSION-py3-none-any.whl` and run `zephyrforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
 hardware, verify every deployed dashboard asset and confirm that `/api/boards` answers with a board list.

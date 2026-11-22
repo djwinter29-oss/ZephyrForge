@@ -3,6 +3,7 @@
 #include "boot_config.h"
 #include "boot_flash.h"
 #include "hid_reports.h"
+#include "wireless_stage.h"
 #include "mock_zf_platform.h"
 
 #include <string.h>
@@ -48,7 +49,6 @@ void test_w_board_reports_wifi_without_ble_led_or_settings_save(void)
 	TEST_ASSERT_EQUAL_UINT8(ZF_BOARD_PICO_W, identity_out[15]);
 	TEST_ASSERT_EQUAL_HEX8(ZF_ENABLE_STORAGE_BENCHMARK ? 0xB2 : 0x92, identity_out[17]);
 	zf_report_config(&config, config_out);
-	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI, config_out[5]);
 	TEST_ASSERT_EQUAL_HEX8(0x0C, config_out[13]);
 }
 

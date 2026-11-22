@@ -59,7 +59,7 @@ Zephyr stack integration, hardware sampling, SD mounting, flash access and clock
 | Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
 | Cryptography | SHA-256/HMAC vectors |
 | Settings | [Boot settings](../reference/settings.md) record layout, CRC-32, validation, staging, discard, save failure and next-boot snapshots over an in-memory flash fake |
-| Pico board | Pico identity and board facts, and Unsupported LED, settings-save and wireless opcodes without hardware access |
+| Pico boards | Pico identity and board facts; non-W radio rejection; W Wi-Fi capability, scan admission and unsupported LED, settings-save and BLE key staging |
 | SDIO codec | Pico PIO SD host command/response CRC7 framing, one- and four-bit data images with CRC16 and bus clock planning |
 
 Platform hooks are CMock-generated mocks. **The tests do not compile the SD drivers, mount a card,
@@ -68,8 +68,16 @@ The Zephyr application calls these same portable modules;
 tests do not duplicate them. Native compilation enables C11 and treats compiler warnings as errors.
 
 Add portable logic tests here and mock only narrow service interfaces. Do not recreate
-Zephyr internals with large fake headers. Use Zephyr ztest/Twister for future kernel
-or driver integration tests; no ztest suite is configured yet. USB/BLE stacks, real Wi-Fi behavior,
+Zephyr internals with large fake headers. A Zephyr native-simulator test covers blocking Wi-Fi request isolation,
+DHCP-bound completion and replacement-candidate fencing using a dummy interface and bounded driver substitutes:
+
+```sh
+west build -b native_sim/native/64 firmware/tests/wifi/native -d build/wifi-native
+build/wifi-native/zephyr/zephyr.exe
+```
+
+Run this from the repository root in an initialized workspace with the native toolchain available.
+It does not exercise RF, radio firmware or the SPI bus. USB/BLE stacks, real Wi-Fi behavior,
 flash programming, clock changes and boot remain outside this native suite.
 
 The `firmware-unit` job in [Host Validation](../../.github/workflows/host-validation.yml)
@@ -139,7 +147,8 @@ bash tools/firmware/build.sh --board pico2_w --storage sd-spi
 ```
 
 Pico outputs are UF2 images in a board-specific directory, for example `build/firmware-pico/zephyr/zephyr.uf2`
-and `build/firmware-pico2_w-sd-spi/zephyr/zephyr.uf2`. Pico builds need no binary blobs.
+and `build/firmware-pico2_w-sd-spi/zephyr/zephyr.uf2`. Non-W Pico builds need no binary blobs.
+The W wrapper fetches the CYW43439 Wi-Fi firmware and Murata-1YN CLM blob from the pinned Infineon HAL.
 
 Host Validation also compiles the report and control tests for SPI with benchmarking enabled:
 
@@ -151,26 +160,33 @@ For changes to board/configuration selection, use a pristine build from the work
 
 ```sh
 west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
-  -d zephyrforge/build/firmware -- -DCONF_FILE="prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf" \
+  -d zephyrforge/build/firmware -- \
+  -DCONF_FILE="prj.conf;wifi.conf;bluetooth.conf;boards/espressif/esp32s3_devkitc_n16r8.conf" \
   -DDTC_OVERLAY_FILE="boards/espressif/esp32s3_devkitc_n16r8.overlay;boards/espressif/sdmmc.overlay"
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
 Both FAT mkfs options must remain disabled. A successful build does not qualify card wiring or mounting.
 Manual ESP32-S3 builds apply the N16R8 board overlay before the storage overlay.
-The N16R8 configuration adds its radio, memory and LED settings to the shared application configuration.
-Pico builds use only the shared application configuration plus Zephyr's board and driver defaults.
+ESP32-S3 and W Pico builds share Wi-Fi application configuration. ESP32-S3 additionally selects the common
+Bluetooth configuration and N16R8-specific memory, coexistence, TCP shell and LED settings.
+Non-W Pico builds use only the shared application configuration plus Zephyr's board and driver defaults.
 For SPI, replace `boards/espressif/sdmmc.overlay` with `boards/espressif/sd_spi.overlay`, retaining the board overlay
 and configuration files and using a separate build directory.
 Manual Pico builds list the storage overlay, then the MCU overlay, then the radio overlay for W boards:
 
 ```sh
 west build -p always -b rpi_pico/rp2040/w zephyrforge/firmware -d zephyrforge/build/firmware-pico_w -- \
+  -DCONF_FILE="prj.conf;wifi.conf;boards/rpi_pico/w.conf" \
   -DDTC_OVERLAY_FILE="boards/rpi_pico/sdmmc.overlay;boards/rpi_pico/rp2040.overlay;boards/rpi_pico/w.overlay"
 ```
 
 Use `sd_spi.overlay` for SPI and `rp2350.overlay` for the Pico 2 boards, and omit `w.overlay` on boards without a
-radio.
+radio, using only `prj.conf` for those non-W builds. When bypassing the wrapper, fetch the W radio blobs first:
+
+```sh
+west blobs fetch hal_infineon --allow-regex 'img/whd/resources/(firmware/COMPONENT_43439/43439A0\.bin|clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0\.clm_blob)$'
+```
 The management protocol runs over the board's native USB connector (USB HID, VID:PID `CAFE:4021`)
 and, on the ESP32-S3, BLE GATT.
 The UART carries the Zephyr diagnostic shell/log output and, on the ESP32-S3, the ROM bootloader used for flashing;

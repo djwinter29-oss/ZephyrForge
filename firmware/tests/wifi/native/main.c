@@ -19,6 +19,15 @@ static int connect_error;
 static unsigned int joined;
 static unsigned int disconnected;
 
+static void iface_init(struct net_if *iface)
+{
+	net_if_flag_set(iface, NET_IF_NO_AUTO_START);
+}
+
+static const struct net_if_api iface_api = {.init = iface_init};
+NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
+		&iface_api, DUMMY_L2, NET_L2_GET_CTX_TYPE(DUMMY_L2), 1500);
+
 void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
 void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
 uint8_t zf_boot_config_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
@@ -91,11 +100,17 @@ static void poll_for(uint8_t state)
 
 static void start_test(void)
 {
+	int64_t before;
+
 	zf_lock();
 	zassert_ok(zf_wifi_test_start((const uint8_t *)"candidate", 9, "password"));
 	zf_unlock();
+	before = k_uptime_get();
 	zf_wifi_poll();
+	zassert_true(k_uptime_get() - before < 100, "join blocked the management loop");
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
+	zassert_ok(k_mutex_lock(&app_mutex, K_NO_WAIT), "join retained the application lock");
+	k_mutex_unlock(&app_mutex);
 }
 
 static void finish_request(void)
