@@ -15,6 +15,8 @@ saving and hide Bluetooth provisioning. Radio switches cannot be changed persist
 Bluetooth LE is not supported on either W target: pinned Zephyr supports the CYW43439 UART HCI transport, not the
 shared-SPI transport wired on these boards. The images neither advertise BLE support nor stage Control keys.
 Their SDK PRNG supplies noncryptographic network identifiers only, not authentication nonces.
+Before using W-board RF, set `CONFIG_WHD_WIFI_COUNTRY` to the appropriate `WHD_COUNTRY_*` value for deployment;
+the pinned driver defaults to `WHD_COUNTRY_AUSTRALIA`. A successful build is not regulatory qualification.
 
 ## Configuration and operation
 
