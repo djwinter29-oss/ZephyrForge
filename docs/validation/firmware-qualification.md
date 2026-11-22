@@ -1,6 +1,7 @@
 # Firmware qualification procedure
 
-This is the repeatable qualification procedure for the supported ESP32-S3-DevKitC-1 N16R8.
+This is the repeatable qualification procedure for the ESP32-S3-DevKitC-1 N16R8; the Raspberry Pi Pico targets do not
+have one yet.
 It defines checks, not passing results. Keep observations in new dated [validation records](records/README.md);
 the [qualification gaps](qualification-gaps.md) remain open until the relevant physical checks have evidence.
 

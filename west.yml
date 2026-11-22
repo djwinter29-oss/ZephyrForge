@@ -7,6 +7,8 @@ manifest:
       import:
         name-allowlist:
           - hal_espressif
+          - hal_rpi_pico
+          - cmsis_6
           - fatfs
           - mbedtls
   self:

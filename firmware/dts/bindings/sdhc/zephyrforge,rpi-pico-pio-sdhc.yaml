@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Ji Dong
+
+description: |
+  Native four-bit SD host implemented with an RP2040/RP2350 PIO block and one DMA channel.
+
+  The node is a child of a PIO controller and must own that whole PIO block: transfers swap programs that together
+  fill its 32-instruction memory. The default pinctrl state needs two groups routed to that PIO, each with input and
+  Schmitt-trigger enable: clock (CLK) and command_data (CMD, then DAT0-DAT3 on four consecutive GPIOs in order).
+  CLK must be the GPIO two below DAT0, modulo 32. CMD and DAT lines need pull-ups.
+
+  max-bus-freq is the fastest High Speed clock the host may select, at most 50 MHz. The host offers High Speed only
+  when max-bus-freq is above 25 MHz and the PIO clock can time it; otherwise cards stay in Default Speed, where the
+  Zephyr SD stack keeps a one-bit bus.
+
+compatible: "zephyrforge,rpi-pico-pio-sdhc"
+
+include: [sdhc.yaml, "raspberrypi,pico-pio-device.yaml"]
+
+properties:
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true

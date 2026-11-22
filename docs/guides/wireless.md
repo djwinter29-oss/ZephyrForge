@@ -1,6 +1,7 @@
 # Wireless Setup and Operation
 
-Wi-Fi and Bluetooth LE are compiled in, and both radio switches **default to enabled**. Wi-Fi joins its saved network
+Wi-Fi and Bluetooth LE are compiled into the ESP32-S3 image, and both radio switches **default to enabled**. The
+Raspberry Pi Pico images, including the Pico W and Pico 2 W, have no wireless management. Wi-Fi joins its saved network
 at boot, while a dashboard can temporarily test a candidate network. BLE advertises only when it is enabled and a
 Control key is saved. Radio switches and saved credentials are boot settings; see the
 [settings design](../reference/settings.md) for persistence and save behaviour. Espressif software coexistence is

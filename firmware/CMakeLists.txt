@@ -7,24 +7,50 @@ target_compile_definitions(app PRIVATE ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${ZF_E
 if(ZF_ENABLE_STORAGE_BENCHMARK)
   target_sources(app PRIVATE src/app/storage/benchmark.c)
 endif()
+if(CONFIG_SOC_FAMILY_RPI_PICO)
+  # Report 1 identity: MCU 1 RP2040 or 2 RP2350; console UART0 is on GP0/GP1.
+  if(CONFIG_SOC_RP2040)
+    set(zf_mcu ZF_MCU_RP2040)
+  else()
+    set(zf_mcu ZF_MCU_RP2350)
+  endif()
+  if(CONFIG_BOARD_RPI_PICO_RP2040_W)
+    set(zf_board ZF_BOARD_PICO_W)
+  elseif(CONFIG_BOARD_RPI_PICO2_RP2350A_M33_W)
+    set(zf_board ZF_BOARD_PICO2_W)
+  elseif(CONFIG_BOARD_RPI_PICO2)
+    set(zf_board ZF_BOARD_PICO2)
+  else()
+    set(zf_board ZF_BOARD_PICO)
+  endif()
+  target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_BOARD_CAPS=0
+                                         ZF_MONITOR_UART_TX=0u ZF_MONITOR_UART_RX=1u)
+  set(zf_board_sources src/platform/rpi_pico/platform.c)
+  if(CONFIG_ZF_SDHC_RPI_PICO_PIO)
+    list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)
+  endif()
+else()
+  set(zf_clock_source src/platform/system_clock.c)
+  set(zf_led_source src/platform/led.c)
+  set(zf_board_sources src/app/wireless/bluetooth/ble.c src/app/wireless/wifi/wifi.c)
+endif()
 target_sources(app PRIVATE
   src/main.c
   src/config/board.c
   src/platform/boot_config.c
   src/platform/boot_flash.c
-  src/platform/system_clock.c
+  ${zf_clock_source}
   src/app/telemetry.c
   src/app/control/control.c
   src/app/storage/storage.c
   src/platform/storage.c
-  src/platform/led.c
+  ${zf_led_source}
   src/app/usb/hid_reports.c
   src/app/usb/usb_hid.c
   src/app/wireless/sha256.c
   src/app/wireless/wireless_auth.c
   src/app/wireless/wireless_stage.c
-  src/app/wireless/bluetooth/ble.c
-  src/app/wireless/wifi/wifi.c)
+  ${zf_board_sources})
 target_include_directories(app PRIVATE src)
 # The pinned ESP32-S3 HAL leaves the PHY library's weak sensor-power hooks linked. They power the die-temperature
 # sensor off during Wi-Fi modem sleep, and the next telemetry read then spins with interrupts locked. The HAL

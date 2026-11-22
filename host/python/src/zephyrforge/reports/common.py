@@ -177,19 +177,21 @@ CONTROL_FEATURE_SIZE = CONTROL_PAYLOAD_SIZE + 1
 
 REPORT_VERSION = 1
 
-MCU_NAMES = {3: "ESP32-S3"}
+MCU_NAMES = {1: "RP2040", 2: "RP2350", 3: "ESP32-S3"}
 
-BOARD_NAMES = {0: "Unknown / unspecified", 1: "ESP32-S3-DevKitC-1"}
+BOARD_NAMES = {0: "Unknown / unspecified", 1: "ESP32-S3-DevKitC-1", 2: "Raspberry Pi Pico", 3: "Raspberry Pi Pico W",
+               4: "Raspberry Pi Pico 2", 5: "Raspberry Pi Pico 2 W"}
 
 PRODUCT_NAMES = {0: "Unspecified", 1: "PicoUart", 2: "PicoForge", 3: "ZephyrForge"}
 
 ZEPHYRFORGE_PRODUCT_ID = 3
 
-ESP32S3_MCU = 3
+BOARD_MCUS = {1: 3, 2: 1, 3: 1, 4: 2, 5: 2}
 
-ESP32S3_MAX_GPIO = 48
+MCU_MAX_GPIO = {1: 29, 2: 47, 3: 48}
 
-ZEPHYRFORGE_CAPABILITIES = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 7)
+# Pico 2 boards carry the 30-GPIO RP2350A package.
+BOARD_MAX_GPIO = {4: 29, 5: 29}
 
 CLOCK_PROFILES_MHZ = (0, 80, 160, 240)
 

@@ -37,8 +37,21 @@
 #define ZF_BLE_CONTROL_SIZE 9u
 
 #define ZF_PRODUCT_ID 0x0003u
+#define ZF_MCU_RP2040 1u
+#define ZF_MCU_RP2350 2u
 #define ZF_MCU_ESP32S3 3u
 #define ZF_BOARD_DEVKITC 1u
+#define ZF_BOARD_PICO 2u
+#define ZF_BOARD_PICO_W 3u
+#define ZF_BOARD_PICO2 4u
+#define ZF_BOARD_PICO2_W 5u
+/** Report 1 MCU and board model of the build target; board builds override the DevKitC defaults. */
+#ifndef ZF_MCU
+#define ZF_MCU ZF_MCU_ESP32S3
+#endif
+#ifndef ZF_BOARD_MODEL
+#define ZF_BOARD_MODEL ZF_BOARD_DEVKITC
+#endif
 
 #define ZF_CAP_LED 0x01u
 #define ZF_CAP_REBOOT 0x02u
@@ -55,8 +68,12 @@
 /** Optional temporary-file benchmark capability. */
 #define ZF_CAP_BENCHMARK 0x20u
 #define ZF_CAP_WIRELESS 0x80u
-#define ZF_CAPABILITIES (ZF_CAP_LED | ZF_CAP_REBOOT | ZF_CAP_SETTINGS | ZF_CAP_STORAGE | ZF_CAP_WIRELESS | \
-			(ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
+/** Board-dependent capabilities; the DevKitC has the RGB LED, saved boot settings and radios. */
+#ifndef ZF_BOARD_CAPS
+#define ZF_BOARD_CAPS (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
+#endif
+#define ZF_CAPABILITIES (ZF_BOARD_CAPS | ZF_CAP_REBOOT | ZF_CAP_STORAGE | \
+			 (ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
 
 #define ZF_UID_SIZE 8u
 #define ZF_LOAD_UNAVAILABLE 0xFFFFu

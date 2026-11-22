@@ -8,10 +8,12 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* DevKitC monitor UART0. */
+/* Monitor UART0; the DevKitC pins unless the board build overrides them. */
 #define MONITOR_UART_INDEX 0u
-#define MONITOR_UART_TX 43u
-#define MONITOR_UART_RX 44u
+#ifndef ZF_MONITOR_UART_TX
+#define ZF_MONITOR_UART_TX 43u
+#define ZF_MONITOR_UART_RX 44u
+#endif
 
 /* Report 2 board_flags bits; bit 5, the reserved TCP CLI switch, stays clear. */
 #define BOARD_FLAG_CARD_DETECT 0x01u
@@ -40,8 +42,8 @@ void zf_report_identity(const zf_identity_t *identity, uint8_t out[ZF_IDENTITY_S
 	put16(out + 1, ZF_PRODUCT_ID);
 	memcpy(out + 3, identity->uid, ZF_UID_SIZE);
 	memcpy(out + 11, identity->firmware, 3);
-	out[14] = ZF_MCU_ESP32S3;
-	out[15] = ZF_BOARD_DEVKITC;
+	out[14] = ZF_MCU;
+	out[15] = ZF_BOARD_MODEL;
 	out[16] = ZF_EXT_MEMORY;
 	out[17] = ZF_CAPABILITIES;
 	put32(out + 18, identity->ram_total_bytes);
@@ -65,6 +67,8 @@ void zf_report_memory(const zf_memory_inventory_t *memory, uint8_t out[ZF_MEMORY
 void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 {
 	uint8_t flags = BOARD_FLAG_MONITOR_UART;
+	/* Boards without radios still load the default switches; they are never advertised. */
+	uint8_t radios = ZF_CAPABILITIES & ZF_CAP_WIRELESS ? config->stored_radios : 0u;
 
 	if (config->led_available) {
 		flags |= BOARD_FLAG_LED;
@@ -75,10 +79,10 @@ void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 	if (config->msc_supported) {
 		flags |= BOARD_FLAG_MSC;
 	}
-	if (config->stored_radios & ZF_WIRELESS_WIFI) {
+	if (radios & ZF_WIRELESS_WIFI) {
 		flags |= BOARD_FLAG_WIFI;
 	}
-	if (config->stored_radios & ZF_WIRELESS_BLE) {
+	if (radios & ZF_WIRELESS_BLE) {
 		flags |= BOARD_FLAG_BLE;
 	}
 	memset(out, 0, ZF_CONFIG_SIZE);
@@ -86,8 +90,8 @@ void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 	put16(out + 1, config->stored_clock_mhz);
 	out[3] = 0;
 	out[4] = MONITOR_UART_INDEX;
-	out[5] = MONITOR_UART_TX;
-	out[6] = MONITOR_UART_RX;
+	out[5] = ZF_MONITOR_UART_TX;
+	out[6] = ZF_MONITOR_UART_RX;
 	memcpy(out + 7, config->storage_gpios, sizeof(config->storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;

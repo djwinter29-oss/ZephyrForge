@@ -7,7 +7,8 @@ details. This is functional evidence, not production qualification.
 | Area | Current boundary |
 | --- | --- |
 | ESP32-S3 target | N16R8 flashing and boot reported working; firmware revision, image hashes and PSRAM memory-test output not recorded |
-| Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, SD lifecycle, wireless staging/auth, SHA-256 and boot-settings record with mocked platform hooks and a fake flash; no Zephyr execution |
+| Raspberry Pi Pico targets | Pico, Pico W, Pico 2 and Pico 2 W images are software builds only; UF2 flashing, boot, USB HID/MSC, the UART console, the PIO SD host and SPI storage have no hardware evidence |
+| Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, SD lifecycle, wireless staging/auth, SHA-256, boot-settings record, Pico board facts and the PIO SD host's wire encoding and clock planning with mocked platform hooks and a fake flash; no Zephyr execution or PIO timing |
 | USB HID | Dashboard connection and [sampled reads/handle reopens](records/2026-11-20-firmware-qualification.md) observed; broader timing, host compatibility and physical reconnect behavior remain unqualified |
 | BLE | Monitoring and authenticated control reported working; MTU variation, reconnect stress and radio coexistence remain unqualified |
 | Wi-Fi | Provisioning, connection and [scan stress](records/2026-11-20-firmware-qualification.md) observed; failure recovery, lease renewal, coexistence and long-duration behavior remain unqualified |
@@ -20,7 +21,7 @@ details. This is functional evidence, not production qualification.
 | Module memory inventory | Live board diagnostics reported working; raw PSRAM/flash inventory values, reservations and memory-accounting checks not supplied |
 | Dashboards | Live USB HID connection and diagnostics reported working; no per-dashboard/OS/browser hardware matrix or raw measurements recorded |
 | Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; unauthenticated plaintext diagnostic TCP; loopback hosts |
-| Variants | Only N16R8 is configured; N4/N8/octal-flash modules and other S3 boards are not targets |
+| Variants | Only N16R8 is configured for the ESP32-S3; N4/N8/octal-flash modules and other S3 boards are not targets. Pico-compatible boards other than the four listed are not targets |
 | Product readiness | No power-loss, soak, performance, RF, EMC or regulatory qualification |
 
 Further qualification should record firmware/image identity, host/tool versions, board and card details,

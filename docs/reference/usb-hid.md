@@ -35,8 +35,8 @@ There is no CDC ACM interface. Hosts identify HID by its usage collection, not a
 | Product string | `ZephyrForge` |
 | Serial string | Report `1` UID as 16 uppercase hexadecimal digits, in byte order |
 
-Management uses the board's native **USB** connector. The **UART** connector is for a diagnostic shell/log output and
-ROM flashing; it has no HID management protocol. HID carries no CLI text, file data or SD block data.
+Management uses the board's native **USB** connector. The **UART** is for a diagnostic shell/log output and, on the
+ESP32-S3, ROM flashing; it has no HID management protocol. HID carries no CLI text, file data or SD block data.
 
 Hosts MUST read Feature `1` before interpreting other reports or enabling commands. USB descriptors help find
 the interface but do not replace validation of its product ID, report version, lengths and fields.
@@ -119,8 +119,8 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | 11 | 1 | `firmware_major` | Firmware semantic-version major |
 | 12 | 1 | `firmware_minor` | Firmware semantic-version minor |
 | 13 | 1 | `firmware_patch` | Firmware semantic-version patch |
-| 14 | 1 | `mcu` | `3` ESP32-S3; other values unassigned in this project |
-| 15 | 1 | `board_model` | `0` unspecified; `1` ESP32-S3-DevKitC-1 |
+| 14 | 1 | `mcu` | `1` RP2040, `2` RP2350, `3` ESP32-S3; other values unassigned in this project |
+| 15 | 1 | `board_model` | `0` unspecified; `1`-`5` per [Board Models](#board-models) |
 | 16 | 1 | `capabilities_extension` | Capability bits 8-15; bit 0 advertises Report `13` |
 | 17 | 1 | `capabilities` | Static capabilities and selected storage transport |
 | 18 | 4 | `ram_total_bytes` | Total internal SRAM, not free memory or PSRAM |
@@ -133,10 +133,11 @@ An unsupported version is an explicit layout error. An unknown product MUST NOT 
 Product IDs identify families, not releases, MCU types or individual devices.
 
 Display the UID as **Serial / UID**, two uppercase hex characters per byte in order. It is not an integer or a
-host-generated identifier. The current board uses its six-byte eFuse base MAC followed by two zero bytes;
-clients MUST preserve the eight reported bytes for identity matching and BLE proofs.
+host-generated identifier. The ESP32-S3 board uses its six-byte eFuse base MAC followed by two zero bytes; the
+Raspberry Pi Pico boards use the eight-byte unique ID of their flash chip.
+Clients MUST preserve the eight reported bytes for identity matching and BLE proofs.
 Unknown MCU or board-model values MAY be retained for diagnostics, but MUST NOT be guessed or corrected.
-Board model `1` requires MCU `3`; model `0` makes no board claim.
+Each nonzero board model requires the MCU listed under [Board Models](#board-models); model `0` makes no board claim.
 
 ### Product IDs and Capabilities
 
@@ -146,28 +147,32 @@ Board model `1` requires MCU `3`; model `0` makes no board claim.
 | `0x0003` | ZephyrForge |
 | Other | Not a supported project identity |
 
-| Capability bit | Meaning | Current device |
-| ---: | --- | --- |
-| 0 | RGB LED control | Set |
-| 1 | Confirmed standalone reboot | Set |
-| 2 | Persistent boot-settings save | Set |
-| 3 | SPI storage transport | Set only in the SD-over-SPI image |
-| 4 | Native SDMMC storage transport | Set only in the native image |
-| 5 | Storage benchmark | Set only when built with the optional feature |
-| 6 | Forced settings save | Clear |
-| 7 | Wireless capability | Set |
-| 8 | Module memory inventory | Set in extension byte bit 0 |
+| Capability bit | Meaning | ESP32-S3 | Raspberry Pi Pico boards |
+| ---: | --- | --- | --- |
+| 0 | RGB LED control | Set | Clear |
+| 1 | Confirmed standalone reboot | Set | Set |
+| 2 | Persistent boot-settings save | Set | Clear |
+| 3 | SPI storage transport | Set only in the SD-over-SPI image | Set only in the SD-over-SPI image |
+| 4 | Native SDMMC storage transport | Set only in the native image | Set only in the native image |
+| 5 | Storage benchmark | Set only when built with the optional feature | Set only when built with the optional feature |
+| 6 | Forced settings save | Clear | Clear |
+| 7 | Wireless capability | Set | Clear |
+| 8 | Module memory inventory | Set in extension byte bit 0 | Set in extension byte bit 0 |
 
-Exactly one storage capability is set. The native image's low capability byte is `0x97`, or `0xB7` with benchmarking;
-the SPI image uses `0x8F`, or `0xAF` with benchmarking. The extension byte is `0x01`.
+Exactly one storage capability is set. The ESP32-S3 native image's low capability byte is `0x97`, or `0xB7` with
+benchmarking; its SPI image uses `0x8F`, or `0xAF` with benchmarking. The Pico native images use `0x12` or `0x32`;
+their SPI images use `0x0A` or `0x2A`. The extension byte is `0x01`.
 Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
 as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
+Hosts MUST NOT offer LED, settings-save or wireless operations whose capability bit is clear.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
 bit 3 selects its four-signal SPI layout. Neither implies USB mass-storage support.
 Report `2` board flag bit 6 advertises MSC ownership control.
 Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
 When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
+Likewise, opcode `1` without bit 0, opcode `5` without bit 2 and opcodes `6`-`12` without bit 7 return
+Unsupported/error `4` before argument validation.
 Wireless capability does not imply that Wi-Fi is connected
 or that BLE has started.
 
@@ -177,9 +182,14 @@ or that BLE has started.
 | ----------: | --- | ------- |
 | `0` | Reported separately | No specific board identity claimed |
 | `1` | `3` ESP32-S3 | Configured ESP32-S3-DevKitC-1 target |
-| `2`-`255` | Unassigned | Reserved |
+| `2` | `1` RP2040 | Configured Raspberry Pi Pico target |
+| `3` | `1` RP2040 | Configured Raspberry Pi Pico W target |
+| `4` | `2` RP2350 | Configured Raspberry Pi Pico 2 target |
+| `5` | `2` RP2350 | Configured Raspberry Pi Pico 2 W target |
+| `6`-`255` | Unassigned | Reserved |
 
 The board model is the configured build target, not automatic hardware detection.
+The Pico W and Pico 2 W models identify the board only; their radios are unused and wireless capability is clear.
 
 ### Firmware RAM Reservation
 
@@ -187,7 +197,8 @@ Display **Firmware RAM reserved / total**, in KiB and optionally as a percentage
 or a reservation greater than total. This is build accounting, not free heap, stack high-water use or runtime
 memory pressure.
 
-The current board reports 524288 bytes of internal SRAM. Reservation covers statically linked RAM,
+The ESP32-S3 board reports 524288 bytes of internal SRAM; RP2040 boards report 270336 and RP2350 boards 532480.
+Reservation covers statically linked RAM,
 including the reserved Zephyr heap pool and thread stacks. PSRAM is separate and
 is not represented by these fields. Count each reservation once; do not infer live allocations.
 
@@ -208,31 +219,36 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
-| 16 | 1 | `card_detect_gpio` | `8`, active-low card-detect input; `255` on older firmware without detection |
+| 16 | 1 | `card_detect_gpio` | Card-detect input GPIO, `8` on current boards; `255` on older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
-| Board flag bit | Meaning | Current device |
-| ---: | --- | --- |
-| 0 | Card detect configured | Set |
-| 1 | RGB LED data GPIO allocated | Set |
-| 2 | Monitor UART enabled | Set |
-| 3 | Wi-Fi enabled for next boot | Saved switch |
-| 4 | BLE enabled for next boot | Saved switch |
-| 5 | Reserved TCP CLI switch | Clear |
-| 6 | Native USB MSC with explicit ownership handoff | Set |
-| 7 | Reserved | Zero |
+| Board flag bit | Meaning | ESP32-S3 | Raspberry Pi Pico boards |
+| ---: | --- | --- | --- |
+| 0 | Card detect configured | Set | Set |
+| 1 | RGB LED data GPIO allocated | Set | Clear |
+| 2 | Monitor UART enabled | Set | Set |
+| 3 | Wi-Fi enabled for next boot | Saved switch | Clear |
+| 4 | BLE enabled for next boot | Saved switch | Clear |
+| 5 | Reserved TCP CLI switch | Clear | Clear |
+| 6 | Native USB MSC with explicit ownership handoff | Set | Set |
+| 7 | Reserved | Zero | Zero |
 
-The current board reports UART0 TX GPIO43 / RX GPIO44. Native storage pins are `12, 11, 13, 14, 15, 10`;
-SPI storage pins are `12, 11, 13, 10, 255, 255`.
-GPIO values are signal numbers, not physical header positions. See [SD pin allocation](sdcard.md#pin-allocation).
-Assigned GPIOs MUST be valid for the reported MCU/board. An enabled UART requires its index and both pins;
+The ESP32-S3 board reports UART0 TX GPIO43 / RX GPIO44; the Pico boards report UART0 TX GPIO0 / RX GPIO1 and LED
+GPIO `255`. Card detect is active-low on the ESP32-S3 and active-high on the Pico boards.
+GPIO values are signal numbers, not physical header positions. [SD reported allocation](sdcard.md#reported-allocation)
+lists the storage pins of each board and image.
+Assigned GPIOs MUST be valid for the reported MCU/board: `0`-`48` for the ESP32-S3, `0`-`29` for the RP2040 and
+board models `4` and `5`, and `0`-`47` for an RP2350 without a board claim.
+An enabled UART requires its index and both pins;
 TX/RX MUST both be assigned or both unavailable. Native four-bit SDMMC requires all six storage pins assigned.
 SPI requires its first four pins assigned and its final two slots unassigned.
 
 Wi-Fi and BLE switches default on and represent next-boot policy, not current link state.
+Without wireless capability, flag bits 3 and 4 MUST be clear.
 Hosts MUST reject unsupported stored profiles and inconsistent flags/pins.
 Report `3` carries the running CPU clock; Report `10` carries storage status. `0` selects the build clock,
-currently 240 MHz. The SD profile does not promise a clock rate or measured performance.
+currently 240 MHz on the ESP32-S3, 125 MHz on RP2040 and 150 MHz on RP2350. Images without settings save cannot
+store another profile. The SD profile does not promise a clock rate or measured performance.
 
 A successful opcode `5` returns verified saved settings and schedules reboot. During the 1000 ms grace period,
 USB remains available for the result read. Hosts MUST NOT send a second reboot command or require a configuration
@@ -316,9 +332,11 @@ Detection errors invalidate presence rather than claiming absence. Mount errors 
 During USB ownership or worker activity, sample-valid is clear and only the configured SD flag may remain set.
 Component/bus/clock/speed/capacity/CID fields MUST be zero when sample-valid is clear.
 
-A successful hardware initialization sets bits 0-3 and 6, component type `1`, bus mode `3`, speed mode `1`, and the
-configured 25 MHz ceiling. This clock is not a measured runtime frequency. Capacity-valid is set only when the sector-count
-query returns a nonzero count; geometry validation failure releases the medium and reports initialization failure.
+A successful hardware initialization sets bits 0-3 and 6, component type `1`, the bus mode of the advertised storage
+transport, speed mode `1`, and the configured bus ceiling listed in the
+[SD driver configuration](sdcard.md#driver-and-filesystem-configuration). This clock is not a measured runtime
+frequency. Capacity-valid is set only when the sector-count query returns a nonzero count; geometry validation
+failure releases the medium and reports initialization failure.
 Capacity is `block_count * 512` bytes, not free filesystem space.
 The retained CID supplies manufacturer ID, OEM ID, product name/revision, serial number and manufacturing date.
 It is sampled during SD initialization, not recovered by filesystem access or fabricated after an error.
@@ -395,6 +413,7 @@ Driver errors are logged; availability does not constitute physical memory quali
 Report `1` SRAM accounting remains internal-only. Reserved RAM is linker accounting, not live allocation or
 free heap. Flash capacity is physical chip size, not application image size, free filesystem space or remaining
 settings capacity. The ESP32-S3 has no on-chip flash: N16R8 module flash is external to the SoC, and PSRAM is RAM.
+The Pico boards have no PSRAM; their flash capacity comes from the JEDEC ID of the board's external QSPI flash.
 
 ## Report ID 20: Control Command & Result
 
@@ -518,7 +537,7 @@ RSN identifies a WPA2/WPA3-family advertisement, not verified WPA3 support; ente
 Scan results contain no credentials.
 
 Scans and tests may run with the Wi-Fi boot switch off; that switch controls the automatic saved-network join.
-The current device supports open and WPA2-Personal networks, not WPA3-SAE.
+The ESP32-S3 firmware supports open and WPA2-Personal networks, not WPA3-SAE.
 
 ### GET Result
 
@@ -742,6 +761,7 @@ Hosts accept report version `1` only. An incompatible field, size, unit, validat
 requires an affected report-version increment and coordinated firmware/host updates.
 Capability-selected transports do not change the existing byte layout: native SDMMC assigns bit 4,
 uses all six Report `2` pin slots and bus-mode value `3`; SPI uses bit 3, four assigned pin slots and mode `2`.
+The Pico PIO host drives the same native four-bit bus and reports mode `3`.
 SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either image,
 reject both/neither transport bits and require initialized storage samples to match identity.
 Older native-only hosts reject SPI identities. Firmware and hosts MUST be updated together.
@@ -762,7 +782,8 @@ See [qualification gaps](../validation/qualification-gaps.md) and the
 
 ## Implementation and Integration
 
-The native USB interface uses Zephyr's `udc_dwc2` driver. Feature GET supports IDs `1`, `2`, `12`, `13`, `20`;
+The native USB interface uses Zephyr's `udc_dwc2` driver on the ESP32-S3 and `udc_rpi_pico` on the Pico boards.
+Feature GET supports IDs `1`, `2`, `12`, `13`, `20`;
 Input GET supports `3`, `10`, and `11` when the benchmark is built in. Unsupported type/ID or an insufficient GET
 buffer is rejected.
 SET requires Feature `20`, exactly 69 bytes including ID, and a valid envelope.

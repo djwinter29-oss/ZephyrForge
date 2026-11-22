@@ -3,13 +3,13 @@
 ## GitHub workflows
 
 The automation follows PicoForge's validation, release and publication split, adapted to the
-Zephyr ESP32-S3 firmware and its USB HID/BLE hosts.
+Zephyr ESP32-S3 and Raspberry Pi Pico firmware and its USB HID/BLE hosts.
 
 | Workflow | Trigger | Responsibility |
 | --- | --- | --- |
-| [PR Check](../../.github/workflows/pr-check.yml) | Pull requests, pushes to `main`, manual | Calls shared host validation and the ESP32-S3 target build |
+| [PR Check](../../.github/workflows/pr-check.yml) | Pull requests, pushes to `main`, manual | Calls shared host validation and the firmware target builds |
 | [Host Validation](../../.github/workflows/host-validation.yml) | Reusable, manual | Python 3.10/3.12 on Linux/macOS/Windows; Node 22 and .NET 10 on each OS; Ceedling; documentation links |
-| [Firmware build](../../.github/workflows/firmware-build.yml) | Reusable, manual | Pinned Zephyr/SDK build, generated configuration checks, binaries, frozen manifest, licenses and flashing instructions |
+| [Firmware build](../../.github/workflows/firmware-build.yml) | Reusable, manual | Pinned Zephyr/SDK build of every board and storage image, generated configuration checks, binaries, frozen manifest, licenses and flashing instructions |
 | [Release build packages](../../.github/workflows/release.yml) | Stable version tags, manual preflight | Gates packages on shared validation and publishes checksummed GitHub release assets |
 | [Publish .NET Packages](../../.github/workflows/publish-dotnet.yml) | Reusable, manual existing tag | Self-contained `linux-x64`, `win-x64`, `osx-arm64` archives; extracted-host smoke tests without hardware |
 | [Publish Direct Pages](../../.github/workflows/publish-direct.yml) | Successful tagged release, manual published tag | Verifies the released Direct ZIP/checksum and source tag before deploying to Pages |
@@ -34,7 +34,7 @@ The workflows retain triggers, permissions, tool installation, build commands, a
 | [check-wheel.sh](../../tools/release/check-wheel.sh) | `VERSION`; wheel in `dist/`. Installs into `build/wheel-check` and runs the installed-wheel check. |
 | [package-direct.py](../../tools/release/package-direct.py) | `VERSION`, `SOURCE_SHA`; Git checkout. Builds and checks the extracted Direct ZIP. |
 | [package-dotnet.py](../../tools/release/package-dotnet.py) | `VERSION`, `RID`; self-contained publish in `build/host-release` and restored packages in `build/nuget`. |
-| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build and frozen manifest. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
+| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build and frozen manifest. `BOARD` selects `esp32s3` (default), `pico`, `pico_w`, `pico2` or `pico2_w`. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
 | [archive.sh](../../tools/release/archive.sh) | `VERSION`; downloaded firmware artifacts in `build/firmware-packages` and host packages in `build/packages`. |
 | [download-direct.sh](../../tools/release/download-direct.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`, `GH_REPO`; fetches and verifies the released site for Pages. |
 | [download-wheel.sh](../../tools/release/download-wheel.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`; fetches and verifies the released wheel for PyPI. |
@@ -100,12 +100,14 @@ The release publishes:
 | --- | --- |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot image, ELF, hidden `.config`, DTS, runner provenance, frozen west manifest, dependency licenses, docs and flashing instructions |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
+| `zephyrforge-firmware-vVERSION-BOARD-sdmmc.zip` | Raspberry Pi Pico native four-bit SDMMC UF2 image for `BOARD` `pico`, `pico_w`, `pico2` or `pico2_w`, with the same package contents |
+| `zephyrforge-firmware-vVERSION-BOARD-sd-spi.zip` | Raspberry Pi Pico SD-over-SPI UF2 image for the same four boards |
 | `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
 | `zephyrforge-VERSION-py3-none-any.whl` | Python host package with the `zephyrforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
 | `zephyrforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
 | `zephyrforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
 | `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
-| `SHA256SUMS.txt` | SHA-256 of all seven packages |
+| `SHA256SUMS.txt` | SHA-256 of every package |
 
 Install the wheel with `python -m pip install zephyrforge-VERSION-py3-none-any.whl` and run `zephyrforge web`.
 Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
@@ -114,13 +116,14 @@ HTML templates are checked through their rendered routes (`/` and `/console`), n
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 
-Each firmware ZIP is not a relocatable west build directory. Its `FLASHING.txt` gives the
+Each firmware ZIP is not a relocatable west build directory. An ESP32-S3 `FLASHING.txt` gives the
 esptool 5 command for the selected simple-boot N16R8 image at `0x0`, with DIO/80 MHz/16 MB flash
 parameters. `runners.yaml` records how it was built; do not feed its CI paths to a local west
 runner. The [source-build flash wrapper](../guides/getting-started.md#2-build-now-flash-later)
-remains the supported west-based path.
-Choose the archive matching the [SD wiring](../reference/sdcard.md#pin-allocation) and power-cycle the card
-before switching buses. Neither image has automatic bus fallback.
+remains the supported west-based path. Pico ZIPs contain `zephyr.uf2` instead of `zephyr.bin`, and their
+`FLASHING.txt` describes BOOTSEL copying.
+Choose the archive matching the board and [SD wiring](../reference/sdcard.md#pin-allocation) and power-cycle the card
+before switching buses. No image has automatic bus fallback.
 
 ## Direct Pages, PyPI and retries
 
@@ -140,6 +143,6 @@ A manual **Publish .NET Packages** run rebuilds an existing tag and attaches run
 it does not modify an existing GitHub release. A Pages or PyPI setup/deployment failure does not undo
 the separately completed GitHub release.
 
-Before distributing radio-enabled binaries, review Zephyr, Espressif HAL/blob, FatFs, mbedTLS,
-hidapi, Flask and HidSharp licenses and applicable radio/regulatory requirements.
+Before distributing binaries, review Zephyr, Espressif HAL/blob, Raspberry Pi Pico HAL, CMSIS, FatFs, mbedTLS,
+hidapi, Flask and HidSharp licenses, and the radio/regulatory requirements that apply to radio-enabled binaries.
 Do not describe a successful software build as SD-card or wireless hardware qualification.

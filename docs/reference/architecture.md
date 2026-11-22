@@ -34,6 +34,10 @@ flowchart LR
 USB HID and BLE share ZephyrForge report payloads and Control semantics, defined by the
 [USB HID](usb-hid.md) and [Bluetooth LE](bluetooth.md) specifications.
 
+The diagram shows the ESP32-S3. The Raspberry Pi Pico images keep the USB HID path, control dispatcher, SD storage
+and UART shell, but have no BLE, Wi-Fi or TCP shell; they are flashed as UF2 images through the MCU's USB bootloader.
+Their native SD bus runs on a PIO block, as described in the [SD storage reference](sdcard.md).
+
 ## Repository responsibilities
 
 | Layer | Responsibility |

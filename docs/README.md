@@ -17,7 +17,7 @@ Keep each topic in one document; other documents link rather than duplicate its 
 
 | Topic | Owner |
 | --- | --- |
-| Target, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
+| Targets, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
 | Workspace creation, build, flash, first dashboard | [Getting started](guides/getting-started.md) |
 | Wi-Fi network requirements, provisioning and radio troubleshooting | [Wireless](guides/wireless.md) |
 | UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |

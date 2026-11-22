@@ -56,6 +56,18 @@ static void finish(result_t *result, uint8_t status, uint8_t error, uint8_t deta
 	result->data[0] = detail;
 }
 
+/** True unless the opcode drives LED, settings or radio hardware that Report 1 does not advertise. */
+static bool capable(uint8_t opcode)
+{
+	if (opcode == ZF_OP_LED) {
+		return (ZF_CAPABILITIES & ZF_CAP_LED) != 0;
+	}
+	if (opcode == ZF_OP_SAVE) {
+		return (ZF_CAPABILITIES & ZF_CAP_SETTINGS) != 0;
+	}
+	return opcode < ZF_OP_STAGE_SSID || opcode > ZF_OP_SCAN_ENTRY || (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0;
+}
+
 /** Map a platform admission result: zero Completed, -EBUSY Busy, any other error Failed. */
 static void finish_errno(result_t *result, int err)
 {
@@ -333,8 +345,9 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
 		return;
 	}
-	if (request->ble && request->opcode != ZF_OP_LED && request->opcode != ZF_OP_REBOOT &&
-	    request->opcode != ZF_OP_SAVE) {
+	if (!capable(request->opcode) ||
+	    (request->ble && request->opcode != ZF_OP_LED && request->opcode != ZF_OP_REBOOT &&
+	     request->opcode != ZF_OP_SAVE)) {
 		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 		return;
 	}

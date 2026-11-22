@@ -47,8 +47,15 @@ const bytesAt = (view, offset, size) => new Uint8Array(view.buffer, view.byteOff
 /** @param {Uint8Array} bytes */
 const zero = bytes => bytes.every(byte => byte === 0);
 
-/** @brief Highest ESP32-S3 GPIO number. */
-const MAX_GPIO = 48;
+/** @brief MCU ID required by each known board model. */
+const BOARD_MCUS = new Map([[1, 3], [2, 1], [3, 1], [4, 2], [5, 2]]);
+
+/**
+ * @brief Highest GPIO number for the reported MCU and board; Pico 2 boards carry the 30-GPIO RP2350A.
+ * @param {{mcu_id: number, board_model: number}} identity
+ */
+const maxGpio = ({ mcu_id: mcu, board_model: board }) => mcu === 1 || board === 4 || board === 5 ? 29
+  : mcu === 2 ? 47 : 48;
 
 /** @brief Decode and validate Feature 1 identity. */
 /** @param {HidReport} report */
@@ -64,13 +71,14 @@ export function decodeIdentityReport(report) {
   const storage = capabilities & (CAP.SPI | CAP.SDMMC);
   requireValid((storage === CAP.SPI || storage === CAP.SDMMC)
     && !(capabilities & ~ZEPHYRFORGE_CAPABILITIES)
-    && total > 0 && reserved <= total && (board !== 1 || mcu === 3), "identity");
+    && total > 0 && reserved <= total && (BOARD_MCUS.get(board) ?? mcu) === mcu, "identity");
   return {
     version: 1, product_id: product, product_name: "ZephyrForge",
     serial_number: bytesToHex(bytesAt(view, 3, 8)).toUpperCase(),
     firmware_version: [11, 12, 13].map(offset => view.getUint8(offset)).join("."),
-    mcu_id: mcu, mcu: ({ 3: "ESP32-S3" })[mcu] ?? null,
-    board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1" })[board] ?? null,
+    mcu_id: mcu, mcu: ({ 1: "RP2040", 2: "RP2350", 3: "ESP32-S3" })[mcu] ?? null,
+    board_model: board, board_name: ({ 0: "Unspecified", 1: "ESP32-S3-DevKitC-1", 2: "Raspberry Pi Pico",
+      3: "Raspberry Pi Pico W", 4: "Raspberry Pi Pico 2", 5: "Raspberry Pi Pico 2 W" })[board] ?? null,
     capabilities, transport: capabilities & CAP.SPI ? "spi" : "sdmmc",
     ram_total_bytes: total, ram_reserved_bytes: reserved,
     memory_report_supported: Boolean(view.getUint8(16) & 1),
@@ -104,6 +112,7 @@ export function decodeConfigReport(report, identity) {
   const led = view.getUint8(15);
   const detect = view.getUint8(16);
   const assignedCount = identity.capabilities & CAP.SPI ? 4 : 6;
+  const max = maxGpio(identity);
   const settings = { system_clock_mhz: view.getUint16(1, true), sdcard_profile: view.getUint8(3),
     radios: (flags & CONFIG_FLAGS.RADIO_MASK) >> 3 };
   requireValid(validSettings(settings) && !(flags & ~CONFIG_FLAGS.VALID_MASK)
@@ -113,7 +122,7 @@ export function decodeConfigReport(report, identity) {
     && Boolean(flags & CONFIG_FLAGS.LED) === (led !== 255)
     && (led === 255 || Boolean(identity.capabilities & CAP.LED))
     && Boolean(flags & CONFIG_FLAGS.CARD_DETECT) === (detect !== 255)
-    && [led, tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= MAX_GPIO)
+    && [led, tx, rx, detect, ...gpios].every(pin => pin === 255 || pin <= max)
     && gpios.slice(0, assignedCount).every(pin => pin !== 255)
     && gpios.slice(assignedCount).every(pin => pin === 255),
   "board-configuration");

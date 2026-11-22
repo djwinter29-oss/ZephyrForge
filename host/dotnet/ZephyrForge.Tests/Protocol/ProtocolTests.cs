@@ -170,7 +170,44 @@ public sealed class ProtocolTests
         report[15] = 2;
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
         report[16] = 0;
-        Assert.Equal("Unknown MCU (2)", HidProtocol.ParseIdentityReport(report).Mcu);
+        var rp2350 = HidProtocol.ParseIdentityReport(report);
+        Assert.Equal("RP2350", rp2350.Mcu);
+        var config = ConfigurationReport();
+        config[8] = 47;
+        Assert.Equal((byte)47, HidProtocol.ParseConfigurationReport(config, rp2350).StorageGpios[0]);
+        config[8] = 48;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, rp2350));
+        report[15] = 9;
+        Assert.Equal("Unknown MCU (9)", HidProtocol.ParseIdentityReport(report).Mcu);
+    }
+
+    [Theory]
+    [InlineData(HidProtocol.BoardPico, HidProtocol.McuRp2040)]
+    [InlineData(HidProtocol.BoardPicoW, HidProtocol.McuRp2040)]
+    [InlineData(HidProtocol.BoardPico2, HidProtocol.McuRp2350)]
+    [InlineData(HidProtocol.BoardPico2W, HidProtocol.McuRp2350)]
+    public void PicoBoardsRequireTheirMcuAndGpioRange(byte board, byte mcu)
+    {
+        var report = IdentityReport();
+        report[15] = mcu;
+        report[16] = board;
+        report[18] = HidProtocol.CapabilityReboot | HidProtocol.CapabilitySdmmc | HidProtocol.CapabilitySelfTest;
+        var identity = HidProtocol.ParseIdentityReport(report);
+        Assert.Equal(mcu == HidProtocol.McuRp2040 ? "RP2040" : "RP2350", identity.Mcu);
+        Assert.False(identity.WirelessSupported);
+        var config = ConfigurationReport();
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 0);
+        new byte[] { 0, 0, 1, 2, 3, 4, 5, 6, 7 }.CopyTo(config, 5);
+        config[14] = HidProtocol.BoardFlagMonitorUart | HidProtocol.BoardFlagCardDetect;
+        config[17] = 8;
+        Assert.Equal((byte)8, HidProtocol.ParseConfigurationReport(config, identity).CardDetectGpio);
+        config[17] = 30;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, identity));
+        foreach (var other in new[] { HidProtocol.McuRp2040, HidProtocol.McuRp2350, HidProtocol.McuEsp32S3 })
+        {
+            report[15] = other;
+            if (other != mcu) Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
+        }
     }
 
     [Theory]

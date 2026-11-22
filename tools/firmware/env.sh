@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+toolchain="${toolchain:-xtensa-espressif_esp32s3_zephyr-elf}"
 base="${PYTHON:-python3}"
 packages=()
 for pair in python3:python3 git:git cmake:cmake ninja:ninja-build gperf:gperf dtc:device-tree-compiler \
@@ -72,7 +73,7 @@ fi
 manifest_path="$(python -m west config --local manifest.path)"
 if [[ ! -e "$workspace/$manifest_path" &&
 	"$root" == "$workspace/"* && -f "$root/west.yml" ]]; then
-	for cache in "$root/build/firmware/CMakeCache.txt" "$root/build/firmware-sd-spi/CMakeCache.txt"; do
+	for cache in "$root"/build/firmware*/CMakeCache.txt; do
 		if [[ -f "$cache" ]] &&
 			grep -Fxq "APPLICATION_SOURCE_DIR:PATH=$workspace/$manifest_path/firmware" "$cache"; then
 			checkout="${root#"$workspace"/}"
@@ -96,12 +97,14 @@ python -m pip install --disable-pip-version-check --no-input \
 	-r "$zephyr/scripts/requirements-base.txt" -r "$espressif/zephyr/requirements.txt"
 export ZEPHYR_BASE="$zephyr"
 bash "$root/tools/firmware/apply-zephyr-patches.sh" "$zephyr"
-python -m west blobs fetch hal_espressif
+if [[ "$toolchain" == xtensa-* ]]; then
+	python -m west blobs fetch hal_espressif
+fi
 
 sdk=""
 for candidate in "${ZEPHYR_SDK_INSTALL_DIR:-}" "$HOME/zephyr-sdk-0.17.4" /opt/zephyr-sdk-0.17.4; do
 	if [[ -f "$candidate/sdk_version" ]] && [[ "$(<"$candidate/sdk_version")" == 0.17.4 ]] &&
-		[[ -x "$candidate/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gcc" ]]; then
+		[[ -x "$candidate/$toolchain/bin/$toolchain-gcc" ]]; then
 		sdk="$candidate"
 		break
 	fi
@@ -109,5 +112,5 @@ done
 if [[ -n "$sdk" ]]; then
 	export ZEPHYR_SDK_INSTALL_DIR="$sdk"
 else
-	python -m west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+	python -m west sdk install --version 0.17.4 --toolchains "$toolchain"
 fi

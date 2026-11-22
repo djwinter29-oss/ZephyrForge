@@ -85,6 +85,29 @@ test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3
   }
 });
 
+test("Pico identities require their board MCU and limit GPIOs to the package", () => {
+  for (const [mcu, board, name] of [[1, 2, "Raspberry Pi Pico"], [1, 3, "Raspberry Pi Pico W"],
+    [2, 4, "Raspberry Pi Pico 2"], [2, 5, "Raspberry Pi Pico 2 W"]]) {
+    const report = identity(0x32); report[14] = mcu; report[15] = board;
+    const id = decodeIdentityReport(report);
+    assert.deepEqual([id.mcu, id.board_name], [mcu === 1 ? "RP2040" : "RP2350", name]);
+    const pins = Uint8Array.from([1, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 4 | 1, 1, 255, 8]);
+    assert.equal(decodeConfigReport(pins, id).card_detect_gpio, 8);
+    pins[16] = 30;
+    assert.throws(() => decodeConfigReport(pins, id));
+    for (const other of [1, 2, 3].filter(value => value !== mcu)) {
+      report[14] = other;
+      assert.throws(() => decodeIdentityReport(report), `${board}: ${other}`);
+    }
+  }
+  const rp2350b = identity(0x12); rp2350b[14] = 2; rp2350b[15] = 0;
+  const unspecified = decodeIdentityReport(rp2350b);
+  const pins = config(); pins[7] = 47;
+  assert.equal(decodeConfigReport(pins, unspecified).storage_gpios[0], 47);
+  pins[7] = 48;
+  assert.throws(() => decodeConfigReport(pins, unspecified));
+});
+
 test("SPI identity selects four pins and matching storage samples", () => {
   const spi = decodeIdentityReport(identity(0x8e));
   const native = decodeIdentityReport(identity());

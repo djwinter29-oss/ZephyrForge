@@ -28,6 +28,10 @@ API names describe the current implementation; internal source layout is not par
 
 Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record enables both radios.
 
+The clock values and radio settings apply to the ESP32-S3. The Raspberry Pi Pico images load the record at boot but
+cannot save it: Report `1` advertises no settings save, so opcode `5` returns Unsupported (error `4`). Those images
+keep the devicetree build clock and start no radios.
+
 ## Architecture
 
 All settings pass through the settings service's RAM state. Writers only
@@ -247,6 +251,9 @@ target, the N16R8 partition layout reserves 192 KiB at `0xFB0000`. Only the firs
 
 A board or partition table without `storage_partition` does not build.
 
+On the Raspberry Pi Pico boards, `storage_partition` starts at `0x100000`, directly after the 1 MiB code partition,
+and fills the rest of the flash. The images never erase or program it; UF2 flashing writes only the image's blocks.
+
 ## System Clock
 
 The saved profile is applied during early boot, after the settings load and before the radios, SD mount and
@@ -280,12 +287,10 @@ increase radio latency; none of them is hardware-qualified yet.
 
 ## SD-Card Speed
 
-There is no saved runtime SD speed profile. The SD card is attached through Zephyr's
-native SDMMC driver, with a four-bit bus and a configured 25 MHz ceiling. The SD stack negotiates clock/timing
-within that ceiling; the application exposes no runtime speed-setting operation. Record byte 9 remains reserved
-as zero; this transport change does not migrate the 148-byte settings record. Board-specific clock changes
-belong in the overlay and require hardware
-validation. See the [SD storage reference](sdcard.md).
+There is no saved runtime SD speed profile. The SD bus, its requested ceiling and clock negotiation are defined per
+board and image by the [SD storage reference](sdcard.md#driver-and-filesystem-configuration); the application exposes
+no runtime speed-setting operation. Record byte 9 remains reserved as zero; this transport change does not migrate
+the 148-byte settings record. Board-specific clock changes belong in the overlay and require hardware validation.
 
 ## Using the API
 

@@ -1,0 +1,2 @@
+/* 2 MB flash: 1 MB code (after the boot2 stage) and 1 MB storage; settings use the first storage sector. */
+#include <raspberrypi/partitions_2M_storage.dtsi>

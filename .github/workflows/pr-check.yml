@@ -19,5 +19,5 @@ jobs:
     uses: ./.github/workflows/host-validation.yml
 
   firmware:
-    name: ESP32-S3 target build
+    name: Firmware target builds
     uses: ./.github/workflows/firmware-build.yml

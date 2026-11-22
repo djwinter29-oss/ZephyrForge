@@ -9,6 +9,7 @@ Keep hardware-dependent integration separate from portable management logic.
 | --- | --- |
 | `src/config/` | Board identity, UID/serial, reset cause, memory inventory, board facts, app lock and delayed reboot |
 | `src/platform/` | Portable boot settings and platform hooks; Zephyr settings flash, CPU clock, RGB LED, SD worker, USB drive disk and benchmark file backend |
+| `src/platform/rpi_pico/` | Raspberry Pi Pico board hooks and the PIO SD host with its portable SDIO codec |
 | `src/app/` | Shared Zephyr service interface and telemetry |
 | `src/app/control/` | Portable Report 20 control dispatcher shared by USB and BLE |
 | `src/app/usb/` | USB HID integration and portable report encoding |
@@ -23,7 +24,7 @@ Native tests are grouped by the same service roles.
 
 ZephyrForge uses Ceedling 1.1.10 with Unity and CMock. Install Ruby 3.3,
 Bundler 2.6.9 and a native GCC toolchain (`gcc` on PATH). These tests need neither
-Zephyr nor an ESP32-S3 board. From the repository root:
+Zephyr nor target hardware. From the repository root:
 
 ```sh
 gem install bundler -v 2.6.9
@@ -58,9 +59,12 @@ Zephyr stack integration, hardware sampling, SD mounting, flash access and clock
 | Wireless staging | Staged Wi-Fi credentials, password rules, expiry, tested flag and key-only commits |
 | Cryptography | SHA-256/HMAC vectors |
 | Settings | [Boot settings](../reference/settings.md) record layout, CRC-32, validation, staging, discard, save failure and next-boot snapshots over an in-memory flash fake |
+| Pico board | Pico identity and board facts, and Unsupported LED, settings-save and wireless opcodes without hardware access |
+| SDIO codec | Pico PIO SD host command/response CRC7 framing, one- and four-bit data images with CRC16 and bus clock planning |
 
-Platform hooks are CMock-generated mocks. **The tests do not compile the SD driver, mount a card,
-format, write or test SD storage.** The Zephyr application calls these same portable modules;
+Platform hooks are CMock-generated mocks. **The tests do not compile the SD drivers, mount a card,
+format, write or test SD storage**; the SDIO codec suite checks wire encoding only, not PIO timing.
+The Zephyr application calls these same portable modules;
 tests do not duplicate them. Native compilation enables C11 and treats compiler warnings as errors.
 
 Add portable logic tests here and mock only narrow service interfaces. Do not recreate
@@ -69,7 +73,7 @@ or driver integration tests; no ztest suite is configured yet. USB/BLE stacks, r
 flash programming, clock changes and boot remain outside this native suite.
 
 The `firmware-unit` job in [Host Validation](../../.github/workflows/host-validation.yml)
-runs the same command independently of the reusable [ESP32-S3 build](../../.github/workflows/firmware-build.yml).
+runs the same command independently of the reusable [target builds](../../.github/workflows/firmware-build.yml).
 Both must pass for firmware changes; a native test pass is not target-build or hardware evidence.
 
 ## Zephyr target build
@@ -85,7 +89,8 @@ Workspace setup applies the tracked patches under `patches/zephyr/v4.3.2/` to th
 The SD patch retains the genuine initialization CID and adds public `DISK_IOCTL_GET_SD_CID` (16-byte buffer in wire
 byte order; `-ENODATA` without an initialized CID). It also propagates SPI CID/CSD read failures.
 The pinctrl patch adds an optional Espressif `drive-strength` pin-group property (5, 10, 20 or 40 mA) for output
-pads; omitted groups keep their current drive. Only ESP32-S3 builds are exercised.
+pads; omitted groups keep their current drive. Every target build uses the SD patch; only ESP32-S3 builds use the
+pinctrl property.
 Application uses a forward `git apply --check`, or a reverse check for an already-applied patch; mismatches stop setup.
 For an already-initialized workspace, activate its venv and run
 `bash tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"` before a manual target build.
@@ -101,8 +106,9 @@ They install `west` and the workspace's Zephyr base and Espressif Python require
 already satisfied dependencies are reused. Set `PYTHON` to choose the interpreter when creating the venv
 (for example `PYTHON=python3.12`), or `VENV_DIR` to use another venv. An unrelated active venv is not selected automatically.
 Activation does not change the calling shell; use `. .venv/bin/activate` from the workspace for manual `west` commands.
-They update modules to the pinned manifest, fetch required radio blobs and install SDK 0.17.4 with the ESP32-S3
-toolchain if no complete SDK is found in `ZEPHYR_SDK_INSTALL_DIR`, the home directory or `/opt`.
+They update modules to the pinned manifest, fetch the Espressif radio blobs for ESP32-S3 builds and install SDK 0.17.4
+with the selected board's toolchain (`xtensa-espressif_esp32s3_zephyr-elf` or `arm-zephyr-eabi`) if no SDK with that
+toolchain is found in `ZEPHYR_SDK_INSTALL_DIR`, the home directory or `/opt`.
 First use requires network access and several GB of free space. Installation and build errors stop execution;
 no upload is attempted after a failed build. See [manual workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace)
 if you prefer to provision dependencies yourself.
@@ -123,6 +129,18 @@ Outputs are separate: `build/firmware/zephyr/zephyr.bin` (native) and
 Both retain card detection, FAT mounting and explicit USB drive handoff; neither formats a card.
 Use the matching [SD wiring](../reference/sdcard.md#pin-allocation) and disconnect card power when changing buses.
 
+`--board` selects the target: `esp32s3` (the default), `pico`, `pico_w`, `pico2` or `pico2_w`, which build the
+Zephyr targets `rpi_pico/rp2040`, `rpi_pico/rp2040/w`, `rpi_pico2/rp2350a/m33` and `rpi_pico2/rp2350a/m33/w`.
+Each Pico board has the same two storage images:
+
+```sh
+bash tools/firmware/build.sh --board pico
+bash tools/firmware/build.sh --board pico2_w --storage sd-spi
+```
+
+Pico outputs are UF2 images in a board-specific directory, for example `build/firmware-pico/zephyr/zephyr.uf2`
+and `build/firmware-pico2_w-sd-spi/zephyr/zephyr.uf2`. Pico builds need no binary blobs.
+
 Host Validation also compiles the report and control tests for SPI with benchmarking enabled:
 
 ```sh
@@ -133,15 +151,29 @@ For changes to board/configuration selection, use a pristine build from the work
 
 ```sh
 west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
-  -d zephyrforge/build/firmware -- -DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay
+  -d zephyrforge/build/firmware -- -DCONF_FILE="prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf" \
+  -DDTC_OVERLAY_FILE="boards/espressif/esp32s3_devkitc_n16r8.overlay;boards/espressif/sdmmc.overlay"
 ```
 
 Inspect generated `build/firmware/zephyr/.config` and `zephyr.dts`, not just source intent.
 Both FAT mkfs options must remain disabled. A successful build does not qualify card wiring or mounting.
-Manual SPI builds use `boards/esp32s3_devkitc_n16r8_sd_spi.overlay` and a separate build directory.
-The management protocol runs over the ESP32-S3 native USB connector (USB HID, VID:PID `CAFE:4021`)
-and BLE GATT.
-The UART connector carries the Zephyr diagnostic shell/log output and the ROM bootloader used for flashing;
+Manual ESP32-S3 builds apply the N16R8 board overlay before the storage overlay.
+The N16R8 configuration adds its radio, memory and LED settings to the shared application configuration.
+Pico builds use only the shared application configuration plus Zephyr's board and driver defaults.
+For SPI, replace `boards/espressif/sdmmc.overlay` with `boards/espressif/sd_spi.overlay`, retaining the board overlay
+and configuration files and using a separate build directory.
+Manual Pico builds list the storage overlay, then the MCU overlay, then the radio overlay for W boards:
+
+```sh
+west build -p always -b rpi_pico/rp2040/w zephyrforge/firmware -d zephyrforge/build/firmware-pico_w -- \
+  -DDTC_OVERLAY_FILE="boards/rpi_pico/sdmmc.overlay;boards/rpi_pico/rp2040.overlay;boards/rpi_pico/w.overlay"
+```
+
+Use `sd_spi.overlay` for SPI and `rp2350.overlay` for the Pico 2 boards, and omit `w.overlay` on boards without a
+radio.
+The management protocol runs over the board's native USB connector (USB HID, VID:PID `CAFE:4021`)
+and, on the ESP32-S3, BLE GATT.
+The UART carries the Zephyr diagnostic shell/log output and, on the ESP32-S3, the ROM bootloader used for flashing;
 it has no dashboard management protocol. Shell commands and TCP exposure are defined in the
 [console guide](../guides/console.md).
 
@@ -162,6 +194,8 @@ port, preferring Silicon Labs CP210x devices; tied candidates require an explici
 without connecting to or flashing a device. Missing or empty required build artifacts trigger a build first;
 complete existing builds are reused. Select `--storage sd-spi` for the alternate image, or `--storage sdmmc`
 for native. Builds with the wrong board or storage driver are rejected. Runner errors propagate to the caller.
+The wrapper flashes only the ESP32-S3; copy Pico UF2 images to the BOOTSEL drive as described in the
+[flashing instructions](../guides/getting-started.md#2-build-now-flash-later).
 
 `--dry-run` also prepares dependencies and builds missing firmware.
 Use `--help` and `--dry-run` to inspect it before uploading to hardware.

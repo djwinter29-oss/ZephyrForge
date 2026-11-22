@@ -1,0 +1,50 @@
+/* Raspberry Pi Pico family, SD over SPI0: GP2 SCK, GP3 MOSI, GP4 MISO, GP7 GPIO-controlled CS, GP8 card detect. */
+#include "sdmmc.overlay"
+
+/ {
+	aliases {
+		zephyrforge-sd = &zephyrforge_sd_spi;
+	};
+};
+
+&pio1 {
+	status = "disabled";
+};
+
+&zephyrforge_sd {
+	status = "disabled";
+	mmc {
+		status = "disabled";
+	};
+};
+
+&pinctrl {
+	zephyrforge_sd_spi_default: zephyrforge_sd_spi_default {
+		clock {
+			pinmux = <SPI0_SCK_P2>;
+		};
+		data {
+			pinmux = <SPI0_TX_P3>, <SPI0_RX_P4>;
+			input-enable;
+			input-schmitt-enable;
+			bias-pull-up;
+		};
+	};
+};
+
+&spi0 {
+	status = "okay";
+	pinctrl-0 = <&zephyrforge_sd_spi_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
+	zephyrforge_sd_spi: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		spi-max-frequency = <25000000>;
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
+};

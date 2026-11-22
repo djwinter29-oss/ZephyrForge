@@ -1,5 +1,9 @@
+#ifdef CONFIG_SOC_FAMILY_RPI_PICO
+#include <hardware/flash.h>
+#else
 #include <esp_flash.h>
 #include <esp_psram.h>
+#endif
 
 #include "app/zephyrforge.h"
 #include "platform/boot_config.h"
@@ -9,23 +13,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/linker/linker-defs.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
 
+#ifdef CONFIG_SOC_FAMILY_RPI_PICO
+#include <zephyr/dt-bindings/pinctrl/rpi-pico-pinctrl-common.h>
+
+#define RAM_TOTAL_BYTES DT_REG_SIZE(DT_CHOSEN(zephyr_sram))
+/* Report 1 UID: the eight-byte unique ID of the board flash. */
+#define UID_SOURCE_SIZE ZF_UID_SIZE
+#define PIN_FROM_MUX(mux) (((mux) >> RP2_PIN_NUM_POS) & RP2_PIN_NUM_MASK)
+#else
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
+
 #define RAM_TOTAL_BYTES (512u * 1024u)
 /* Report 1 UID prefix: the six-byte eFuse base MAC; the remaining UID bytes stay zero. */
-#define UID_MAC_SIZE 6u
-#define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(zephyrforge_sd), pinctrl_0, 0)
-#define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(zephyrforge_sd)), pinctrl_0, 0)
-#define GPIO_FROM_MUX(node, index) (DT_PROP_BY_IDX(node, pinmux, index) & ESP32_PIN_NUM_MASK)
+#define UID_SOURCE_SIZE 6u
+#define PIN_FROM_MUX(mux) ((mux) & ESP32_PIN_NUM_MASK)
 
-LOG_MODULE_REGISTER(zf_board, LOG_LEVEL_INF);
 extern char _ext_ram_start[];
 extern char _ext_ram_end[];
+#endif
+#define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(zephyrforge_sd), pinctrl_0, 0)
+#define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(zephyrforge_sd)), pinctrl_0, 0)
+#define GPIO_FROM_MUX(node, index) PIN_FROM_MUX(DT_PROP_BY_IDX(node, pinmux, index))
+
+LOG_MODULE_REGISTER(zf_board, LOG_LEVEL_INF);
 
 K_MUTEX_DEFINE(app_lock);
 
@@ -44,19 +60,27 @@ void zf_unlock(void)
 	(void)k_mutex_unlock(&app_lock);
 }
 
-void zf_board_init(void)
+#ifdef CONFIG_SOC_FAMILY_RPI_PICO
+static void read_memory_inventory(void)
 {
-	uint32_t cause = 0;
-	ssize_t length = hwinfo_get_device_id(uid, UID_MAC_SIZE);
+	/* JEDEC Read ID returns the manufacturer, memory type and log2 of the capacity in bytes. */
+	const uint8_t command[4] = {0x9Fu};
+	uint8_t id[4] = {0};
+	/* The command suspends XIP; no interrupt handler may execute from flash until it returns. */
+	unsigned int key = irq_lock();
 
-	if (length < 0) {
-		memset(uid, 0, sizeof(uid));
+	flash_do_cmd(command, id, sizeof(id));
+	irq_unlock(key);
+	memory_inventory.flash_available = id[1] != 0x00u && id[1] != 0xFFu && id[3] >= 16u && id[3] <= 31u;
+	if (memory_inventory.flash_available) {
+		memory_inventory.flash_total_bytes = 1u << id[3];
+	} else {
+		LOG_ERR("Flash capacity read failed: JEDEC ID %02x %02x %02x", id[1], id[2], id[3]);
 	}
-	zf_uid_hex(uid, serial);
-	if (hwinfo_get_reset_cause(&cause) == 0) {
-		reset_cause = zf_reset_cause(cause);
-		(void)hwinfo_clear_reset_cause();
-	}
+}
+#else
+static void read_memory_inventory(void)
+{
 	memory_inventory.psram_available = esp_psram_is_initialized();
 	if (memory_inventory.psram_available) {
 		memory_inventory.psram_total_bytes = esp_psram_get_size();
@@ -71,6 +95,23 @@ void zf_board_init(void)
 		memory_inventory.flash_total_bytes = 0;
 		LOG_ERR("Module flash capacity read failed: %d", err);
 	}
+}
+#endif
+
+void zf_board_init(void)
+{
+	uint32_t cause = 0;
+	ssize_t length = hwinfo_get_device_id(uid, UID_SOURCE_SIZE);
+
+	if (length < 0) {
+		memset(uid, 0, sizeof(uid));
+	}
+	zf_uid_hex(uid, serial);
+	if (hwinfo_get_reset_cause(&cause) == 0) {
+		reset_cause = zf_reset_cause(cause);
+		(void)hwinfo_clear_reset_cause();
+	}
+	read_memory_inventory();
 }
 
 const uint8_t *zf_board_uid(void)
@@ -120,9 +161,10 @@ void zf_config_report(uint8_t out[ZF_CONFIG_SIZE])
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
 		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),
+#if DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led_default))
 		.led_available = true,
-		.led_gpio = DT_PROP_BY_IDX(DT_CHILD(DT_NODELABEL(zephyrforge_led_default), mosi), pinmux, 0)
-			    & ESP32_PIN_NUM_MASK,
+		.led_gpio = GPIO_FROM_MUX(DT_CHILD(DT_NODELABEL(zephyrforge_led_default), mosi), 0),
+#endif
 #if ZF_STORAGE_SPI
 		.storage_gpios = {
 			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, clock), 0),

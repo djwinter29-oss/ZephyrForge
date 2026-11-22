@@ -553,7 +553,7 @@ class DeviceMonitor:
                     self._active_client = client
                     self._reset_snapshot(
                         connected=True, hardware=hardware, board_configuration=configuration,
-                        settings_supported=hardware["settings_supported"] and configuration is not None,
+                        settings_supported=configuration is not None,
                         settings_message=settings_message,
                     )
                 wireless_poll_at = 0.0

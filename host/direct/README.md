@@ -1,8 +1,9 @@
 # ZephyrForge Direct Dashboard
 
-Connect to a ZephyrForge ESP32-S3 board directly from desktop Chrome or Edge using **USB (WebHID)** or
+Connect to a ZephyrForge board directly from desktop Chrome or Edge using **USB (WebHID)** or
 **Bluetooth LE (Web Bluetooth)**. View live diagnostics, edit boot settings, provision Wi-Fi and Bluetooth, and
-reboot the board without installing the Python or .NET host application.
+reboot the board without installing the Python or .NET host application. Controls whose capability the board does
+not advertise are unavailable; the Raspberry Pi Pico boards connect over USB only.
 
 The dashboard uses plain browser ES modules: no bundle, build step, or runtime JavaScript package installation is
 required. It is fully independent of the Python/.NET dashboard assets in `host/web/`.

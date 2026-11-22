@@ -1,18 +1,22 @@
 # Diagnostic shells
 
-ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and as a raw TCP stream on port **2323**.
+ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and, on the ESP32-S3, as a raw TCP stream
+on port **2323**.
 Neither shell carries dashboard commands or changes saved settings, wireless credentials or SD ownership.
 USB HID and authenticated BLE remain the management interfaces.
 
 ## UART
 
 Open the board's USB-to-UART bridge port in a serial terminal at **115200 baud, 8N1**, with flow control and local
-echo disabled. The prompt is `ZephyrForge> `. Enter submits a command; Tab lists or completes native commands.
+echo disabled. The Raspberry Pi Pico boards have no bridge; use a 3.3 V USB-UART adapter on UART0, wired as in the
+[hardware guide](hardware.md#raspberry-pi-pico-targets). The prompt is `ZephyrForge> `. Enter submits a command;
+Tab lists or completes native commands.
 Boot messages and logs share this UART and may interrupt the prompt. Close the terminal before flashing.
 The native USB connector has HID and MSC, not a CDC serial shell.
 
 ## Raw TCP
 
+The TCP shell needs Wi-Fi, so only the ESP32-S3 image includes it.
 First provision Wi-Fi through a dashboard and wait for an IPv4 address in its live wireless diagnostics.
 Connect to that address:
 

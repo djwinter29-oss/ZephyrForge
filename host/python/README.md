@@ -1,6 +1,7 @@
 # ZephyrForge Python Host
 
-USB HID control, diagnostics, and a local dashboard for ZephyrForge firmware on the ESP32-S3-DevKitC.
+USB HID control, diagnostics, and a local dashboard for ZephyrForge firmware on the ESP32-S3-DevKitC and Raspberry Pi
+Pico boards.
 The host talks to the board's native USB HID interface (VID:PID `0xCAFE:0x4021`) using the
 [USB HID contract](../../docs/reference/usb-hid.md).
 Basic monitoring needs no SD card. Wireless controls depend on the connected firmware's capabilities.

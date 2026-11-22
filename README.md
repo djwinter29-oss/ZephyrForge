@@ -13,11 +13,12 @@ dashboards help you bring up the board and keep management separate from product
 
 It shares [PicoForge](https://github.com/djwinter29-oss/PicoForge)'s intent: provide the supporting firmware and
 host tooling that downstream products would otherwise rebuild. ZephyrForge applies that approach to **Zephyr** across
-a range of MCUs, rather than PicoForge's RP2040/RP2350 platform. It is not a compatible firmware port.
+a range of MCUs, rather than PicoForge's Pico SDK platform. It is not a compatible firmware port, including on the
+Raspberry Pi Pico boards both projects support.
 
-The first and currently only supported target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and
-**8 MB octal PSRAM**. Other MCUs are planned, not yet supported.
-Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
+The first target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and **8 MB octal PSRAM**. The **Raspberry Pi
+Pico, Pico W, Pico 2 and Pico 2 W** are also supported with USB management, without wireless management, LED control
+or settings save. Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
 **Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ZephyrForge/releases/latest) ·
 [Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ZephyrForge/) ·
@@ -26,7 +27,7 @@ Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
 > **Project status:** software-tested, with functional hardware tests reported on the target N16R8 board.
 > No issues were reported. See the [hardware test report](docs/validation/records/2026-11-14-hardware-tests.md)
-> for coverage and remaining qualification limits.
+> for coverage and remaining qualification limits. The Raspberry Pi Pico images are software builds only.
 
 ## What ZephyrForge provides
 
@@ -40,7 +41,8 @@ Choose native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 | **Application foundation** | Board/platform integration, management services, documented wire contracts and portable firmware tests |
 
 Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect;
-BLE management needs a provisioned Control key. An SD card is **optional for basic management**.
+BLE management needs a provisioned Control key. Wireless setup, the TCP shell and LED control are ESP32-S3 features.
+An SD card is **optional for basic management**.
 Storage requires a compatible external 3.3 V SD socket or module and wiring for the selected firmware image.
 
 ## Management connections
@@ -59,6 +61,8 @@ flowchart LR
 Use the board's **USB** connector for native USB HID (`CAFE:4021`).
 The separate **UART** connector is for flashing and a diagnostic shell/logs, not dashboard commands.
 Wi-Fi is provisioned by the dashboards and also exposes the [raw TCP diagnostic shell](docs/guides/console.md).
+Raspberry Pi Pico boards use their micro-USB connector for USB HID management and UF2 flashing; their diagnostic UART
+needs an external adapter.
 
 ## Choose your dashboard
 
@@ -102,8 +106,10 @@ Keep bridge hosts on loopback and use one management client per board at a time.
    ```
 
    Flash only the matching N16R8 module through its UART connector; replace the port with yours.
+   For a Raspberry Pi Pico board, add `--board pico`, `pico_w`, `pico2` or `pico2_w` to the build and copy the UF2
+   image in BOOTSEL mode instead of running `flash.sh`.
    See [hardware setup](docs/guides/hardware.md) before connecting an SD card and
-   [getting started](docs/guides/getting-started.md) for the alternate SPI image.
+   [getting started](docs/guides/getting-started.md) for the alternate SPI image and Pico flashing.
 3. **Connect and configure.** Attach the USB connector, open a dashboard, then follow
    [wireless setup](docs/guides/wireless.md) to test a network or provision BLE.
 
@@ -128,7 +134,8 @@ contracts. See [host development](docs/development/host-tools.md) when extending
 
 ## Qualification and security
 
-Automated checks cover portable firmware logic, host behavior, dashboard types and the pinned ESP32-S3 build.
+Automated checks cover portable firmware logic, host behavior, dashboard types and the pinned ESP32-S3 and Raspberry
+Pi Pico builds.
 These complement the [reported functional hardware tests](docs/validation/records/2026-11-14-hardware-tests.md);
 neither establishes production qualification of every board, wiring arrangement or application workload.
 
@@ -140,8 +147,8 @@ neither establishes production qualification of every board, wiring arrangement 
 - BLE commands are Control-key authenticated, but the link is **not encrypted**; flash credentials are also unencrypted.
 - Settings use a single flash record and are **not power-loss atomic**.
 - The TCP diagnostic shell is unauthenticated plaintext: use only on trusted networks, without port forwarding.
-- The onboard RGB LED has a volatile colour dropdown beside Device information; see the [hardware guide](docs/guides/hardware.md)
-  for pin selection and board-revision constraints.
+- The ESP32-S3 board's onboard RGB LED has a volatile colour dropdown beside Device information; see the
+  [hardware guide](docs/guides/hardware.md) for pin selection and board-revision constraints.
 - There is no file-transfer API or dual-core application workload.
 
 Read the [validation records](docs/validation/records/README.md) for observed evidence, not inferred guarantees.

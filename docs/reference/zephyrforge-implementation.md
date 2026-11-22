@@ -6,19 +6,20 @@ to the USB HID and Bluetooth LE specifications.
 
 ## Platform integration
 
-| Area | Current implementation |
-| --- | --- |
-| Application core | Zephyr runs on PROCPU; the second core does not run an application workload |
-| USB | Zephyr's `device_next` stack with the native USB OTG controller |
-| Bluetooth | Zephyr Bluetooth host with the ESP32-S3 controller and entropy source |
-| Wi-Fi | Zephyr network management, DHCP and Espressif software coexistence |
-| Filesystem | Zephyr disk access and FatFs over the native Espressif SDMMC controller |
-| Settings | A fixed CRC-checked flash record, rather than Zephyr settings/NVS |
+| Area | ESP32-S3-DevKitC-1 N16R8 | Raspberry Pi Pico boards |
+| --- | --- | --- |
+| Application core | Zephyr runs on PROCPU; the second core does not run an application workload | Zephyr runs on core 0; core 1 does not run an application workload |
+| USB | Zephyr's `device_next` stack with the native USB OTG controller | Zephyr's `device_next` stack with the native USB device controller |
+| Bluetooth | Zephyr Bluetooth host with the ESP32-S3 controller and entropy source | Not included; the W boards' radio is unused |
+| Wi-Fi | Zephyr network management, DHCP and Espressif software coexistence | Not included |
+| Filesystem | Zephyr disk access and FatFs over the native Espressif SDMMC controller or SPI3 | Zephyr disk access and FatFs over the ZephyrForge PIO SD host or SPI0 |
+| Settings | A fixed CRC-checked flash record, rather than Zephyr settings/NVS | The same record, loaded at boot but never saved |
 
 ## Measurement limits
 
 - CPU clock telemetry normally reads the clock driver; if that read fails, the current implementation uses the
-  build clock. A saved profile or boot snapshot does not prove that the requested clock was applied.
+  build clock. A saved profile or boot snapshot does not prove that the requested clock was applied. The Pico images
+  report their devicetree system clock, which they never change.
 - Storage status is cached from boot. Its clock value is the configured ceiling, not a measured or negotiated
   frequency; fresh report delivery does not establish current card presence.
 

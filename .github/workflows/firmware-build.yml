@@ -19,20 +19,28 @@ permissions:
 
 jobs:
   firmware:
-    name: Zephyr ESP32-S3-DevKitC (PROCPU, ${{ matrix.storage }})
+    name: Zephyr ${{ matrix.title }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - storage: sdmmc
-            build: firmware
-          - storage: sd-spi
-            build: firmware-sd-spi
+          - {board: esp32s3, storage: sdmmc, build: firmware, title: "ESP32-S3-DevKitC (PROCPU, sdmmc)"}
+          - {board: esp32s3, storage: sd-spi, build: firmware-sd-spi, title: "ESP32-S3-DevKitC (PROCPU, sd-spi)"}
+          - {board: pico, storage: sdmmc, build: firmware-pico, title: "Raspberry Pi Pico (RP2040, sdmmc)"}
+          - {board: pico, storage: sd-spi, build: firmware-pico-sd-spi, title: "Raspberry Pi Pico (RP2040, sd-spi)"}
+          - {board: pico_w, storage: sdmmc, build: firmware-pico_w, title: "Raspberry Pi Pico W (RP2040, sdmmc)"}
+          - {board: pico_w, storage: sd-spi, build: firmware-pico_w-sd-spi, title: "Raspberry Pi Pico W (RP2040, sd-spi)"}
+          - {board: pico2, storage: sdmmc, build: firmware-pico2, title: "Raspberry Pi Pico 2 (RP2350A, sdmmc)"}
+          - {board: pico2, storage: sd-spi, build: firmware-pico2-sd-spi, title: "Raspberry Pi Pico 2 (RP2350A, sd-spi)"}
+          - {board: pico2_w, storage: sdmmc, build: firmware-pico2_w, title: "Raspberry Pi Pico 2 W (RP2350A, sdmmc)"}
+          - {board: pico2_w, storage: sd-spi, build: firmware-pico2_w-sd-spi,
+             title: "Raspberry Pi Pico 2 W (RP2350A, sd-spi)"}
     env:
       ZEPHYRFORGE_VERSION: ${{ inputs.version }}
       CMAKE_BUILD_PARALLEL_LEVEL: 2
+      BOARD: ${{ matrix.board }}
       STORAGE: ${{ matrix.storage }}
       FIRMWARE_BUILD: zephyrforge/build/${{ matrix.build }}
     steps:
@@ -64,13 +72,16 @@ jobs:
           west update --narrow -o=--depth=1
           python -m pip install --disable-pip-version-check --no-input -r zephyr/scripts/requirements-base.txt \
             -r modules/hal/espressif/zephyr/requirements.txt
-          west blobs fetch hal_espressif
-          west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf \
-            --personal-access-token "$GH_TOKEN"
+          toolchain=arm-zephyr-eabi
+          if [[ "$BOARD" == esp32s3 ]]; then
+            west blobs fetch hal_espressif
+            toolchain=xtensa-espressif_esp32s3_zephyr-elf
+          fi
+          west sdk install --version 0.17.4 --toolchains "$toolchain" --personal-access-token "$GH_TOKEN"
 
       - name: Build firmware
         run: |
-          bash zephyrforge/tools/firmware/build.sh --storage "$STORAGE"
+          bash zephyrforge/tools/firmware/build.sh --board "$BOARD" --storage "$STORAGE"
           west manifest --freeze > "$FIRMWARE_BUILD/west-manifest.yml"
 
       - name: Collect firmware, provenance and dependency licenses
@@ -79,7 +90,7 @@ jobs:
       - name: Attach software build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: zephyrforge-esp32s3-${{ matrix.storage }}-software-build
+          name: zephyrforge-${{ matrix.board }}-${{ matrix.storage }}-software-build
           path: zephyrforge/build/firmware-package/
           include-hidden-files: true
           if-no-files-found: error

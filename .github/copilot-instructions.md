@@ -3,9 +3,11 @@
 ## Project boundaries
 
 - ZephyrForge is a Zephyr foundation for a range of MCUs, not a Pico SDK/TinyUSB firmware port. ESP32-S3 is the
-  first and only supported target; add multi-target abstractions only when a second target needs them.
+  first target; the Raspberry Pi Pico, Pico W, Pico 2 and Pico 2 W are also supported, with USB-only management.
+  Add multi-target abstractions only when a target needs them.
 - Preserve the ESP32-S3-DevKitC-1 N16R8 target: 16 MB flash, 8 MB octal PSRAM and a single PROCPU application.
-- Management uses native USB HID and authenticated Bluetooth LE. UART is for flashing and console logs.
+- Management uses native USB HID and, on the ESP32-S3, authenticated Bluetooth LE. UART is for console logs and,
+  on the ESP32-S3, flashing; the Pico boards flash UF2 images over USB.
 - Preserve native four-bit SDMMC, boot-time FAT mounting and no automatic formatting.
 - Do not introduce LED control, CDC/MSC interfaces, storage benchmarks, TCP CLI or file transfer unless requested.
 - Keep board pin choices in hardware configuration and reported board facts consistent. Avoid flash/PSRAM,

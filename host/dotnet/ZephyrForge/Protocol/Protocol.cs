@@ -183,8 +183,14 @@ internal static partial class HidProtocol
     public const int ProductId = 0x4021;
     /// <summary>Report 1 product-family ID for ZephyrForge.</summary>
     public const ushort FamilyId = 0x0003;
+    public const byte McuRp2040 = 1;
+    public const byte McuRp2350 = 2;
     public const byte McuEsp32S3 = 3;
     public const byte BoardEsp32S3DevKitC1 = 1;
+    public const byte BoardPico = 2;
+    public const byte BoardPicoW = 3;
+    public const byte BoardPico2 = 4;
+    public const byte BoardPico2W = 5;
     public const uint Usage = 0xFF000001;
     public const byte IdentityReportId = 1;
     public const byte MemoryReportId = 13;
@@ -227,7 +233,7 @@ internal static partial class HidProtocol
     /// <summary>Opcode 5 flag that commits staged wireless values; ZephyrForge refuses the forced-save bit 0.</summary>
     public const byte SaveCommitWireless = 1 << 1;
 
-    /// <summary>Saved system-clock requests in MHz; 0 selects the build clock (240 MHz).</summary>
+    /// <summary>Saved system-clock requests in MHz; 0 selects the board's build clock.</summary>
     public static bool IsValidClock(int mhz) => mhz is 0 or 80 or 160 or 240;
 
     /// <summary>
@@ -270,12 +276,25 @@ internal static partial class HidProtocol
         Require(sdmmc != spi && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
-        Require(boardModel != BoardEsp32S3DevKitC1 || mcuId == McuEsp32S3, "board model and MCU do not match");
+        byte? boardMcu = boardModel switch
+        {
+            BoardEsp32S3DevKitC1 => McuEsp32S3,
+            BoardPico or BoardPicoW => McuRp2040,
+            BoardPico2 or BoardPico2W => McuRp2350,
+            _ => null,
+        };
+        Require(boardMcu is null || mcuId == boardMcu, "board model and MCU do not match");
         var ramTotal = BinaryPrimitives.ReadUInt32LittleEndian(payload[18..]);
         var ramReserved = BinaryPrimitives.ReadUInt32LittleEndian(payload[22..]);
         Require(ramTotal != 0 && ramReserved <= ramTotal, "invalid firmware RAM reservation");
         var uid = Convert.ToHexString(payload.Slice(3, 8));
-        var mcu = mcuId == McuEsp32S3 ? "ESP32-S3" : $"Unknown MCU ({mcuId})";
+        var mcu = mcuId switch
+        {
+            McuRp2040 => "RP2040",
+            McuRp2350 => "RP2350",
+            McuEsp32S3 => "ESP32-S3",
+            _ => $"Unknown MCU ({mcuId})",
+        };
         return new("ZephyrForge", mcu, mcuId, uid,
             $"{payload[11]}.{payload[12]}.{payload[13]}", productId, boardModel,
             capabilities, ramTotal, ramReserved, MemoryReportSupported: (payload[16] & 1) != 0);
@@ -327,7 +346,14 @@ internal static partial class HidProtocol
             && ((flags & BoardFlagLed) != 0) == (ledGpio != byte.MaxValue)
             && ((flags & BoardFlagLed) == 0 || (identity.Capabilities & CapabilityLed) != 0),
             "board flags and GPIO assignments disagree");
-        var gpioLimit = identity.McuId == McuEsp32S3 ? 49 : 256;
+        // Pico 2 boards carry the 30-GPIO RP2350A; an unspecified RP2350 board may be the 48-GPIO RP2350B.
+        var gpioLimit = (identity.McuId, identity.BoardModel) switch
+        {
+            (McuRp2040, _) or (_, BoardPico2 or BoardPico2W) => 30,
+            (McuRp2350, _) => 48,
+            (McuEsp32S3, _) => 49,
+            _ => 256,
+        };
         foreach (var pin in gpios.Concat([tx, rx, ledGpio, detectGpio]))
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
         var assignedCount = (identity.Capabilities & CapabilitySpi) != 0 ? 4 : 6;

@@ -6,7 +6,8 @@ You can build and preview all three dashboards before connecting hardware.
 
 ## 1. Prepare a Zephyr workspace
 
-Build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
+Default build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM. The Raspberry Pi Pico,
+Pico W, Pico 2 and Pico 2 W have their own [images](#raspberry-pi-pico-boards).
 Check the module marking against the [hardware guide](hardware.md) before flashing.
 Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
 For automatic setup on Debian/Ubuntu-compatible Linux or Raspberry Pi OS, run from your existing checkout:
@@ -16,8 +17,9 @@ tools/firmware/build.sh
 ```
 
 The script installs missing host packages (requesting `sudo` when needed), creates/reuses a Python venv,
-initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and radio blobs,
-and installs the ESP32-S3 SDK toolchain before building. First use requires network access and several GB of disk space.
+initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules, plus radio blobs
+for ESP32-S3 builds, and installs the selected board's SDK toolchain before building. First use requires network
+access and several GB of disk space.
 See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
 For a moved checkout, the wrappers update `manifest.path` only when its directory no longer exists and a local
 firmware build cache identifies that directory as the previous application source. Other manifest checkouts
@@ -45,8 +47,9 @@ west blobs fetch hal_espressif
 west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
 ```
 
-The repository's `west.yml` pins Zephyr and imports only its Espressif, FatFs and mbedTLS dependencies.
-Espressif radio blobs are required and have their own licenses. If SDK discovery fails, set
+The repository's `west.yml` pins Zephyr and imports only its Espressif, Raspberry Pi Pico, CMSIS 6, FatFs and mbedTLS
+dependencies. Espressif radio blobs are required for ESP32-S3 builds and have their own licenses. For Pico boards,
+skip `west blobs fetch` and install the `arm-zephyr-eabi` toolchain instead. If SDK discovery fails, set
 `ZEPHYR_SDK_INSTALL_DIR` to the installed SDK directory.
 
 For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` (or use a Linux symlink),
@@ -55,6 +58,7 @@ a second workspace inside an existing Zephyr workspace.
 
 ## 2. Build now; flash later
 
+These steps build and flash the default ESP32-S3 image; the [Pico boards](#raspberry-pi-pico-boards) follow.
 Run from the workspace created above; missing build prerequisites are prepared automatically:
 
 ```sh
@@ -98,10 +102,27 @@ with Zephyr's requirements); check serial permissions rather than running the fl
 If automatic reset fails,
 hold BOOT, press/release RESET, release BOOT, and retry. Flash only a matching module configuration;
 flashing replaces its existing firmware. If uploading is unreliable, retry with
-`--baud 115200` after checking the cable and power. This firmware is not a UF2 image.
+`--baud 115200` after checking the cable and power. The ESP32-S3 firmware is not a UF2 image.
 After flashing, connect the **USB** connector as well and check live status in a dashboard; uploader success alone
 is not proof that application boot or radios work. The UART connector keeps showing the Zephyr console log, for
 example with `python -m serial.tools.miniterm /dev/ttyUSB0 115200`.
+
+### Raspberry Pi Pico boards
+
+Select the board with `--board pico`, `pico_w`, `pico2` or `pico2_w`, and add `--storage sd-spi` for the SPI image:
+
+```sh
+bash zephyrforge/tools/firmware/build.sh --board pico2 --storage sd-spi
+```
+
+This example writes `zephyrforge/build/firmware-pico2-sd-spi/zephyr/zephyr.uf2`; see
+[image selection](../development/firmware.md#zephyr-target-build) for every output directory and the matching
+[Pico SD wiring](../reference/sdcard.md#raspberry-pi-pico-boards). `flash.sh` supports only the ESP32-S3.
+To flash a Pico, hold **BOOTSEL** while connecting its micro-USB cable, then copy `zephyr.uf2` to the drive that
+appears: `RPI-RP2` for the Pico and Pico W, `RP2350` for the Pico 2 and Pico 2 W. The board restarts into
+ZephyrForge, and the same cable then carries USB management. Copying replaces the existing firmware.
+The Pico images have no Bluetooth LE or Wi-Fi management; see the
+[hardware guide](hardware.md#raspberry-pi-pico-targets) for the optional UART console.
 
 ## 3. Choose a dashboard
 
@@ -125,7 +146,8 @@ do not run the dashboards as root. Without a board the hosts show an empty board
 Connect the board's **USB** connector. In Direct, click **USB** and choose the ZephyrForge HID device; in Python or
 .NET, select the board in the list. Confirm product `ZephyrForge`, the board, firmware version and serial number.
 An SD mount failure is expected without a card and does not prevent dashboard operation.
-Test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using [wireless setup](wireless.md).
+On the ESP32-S3, test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using
+[wireless setup](wireless.md).
 Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is
 never retried; confirm the
 re-sync prompt after checking the board.

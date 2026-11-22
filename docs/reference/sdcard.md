@@ -1,9 +1,11 @@
 # SD Storage Reference
 
-ZephyrForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
-(the default), and **SD-over-SPI** on SPI3. Select the image that matches the wiring; there is no runtime fallback.
-Both use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
-This is the SD memory-card bus, not an SDIO peripheral/function API or a PIO-emulated bus.
+Each supported board has two firmware images: **native four-bit SDMMC** (the default) and **SD-over-SPI**.
+The ESP32-S3-DevKitC-1 N16R8 uses SDMMC slot 0 or SPI3. The Raspberry Pi Pico boards have no SD controller, so their
+native image runs the bus on a PIO block; their SPI image uses SPI0.
+Select the image that matches the wiring; there is no runtime fallback.
+All images use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
+This is the SD memory-card bus, not an SDIO peripheral/function API.
 The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage.
 This reference owns the SD pin allocation,
 mount lifecycle, status reporting and data-safety contract. See the
@@ -11,8 +13,10 @@ mount lifecycle, status reporting and data-safety contract. See the
 
 ## Pin allocation
 
-GPIO numbers are ESP32-S3 signals, not physical header positions. Verify the labels and schematic of your
+GPIO numbers are MCU signals, not physical header positions. Verify the labels and schematic of your
 exact board and breakout before connecting them.
+
+### ESP32-S3-DevKitC-1 N16R8
 
 | SDMMC function | ESP32-S3 pin | Breakout/card signal | Direction relative to ESP32-S3 |
 | --- | --- | --- | --- |
@@ -45,7 +49,7 @@ In the native image, GPIO10 is DAT3, **not a chip-select output**.
 When changing between native SDMMC and SPI images, disconnect card power before restarting:
 a board reset alone does not necessarily reset the card's selected bus mode.
 
-### SD-over-SPI image
+#### SD-over-SPI image
 
 | SPI function | ESP32-S3 pin | SD-card signal |
 | --- | --- | --- |
@@ -65,39 +69,86 @@ Native SDMMC requests a 40 MHz maximum frequency; SPI requests 25 MHz.
 SPI2 remains dedicated to the RGB LED in both images.
 GPIO33-37 are occupied by octal PSRAM on N16R8.
 
-Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
-`12, 11, 13, 14, 15, 10` for native SDMMC. The SPI image uses SCK, MOSI, MISO, CS, unassigned, unassigned order:
-`12, 11, 13, 10, 255, 255`. The card-detect GPIO is `8` in both.
+### Raspberry Pi Pico boards
+
+The Pico, Pico W, Pico 2 and Pico 2 W images use PicoForge's allocation. Header pins are positions on the 40-pin
+header these boards share.
+
+| GPIO | Header pin | Native SDMMC | SD-over-SPI (SPI0) |
+| --- | ---: | --- | --- |
+| GP2 | 4 | CLK, output | SCK to card CLK |
+| GP3 | 5 | CMD, bidirectional | MOSI to card CMD / DI |
+| GP4 | 6 | DAT0, bidirectional | MISO from card DAT0 / DO |
+| GP5 | 7 | DAT1, bidirectional | Unused |
+| GP6 | 9 | DAT2, bidirectional | Unused |
+| GP7 | 10 | DAT3, bidirectional | CS to card DAT3 / CS, active-low, GPIO-controlled |
+| GP8 | 11 | Card detect input, active-high | Card detect input, active-high |
+| 3V3(OUT) | 36 | 3.3 V supply | 3.3 V supply |
+| GND | 38 | Ground | Ground |
+
+GP8 is **active-high**: 3.3 V means inserted, low means absent. The MCU applies **no pull** to GP8; the socket or
+breakout must drive or bias it. PicoForge's reference breakout, Adafruit's microSD SPI/SDIO breakout (P4682), grounds
+DET without a card and pulls it up when one is inserted. An unconnected GP8 floats and can read inserted without
+a card, so firmware retries initialization. A detect switch that closes to GND on insertion needs polarity adaptation.
+Supply, external pull-up and short-wiring precautions are the same as for the ESP32-S3. Pinctrl also requests
+internal pull-ups on CMD and DAT0-DAT3, or on MOSI and MISO in the SPI image; they do not replace external resistors.
+GP5 and GP6 carry no SPI data and may stay connected to DAT1/DAT2. Disconnect card power before changing images.
+
+The PIO host constrains rewiring: DAT0-DAT3 must be four ascending consecutive GPIOs below GPIO32, CLK the GPIO two
+below DAT0 (modulo 32), and CMD any other GPIO below GPIO32; the build rejects other native allocations.
+SPI SCK, MOSI and MISO must be functions of the selected SPI controller; CS is an ordinary GPIO.
+
+### Reported allocation
+
+Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order for native SDMMC, and in SCK, MOSI,
+MISO, CS, unassigned, unassigned order for SPI:
+
+| Board | Native SDMMC | SD-over-SPI | Card detect |
+| --- | --- | --- | --- |
+| ESP32-S3-DevKitC-1 N16R8 | `12, 11, 13, 14, 15, 10` | `12, 11, 13, 10, 255, 255` | `8` |
+| Raspberry Pi Pico boards | `2, 3, 4, 5, 6, 7` | `2, 3, 4, 7, 255, 255` | `8` |
+
 If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
 validate the new allocation before use.
 
 ## Driver and filesystem configuration
 
-| Layer | Configuration |
-| --- | --- |
-| Native image controller/slot | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus |
-| SPI image controller/slot | SPI3, compatible `zephyr,sdhc-spi-slot` |
-| Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
-| Filesystem | FatFs, mount point `/SD:` |
-| Requested bus ceiling | Native 40 MHz; SPI 25 MHz; not a measured runtime clock or throughput |
-| Native image pad drive | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 |
+| Layer | ESP32-S3-DevKitC-1 N16R8 | Raspberry Pi Pico boards |
+| --- | --- | --- |
+| Native image controller | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus | ZephyrForge PIO SD host on PIO1, compatible `zephyrforge,rpi-pico-pio-sdhc`, four-bit bus |
+| SPI image controller | SPI3, compatible `zephyr,sdhc-spi-slot` | SPI0, compatible `zephyr,sdhc-spi-slot` |
+| Native Kconfig driver | `CONFIG_SDHC_ESP32` | `CONFIG_ZF_SDHC_RPI_PICO_PIO` |
+| Requested native ceiling | 40 MHz | 31.25 MHz on RP2040, 37.5 MHz on RP2350 |
+| Requested SPI ceiling | 25 MHz | 25 MHz |
+| Native image pads | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 | Default drive; Schmitt-trigger inputs |
 
-Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
-The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_SDHC`.
+Requested ceilings are not measured runtime clocks or throughput. Every image uses the `zephyr,sdmmc-disk` disk
+layer with disk name `SD` and FatFs mounted at `/SD:`, and enables GPIO/pinctrl, disk access, the SDMMC disk driver,
+the filesystem API and FatFs. SPI images select `CONFIG_SPI_SDHC`.
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
+
+The Pico native host is ported from PicoForge's PIO SDIO engine and implements the standard Zephyr SDHC API, so the
+same SD stack, disk and filesystem layers run above it. It owns PIO1, using two state machines and the instruction
+memory, which it reloads between reads and writes, plus one DMA channel claimed through pico-sdk. It cannot be
+enabled together with Zephyr's RP DMA driver, which does not coordinate channel claims with pico-sdk.
 
 Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
 covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
 
-Native SDMMC starts at the probing clock and negotiates the card's advertised capabilities.
-Cards that accept High Speed mode can use the 40 MHz ceiling; cards without that support remain at the legacy
-clock, at most 25 MHz requested. The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
+Native SDMMC starts with a one-bit bus at the probing clock and negotiates the card's advertised capabilities.
+Cards that accept High Speed mode can use the board's native ceiling; cards without that support remain at the
+legacy clock, at most 25 MHz requested. Zephyr's SD stack widens the bus to four bits only after a card accepts
+High Speed, so a card without High Speed transfers data on DAT0 alone.
+The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
 22.9 MHz, while 40 MHz is exact. Requesting 50 MHz would still select 40 MHz with this driver.
+The Pico host divides the system clock: High Speed runs at one quarter of it, and a 25 MHz legacy request produces
+about 20.8 MHz on RP2040 and 25 MHz on RP2350. The Pico images do not change the system clock.
 There is no UHS/1.8 V mode or automatic clock reduction after CRC errors.
 A card's write-speed class does not determine its negotiated bus clock.
-Keep the 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
-restore `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
+Keep the ESP32-S3 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
+set `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
+On the Pico boards that setting withdraws High Speed, leaving cards on the one-bit legacy bus.
 
 ## Boot and runtime mount lifecycle
 
@@ -206,4 +257,5 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
 Hardware results are kept in the [validation records](../validation/records/README.md); they cover individual
 card and wiring combinations. Successful compilation and simulated absent-card UI do not qualify any card, breakout,
 FAT layout or sustained recording workload. The pin allocation and pad drive are not electrically qualified for
-other wiring. See the [qualification gaps](../validation/qualification-gaps.md).
+other wiring. The Raspberry Pi Pico images, including the PIO SD host, have no hardware records yet.
+See the [qualification gaps](../validation/qualification-gaps.md).

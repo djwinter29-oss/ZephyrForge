@@ -149,7 +149,9 @@ fi
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sdmmc.overlay", commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
+                      "boards/espressif/sdmmc.overlay", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf", commands)
         self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_dependency_patch_applies_once_accepts_reverse_match_and_rejects_conflict(self):
@@ -264,12 +266,27 @@ esac
         result = self.run_script("build.sh", "--storage", "sd-spi")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-d " + str(self.root / "build/firmware-sd-spi"), self.commands())
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3_devkitc_n16r8_sd_spi.overlay", self.commands())
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
+                      "boards/espressif/sd_spi.overlay", self.commands())
+        self.assertIn("-DCONF_FILE=prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf", self.commands())
         self.log.write_text("")
         result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("-m west build ", self.commands())
         self.assertIn("-m west flash -d " + str(self.root / "build/firmware-sd-spi"), self.commands())
+        self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_pico_build_selects_board_overlays_and_arm_toolchain_without_esp_blobs(self):
+        result = self.run_script("build.sh", "--board", "pico2_w", "--storage", "sd-spi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-b rpi_pico2/rp2350a/m33/w", commands)
+        self.assertIn("-d " + str(self.root / "build/firmware-pico2_w-sd-spi"), commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/rpi_pico/sd_spi.overlay;boards/rpi_pico/rp2350.overlay;"
+                      "boards/rpi_pico/w.overlay", commands)
+        self.assertIn("-DCONF_FILE=prj.conf -DDTC_OVERLAY_FILE=boards/rpi_pico/", commands)
+        self.assertIn("-m west sdk install --version 0.17.4 --toolchains arm-zephyr-eabi", commands)
+        self.assertNotIn("-m west blobs fetch", commands)
         self.assertFalse((self.root / "build/firmware").exists())
 
     def test_spi_dry_run_builds_only_the_selected_image(self):
@@ -308,6 +325,7 @@ esac
         for name in ("build.sh", "flash.sh"):
             result = self.run_script(name, "--storage", "sdio")
             self.assertNotEqual(result.returncode, 0)
+        self.assertNotEqual(self.run_script("build.sh", "--board", "pico3").returncode, 0)
         self.assertEqual(self.commands(), "")
 
     def test_flash_auto_detects_serial_port_when_omitted(self):
