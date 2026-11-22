@@ -3,9 +3,8 @@
  */
 
 /*
- * Raspberry Pi Pico family board services. The boards have no addressable RGB LED, the W radios are not used and
- * the CPU keeps its devicetree clock, so Report 1 advertises no LED, settings or wireless capability and these
- * hooks report absent hardware.
+ * Raspberry Pi Pico family board services. The boards have no addressable RGB LED and keep their devicetree clock.
+ * Wi-Fi services are compiled separately on W boards; Bluetooth has no supported shared-bus HCI transport.
  */
 
 #include "app/zephyrforge.h"
@@ -43,6 +42,7 @@ void zf_platform_led_status(uint8_t *colour, bool *available)
 	*available = false;
 }
 
+#ifndef CONFIG_WIFI
 void zf_wifi_init(bool enabled)
 {
 	ARG_UNUSED(enabled);
@@ -103,6 +103,7 @@ int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_
 	ARG_UNUSED(security);
 	return -ENOTSUP;
 }
+#endif
 
 void zf_ble_init(bool enabled)
 {
@@ -119,9 +120,11 @@ bool zf_ble_failed(void)
 	return false;
 }
 
+#ifndef CONFIG_WIFI
 void zf_wireless_report(uint8_t out[ZF_WIRELESS_SIZE])
 {
 	const zf_wireless_t off = {0};
 
 	zf_report_wireless(&off, out);
 }
+#endif

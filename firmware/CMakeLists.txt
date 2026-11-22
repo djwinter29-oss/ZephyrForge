@@ -23,9 +23,28 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   else()
     set(zf_board ZF_BOARD_PICO)
   endif()
-  target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_BOARD_CAPS=0
+  if(CONFIG_WIFI)
+    set(zf_board_caps ZF_CAP_WIRELESS)
+    set(zf_radio_mask 1u)
+    list(APPEND zf_board_sources src/app/wireless/wifi/wifi.c)
+    set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
+    target_sources(app PRIVATE src/platform/rpi_pico/random.c ${zf_pico_rand}/rand.c)
+    target_include_directories(app PRIVATE ${zf_pico_rand}/include
+      ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/common/pico_time/include)
+    target_compile_definitions(app PRIVATE PICO_RAND_SEED_ENTROPY_SRC_BOARD_ID=0
+      PICO_RAND_SEED_ENTROPY_SRC_RAM_HASH=0)
+    # Map SDK state to Zephyr RAM and use timer waits for microsecond ROSC sampling, without SDK alarm pools.
+    set_source_files_properties(${zf_pico_rand}/rand.c TARGET_DIRECTORY app PROPERTIES
+      COMPILE_OPTIONS "-D__uninitialized_ram(name)=__attribute__((section(\".noinit\"))) name;-Dsleep_until=busy_wait_until")
+    zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/random/random.h)
+  else()
+    set(zf_board_caps 0)
+    set(zf_radio_mask 0u)
+  endif()
+  target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_BOARD_CAPS=${zf_board_caps}
+                                         ZF_RADIO_MASK=${zf_radio_mask}
                                          ZF_MONITOR_UART_TX=0u ZF_MONITOR_UART_RX=1u)
-  set(zf_board_sources src/platform/rpi_pico/platform.c)
+  list(APPEND zf_board_sources src/platform/rpi_pico/platform.c)
   if(CONFIG_ZF_SDHC_RPI_PICO_PIO)
     list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)
   endif()

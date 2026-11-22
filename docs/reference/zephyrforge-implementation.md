@@ -10,8 +10,8 @@ to the USB HID and Bluetooth LE specifications.
 | --- | --- | --- |
 | Application core | Zephyr runs on PROCPU; the second core does not run an application workload | Zephyr runs on core 0; core 1 does not run an application workload |
 | USB | Zephyr's `device_next` stack with the native USB OTG controller | Zephyr's `device_next` stack with the native USB device controller |
-| Bluetooth | Zephyr Bluetooth host with the ESP32-S3 controller and entropy source | Not included; the W boards' radio is unused |
-| Wi-Fi | Zephyr network management, DHCP and Espressif software coexistence | Not included |
+| Bluetooth | Zephyr Bluetooth host with the ESP32-S3 controller and entropy source | Not included; shared-SPI HCI is unsupported |
+| Wi-Fi | Zephyr network management, DHCP and Espressif software coexistence | W boards use AIROC/WHD, DHCP and asynchronous driver requests; non-W boards have no radio |
 | Filesystem | Zephyr disk access and FatFs over the native Espressif SDMMC controller or SPI3 | Zephyr disk access and FatFs over the ZephyrForge PIO SD host or SPI0 |
 | Settings | A fixed CRC-checked flash record, rather than Zephyr settings/NVS | The same record, loaded at boot but never saved |
 

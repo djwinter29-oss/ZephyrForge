@@ -35,6 +35,9 @@ if [[ "$board" != esp32s3 ]]; then
   fi
   image=zephyr.uf2
   components=(zephyr modules/hal/rpi_pico modules/hal/cmsis_6)
+  if [[ "$board" == pico_w || "$board" == pico2_w ]]; then
+    components+=(modules/hal/infineon)
+  fi
 fi
 package=zephyrforge/build/firmware-package
 mkdir -p "$package/licenses"
@@ -62,6 +65,11 @@ source_version=$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' zephyrfor
     printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
   else
     printf 'Board: %s\nZephyr SDK: 0.17.4\n' "$target"
+    if [[ "$board" == pico_w || "$board" == pico2_w ]]; then
+      printf 'Radio: CYW43439 Wi-Fi only; Bluetooth transport is unsupported.\n'
+      sha256sum modules/hal/infineon/zephyr/blobs/img/whd/resources/firmware/COMPONENT_43439/43439A0.bin \
+        modules/hal/infineon/zephyr/blobs/img/whd/resources/clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0.clm_blob
+    fi
   fi
   printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
 } > "$package/BUILD-INFO.txt"

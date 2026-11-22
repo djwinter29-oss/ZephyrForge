@@ -121,7 +121,8 @@ This example writes `zephyrforge/build/firmware-pico2-sd-spi/zephyr/zephyr.uf2`;
 To flash a Pico, hold **BOOTSEL** while connecting its micro-USB cable, then copy `zephyr.uf2` to the drive that
 appears: `RPI-RP2` for the Pico and Pico W, `RP2350` for the Pico 2 and Pico 2 W. The board restarts into
 ZephyrForge, and the same cable then carries USB management. Copying replaces the existing firmware.
-The Pico images have no Bluetooth LE or Wi-Fi management; see the
+Pico W and Pico 2 W support [temporary Wi-Fi provisioning](wireless.md), but not Bluetooth LE. Non-W boards have no
+wireless management; see the
 [hardware guide](hardware.md#raspberry-pi-pico-targets) for the optional UART console.
 
 ## 3. Choose a dashboard

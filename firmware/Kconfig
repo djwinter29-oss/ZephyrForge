@@ -19,4 +19,12 @@ config ZF_SDHC_RPI_PICO_PIO
 	  SD host for the zephyrforge,rpi-pico-pio-sdhc devicetree node. It runs the SD bus with PIO programs and
 	  one DMA channel, so cards work in native four-bit mode on MCUs without an SDIO controller.
 
+config ZF_PICO_NETWORK_RANDOM
+	bool
+	default y
+	depends on SOC_FAMILY_RPI_PICO && WIFI
+	select PICOSDK_USE_TIMER
+	help
+	  Use the Pico SDK PRNG for noncryptographic network identifiers. This does not provide a CSPRNG.
+
 source "Kconfig.zephyr"

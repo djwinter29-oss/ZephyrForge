@@ -1,8 +1,8 @@
 /*
  * Wi-Fi station: saved-network join with paced retries, candidate tests and scans (Report 12, opcodes 9-12).
  *
- * Uses the ESP32-S3 Wi-Fi driver through Zephyr net_mgmt. Driver events are queued by the callback and applied in
- * zf_wifi_poll(); net_mgmt requests are issued from the poll without holding the application lock.
+ * Uses Zephyr net_mgmt. Driver events are queued by the callback and applied in zf_wifi_poll().
+ * AIROC requests run on a dedicated queue because scans and joins block; no request holds the application lock.
  */
 #include "app/zephyrforge.h"
 #include "platform/boot_config.h"
@@ -16,6 +16,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/net_event.h>
 #include <zephyr/net/wifi_mgmt.h>
 
 LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
@@ -24,7 +25,7 @@ LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
 #define RETRY_DELAY_MS 5000
 #define RETRY_MAX_MS 60000
 #define LEAVE_TIMEOUT_MS 5000
-#define SCAN_TIMEOUT_MS 10000
+#define SCAN_TIMEOUT_MS (IS_ENABLED(CONFIG_WIFI_AIROC) ? 15000 : 10000)
 #define SCAN_MAX 18u
 
 #define STATE_OFF 0u
@@ -95,6 +96,9 @@ struct scan_entry {
 K_MSGQ_DEFINE(events, sizeof(uint8_t), 16, 1);
 
 static struct net_mgmt_event_callback event_cb;
+#ifdef CONFIG_WIFI_AIROC
+static struct net_mgmt_event_callback dhcp_cb;
+#endif
 static struct net_if *iface;
 
 static bool saved_enabled;
@@ -202,7 +206,7 @@ static void link_down(int64_t now)
 			schedule_retry(now);
 			LOG_WRN("Test Wi-Fi link lost");
 		} else if (command == COMMAND_TESTING) {
-			/* The ESP32 driver does not report why a join failed, so not-found and bad-password share detail 0. */
+			/* Failed joins without a specific reason share detail 0. */
 			fail_test(DETAIL_NONE, now);
 		}
 	} else if (owner == OWNER_SAVED) {
@@ -296,13 +300,25 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 {
 	const struct wifi_status *status = cb->info;
 
-	ARG_UNUSED(event_iface);
+	if (event_iface != iface) {
+		return;
+	}
 	switch (mgmt_event) {
 	case NET_EVENT_WIFI_CONNECT_RESULT:
+#ifdef CONFIG_WIFI_AIROC
+		/* AIROC reports association before DHCP; only the bound event completes the join. */
+		if (status != NULL && status->status != 0) {
+			post(EVENT_DOWN_CONNECTING);
+		}
+#else
 		/* Failed connects are followed by a disconnect event; success is raised after DHCP binds. */
 		if (status != NULL && status->status == 0) {
 			post(EVENT_UP);
 		}
+#endif
+		break;
+	case NET_EVENT_IPV4_DHCP_BOUND:
+		post(EVENT_UP);
 		break;
 	case NET_EVENT_WIFI_DISCONNECT_RESULT:
 		post(status != NULL && status->status == 0 ? EVENT_DOWN_CONNECTED : EVENT_DOWN_CONNECTING);
@@ -440,26 +456,25 @@ static int connect(const struct network *network)
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
 }
 
-void zf_wifi_poll(void)
-{
-	int64_t now = k_uptime_get();
-	struct network network;
-	enum action action;
-	int err = 0;
+#ifdef CONFIG_WIFI_AIROC
+static struct k_work_q request_queue;
+K_THREAD_STACK_DEFINE(request_stack, 4096);
+static enum action request_action;
+static struct network request_network;
+static uint8_t request_generation;
+#endif
 
-	zf_lock();
-	apply_events(now);
-	apply_timeouts(now);
-	action = iface != NULL ? next_action(now, &network) : ACTION_NONE;
-	zf_unlock();
+static void perform_request(enum action action, struct network *network)
+{
+	int err = 0;
 
 	switch (action) {
 	case ACTION_DISCONNECT:
 		err = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
 		break;
 	case ACTION_CONNECT:
-		err = connect(&network);
-		memset(&network, 0, sizeof(network));
+		err = connect(network);
+		memset(network, 0, sizeof(*network));
 		break;
 	case ACTION_SCAN:
 		err = net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0);
@@ -477,16 +492,79 @@ void zf_wifi_poll(void)
 		link = LINK_DOWN;
 	} else if (action == ACTION_CONNECT) {
 		link = LINK_DOWN;
-		if (owner == OWNER_TEST && command == COMMAND_TESTING) {
-			fail_test(DETAIL_TIMEOUT, now);
+		if (owner == OWNER_TEST && command == COMMAND_TESTING
+#ifdef CONFIG_WIFI_AIROC
+		    && test_generation == request_generation
+#endif
+		) {
+			fail_test(DETAIL_TIMEOUT, k_uptime_get());
 		} else if (owner == OWNER_SAVED) {
-			saved_failed(DETAIL_NONE, now);
+			saved_failed(DETAIL_NONE, k_uptime_get());
 		}
 	} else if (scan_state == ZF_SCAN_RUNNING) {
 		scan_state = ZF_SCAN_FAILED;
 		scan_count = 0;
 	}
 	zf_unlock();
+}
+
+#ifdef CONFIG_WIFI_AIROC
+static void request_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	perform_request(request_action, &request_network);
+}
+
+K_WORK_DEFINE(request_work, request_handler);
+#endif
+
+void zf_wifi_poll(void)
+{
+	int64_t now = k_uptime_get();
+	struct network network;
+	enum action action;
+
+	zf_lock();
+	apply_events(now);
+	apply_timeouts(now);
+#ifdef CONFIG_WIFI_AIROC
+	if (k_work_busy_get(&request_work) != 0) {
+		zf_unlock();
+		return;
+	}
+#endif
+	action = iface != NULL ? next_action(now, &network) : ACTION_NONE;
+#ifdef CONFIG_WIFI_AIROC
+	if (action != ACTION_NONE) {
+		request_action = action;
+		if (action == ACTION_CONNECT) {
+			request_network = network;
+			request_generation = test_generation;
+			memset(&network, 0, sizeof(network));
+		}
+		if (k_work_submit_to_queue(&request_queue, &request_work) < 0) {
+			LOG_ERR("Wi-Fi request queue unavailable");
+			if (action == ACTION_CONNECT) {
+				memset(&request_network, 0, sizeof(request_network));
+				link = LINK_DOWN;
+				if (owner == OWNER_TEST) {
+					fail_test(DETAIL_RADIO, now);
+				} else {
+					saved_failed(DETAIL_RADIO, now);
+				}
+			} else if (action == ACTION_SCAN) {
+				scan_state = ZF_SCAN_FAILED;
+				scan_count = 0;
+			} else {
+				leave_requested = true;
+			}
+		}
+	}
+	zf_unlock();
+#else
+	zf_unlock();
+	perform_request(action, &network);
+#endif
 }
 
 void zf_wifi_init(bool enabled)
@@ -505,11 +583,18 @@ void zf_wifi_init(bool enabled)
 	}
 	net_mgmt_init_event_callback(&event_cb, event_handler, EVENT_MASK);
 	net_mgmt_add_event_callback(&event_cb);
+#ifdef CONFIG_WIFI_AIROC
+	net_mgmt_init_event_callback(&dhcp_cb, event_handler, NET_EVENT_IPV4_DHCP_BOUND);
+	net_mgmt_add_event_callback(&dhcp_cb);
+#endif
 	if (saved_enabled) {
 		wifi_state = STATE_CONNECTING;
 		retry_at = k_uptime_get();
 	}
 	zf_unlock();
+#ifdef CONFIG_WIFI_AIROC
+	k_work_queue_start(&request_queue, request_stack, K_THREAD_STACK_SIZEOF(request_stack), 5, NULL);
+#endif
 }
 
 bool zf_wifi_test_active(void)

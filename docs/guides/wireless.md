@@ -1,11 +1,20 @@
 # Wireless Setup and Operation
 
-Wi-Fi and Bluetooth LE are compiled into the ESP32-S3 image, and both radio switches **default to enabled**. The
-Raspberry Pi Pico images, including the Pico W and Pico 2 W, have no wireless management. Wi-Fi joins its saved network
+Wi-Fi and Bluetooth LE are compiled into the ESP32-S3 image, and both radio switches **default to enabled**.
+Pico W and Pico 2 W include Wi-Fi, while the non-W Pico boards have no radios. Wi-Fi joins its saved network
 at boot, while a dashboard can temporarily test a candidate network. BLE advertises only when it is enabled and a
 Control key is saved. Radio switches and saved credentials are boot settings; see the
 [settings design](../reference/settings.md) for persistence and save behaviour. Espressif software coexistence is
-enabled.
+enabled on ESP32-S3.
+
+Pico W and Pico 2 W support USB-controlled scans and temporary candidate joins in both SD images. Their settings
+record is read at boot, but settings save remains unsupported: credentials tested through the dashboard stay in RAM
+and disappear on cancellation, expiration or reset. The dashboards keep Wi-Fi configuration available, disable
+saving and hide Bluetooth provisioning. Radio switches cannot be changed persistently on these boards.
+
+Bluetooth LE is not supported on either W target: pinned Zephyr supports the CYW43439 UART HCI transport, not the
+shared-SPI transport wired on these boards. The images neither advertise BLE support nor stage Control keys.
+Their SDK PRNG supplies noncryptographic network identifiers only, not authentication nonces.
 
 ## Configuration and operation
 
@@ -29,6 +38,8 @@ succeeds when the board has an IPv4 address. A join that does not finish within 
 network is lost, the board retries every 5 seconds, doubling the delay up to 60 seconds. The Zephyr ESP32 driver does
 not report why a join failed, so a wrong password and a missing network look the same. Check the network band,
 SSID, password, DHCP availability and UART logs rather than assuming a specific cause.
+On W boards, association alone is not success: DHCP must bind before a test is marked joined. Blocking driver
+requests run separately from USB management. Scans time out after 15 seconds on W boards and 10 seconds on ESP32-S3.
 
 If USB delivery or the test result is lost, use **Re-sync** rather than resending the operation.
 The Python dashboard can also recover a pending RAM-only Wi-Fi operation after a board reset: it checks that the
@@ -57,7 +68,8 @@ Python and .NET manage the selected USB-attached board. Direct supports USB (Web
 actions over BLE.
 
 Live diagnostics report the wireless state; an enabled switch does not mean the radio is connected.
-The [raw TCP diagnostic shell](console.md) is reachable on a usable IPv4 connection, including a temporary Wi-Fi test.
+On ESP32-S3, the [raw TCP diagnostic shell](console.md) is reachable on a usable IPv4 connection, including a
+temporary Wi-Fi test. The Pico images do not include it.
 
 ## Security boundaries
 

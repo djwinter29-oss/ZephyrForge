@@ -65,6 +65,9 @@ static bool capable(uint8_t opcode)
 	if (opcode == ZF_OP_SAVE) {
 		return (ZF_CAPABILITIES & ZF_CAP_SETTINGS) != 0;
 	}
+	if (opcode == ZF_OP_STAGE_KEY) {
+		return (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0 && (ZF_RADIO_MASK & ZF_WIRELESS_BLE) != 0;
+	}
 	return opcode < ZF_OP_STAGE_SSID || opcode > ZF_OP_SCAN_ENTRY || (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0;
 }
 

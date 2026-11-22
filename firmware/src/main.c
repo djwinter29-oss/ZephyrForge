@@ -17,7 +17,7 @@ int main(void)
 	zf_lock();
 	zf_boot_config_load();
 	zf_control_init();
-	radios = zf_boot_config_boot_radios();
+	radios = zf_boot_config_boot_radios() & ZF_RADIO_MASK;
 	zf_unlock();
 	printk("ZephyrForge %s (%s)\n", ZEPHYRFORGE_VERSION, zf_board_serial());
 

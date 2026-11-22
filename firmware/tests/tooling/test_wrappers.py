@@ -151,7 +151,8 @@ fi
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
         self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
                       "boards/espressif/sdmmc.overlay", commands)
-        self.assertIn("-DCONF_FILE=prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;bluetooth.conf;"
+                      "boards/espressif/esp32s3_devkitc_n16r8.conf", commands)
         self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_dependency_patch_applies_once_accepts_reverse_match_and_rejects_conflict(self):
@@ -268,7 +269,8 @@ esac
         self.assertIn("-d " + str(self.root / "build/firmware-sd-spi"), self.commands())
         self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
                       "boards/espressif/sd_spi.overlay", self.commands())
-        self.assertIn("-DCONF_FILE=prj.conf;boards/espressif/esp32s3_devkitc_n16r8.conf", self.commands())
+        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;bluetooth.conf;"
+                      "boards/espressif/esp32s3_devkitc_n16r8.conf", self.commands())
         self.log.write_text("")
         result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -284,10 +286,31 @@ esac
         self.assertIn("-d " + str(self.root / "build/firmware-pico2_w-sd-spi"), commands)
         self.assertIn("-DDTC_OVERLAY_FILE=boards/rpi_pico/sd_spi.overlay;boards/rpi_pico/rp2350.overlay;"
                       "boards/rpi_pico/w.overlay", commands)
-        self.assertIn("-DCONF_FILE=prj.conf -DDTC_OVERLAY_FILE=boards/rpi_pico/", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;boards/rpi_pico/w.conf", commands)
         self.assertIn("-m west sdk install --version 0.17.4 --toolchains arm-zephyr-eabi", commands)
-        self.assertNotIn("-m west blobs fetch", commands)
+        self.assertIn("-m west blobs fetch hal_infineon --allow-regex", commands)
+        self.assertNotIn("-m west blobs fetch hal_espressif", commands)
         self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_pico_w_uses_the_shared_wifi_configuration_and_radio_firmware(self):
+        result = self.run_script("build.sh", "--board", "pico_w")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-b rpi_pico/rp2040/w", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;boards/rpi_pico/w.conf", commands)
+        self.assertIn("-m west blobs fetch hal_infineon --allow-regex", commands)
+        self.assertNotIn("bluetooth.conf", commands)
+
+    def test_non_w_pico_boards_do_not_enable_wireless_or_fetch_radio_firmware(self):
+        for board in ("pico", "pico2"):
+            with self.subTest(board=board):
+                self.log.write_text("")
+                result = self.run_script("build.sh", "--board", board)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                commands = self.commands()
+                self.assertIn("-DCONF_FILE=prj.conf -DDTC_OVERLAY_FILE=boards/rpi_pico/", commands)
+                self.assertNotIn("wifi.conf", commands)
+                self.assertNotIn("-m west blobs fetch", commands)
 
     def test_spi_dry_run_builds_only_the_selected_image(self):
         result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock", "--dry-run")

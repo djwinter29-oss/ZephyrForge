@@ -32,6 +32,19 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test("Wi-Fi-only boards retain temporary scans while hiding Bluetooth provisioning", async context => {
+  let scans = 0;
+  const { el } = formFixture(context, { settingsSupported: () => false, scan: async () => { ++scans; return []; } });
+  assert.equal(el("wifi-settings").hidden, false);
+  assert.equal(el("ble-settings").hidden, true);
+  assert.equal(el("ble-configure").disabled, true);
+  assert.equal(el("ble-generate").disabled, true);
+  assert.match(el("wireless-summary").textContent, /temporary/);
+  await el("wifi-configure").fire("click");
+  await el("wifi-scan").fire("click");
+  assert.equal(scans, 1);
+});
+
 test("fresh connected Wi-Fi exposes a named shell action only for the selected board", context => {
   const previous = globalThis.document;
   const fixture = domFixture();

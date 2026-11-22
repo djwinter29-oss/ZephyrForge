@@ -70,11 +70,11 @@ export function renderWirelessStatus(snapshot, consoleUrl = null) {
  * @param {{scan: () => Promise<import("./api.mjs").WirelessNetwork[]>,
  * test: (settings: WifiPair & {password: string}, progress: (phase: string) => void) =>
  * Promise<ReturnType<typeof testedWireless>>, cancelTest: () => Promise<unknown>,
- * ready: () => boolean, supported: () => boolean, cleanupRequired?: () => boolean,
+ * ready: () => boolean, supported: () => boolean, settingsSupported?: () => boolean, cleanupRequired?: () => boolean,
  * readinessMessage?: () => string | null, changed?: () => void}} options
  */
 export function bindWirelessForm({
-  scan, test, cancelTest, ready, supported, cleanupRequired = () => false,
+  scan, test, cancelTest, ready, supported, settingsSupported = () => true, cleanupRequired = () => false,
   readinessMessage = () => null, changed = () => {},
 }) {
   /** @param {string} id */
@@ -161,13 +161,16 @@ export function bindWirelessForm({
   const dirty = () => wirelessDirty(policyState());
   const refresh = () => {
     const available = supported();
+    const persistent = settingsSupported();
     const wifiBlocked = busy || wifiCanceling || wifiCancelError !== null || cleanupRequired();
     for (const radio of /** @type {const} */ (["wifi", "ble"])) {
       const configure = button(`${radio}-configure`);
       configure.disabled = !available || !ready() || busy || wifiCanceling
+        || radio === "ble" && !persistent
         || radio === "ble" && wifiCancelError !== null;
     }
-    el("wifi-settings").hidden = el("ble-settings").hidden = !available;
+    el("wifi-settings").hidden = !available;
+    el("ble-settings").hidden = !available || !persistent;
     // Wi-Fi needs a network and Bluetooth needs a control key before either can be enabled.
     const wifiOn = option("settings-wifi", "1");
     if (wifiOn) wifiOn.disabled = Boolean(status && !wifiStage && !status.ssid);
@@ -190,6 +193,8 @@ export function bindWirelessForm({
         && network.dataset.ssidHex === selectedSsidHex));
     }
     button("ble-copy").disabled = !bleKey;
+    button("ble-generate").disabled ||= !persistent;
+    button("ble-copy").disabled ||= !persistent;
     const stagedWifi = available && radioOn("settings-wifi") && wifiStage?.use_tested_wifi;
     const expiredTest = stagedWifi && wirelessTestExpired(policyState());
     const stagedSsid = wifiStage?.ssid ?? "";
@@ -198,6 +203,7 @@ export function bindWirelessForm({
       ? `Could not clear temporary Wi-Fi credentials: ${wifiCancelError}. ${wifiCancelRequiresReconnect
         ? "Use Re-sync before retrying; if unavailable, reconnect the board and reload the dashboard."
         : "Open Wi-Fi settings to retry."}`
+      : available && !persistent ? "Wi-Fi scans and tests are temporary; settings saving and Bluetooth are unavailable."
       : available ? saveBlockReason() ?? (stagedWifi
         ? expiredTest ? `Wi-Fi test for “${stagedSsid}” expired; test the network again before saving.`
           : seconds <= 60 ? `Wi-Fi test for “${stagedSsid}” expires in less than one minute. `

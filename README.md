@@ -17,8 +17,9 @@ a range of MCUs, rather than PicoForge's Pico SDK platform. It is not a compatib
 Raspberry Pi Pico boards both projects support.
 
 The first target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and **8 MB octal PSRAM**. The **Raspberry Pi
-Pico, Pico W, Pico 2 and Pico 2 W** are also supported with USB management, without wireless management, LED control
-or settings save. Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
+Pico, Pico W, Pico 2 and Pico 2 W** are also supported with USB management, without LED control or settings save.
+The W variants support temporary [Wi-Fi scans and candidate joins](docs/guides/wireless.md), but not Bluetooth LE.
+Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
 
 **Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ZephyrForge/releases/latest) ·
 [Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ZephyrForge/) ·

@@ -68,7 +68,7 @@ void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 {
 	uint8_t flags = BOARD_FLAG_MONITOR_UART;
 	/* Boards without radios still load the default switches; they are never advertised. */
-	uint8_t radios = ZF_CAPABILITIES & ZF_CAP_WIRELESS ? config->stored_radios : 0u;
+	uint8_t radios = ZF_CAPABILITIES & ZF_CAP_WIRELESS ? config->stored_radios & ZF_RADIO_MASK : 0u;
 
 	if (config->led_available) {
 		flags |= BOARD_FLAG_LED;

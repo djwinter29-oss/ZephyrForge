@@ -68,6 +68,10 @@
 /** Optional temporary-file benchmark capability. */
 #define ZF_CAP_BENCHMARK 0x20u
 #define ZF_CAP_WIRELESS 0x80u
+/** Supported radio switches: bit 0 Wi-Fi, bit 1 BLE; board builds override the DevKitC defaults. */
+#ifndef ZF_RADIO_MASK
+#define ZF_RADIO_MASK 0x03u
+#endif
 /** Board-dependent capabilities; the DevKitC has the RGB LED, saved boot settings and radios. */
 #ifndef ZF_BOARD_CAPS
 #define ZF_BOARD_CAPS (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)

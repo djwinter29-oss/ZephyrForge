@@ -99,6 +99,9 @@ export ZEPHYR_BASE="$zephyr"
 bash "$root/tools/firmware/apply-zephyr-patches.sh" "$zephyr"
 if [[ "$toolchain" == xtensa-* ]]; then
 	python -m west blobs fetch hal_espressif
+elif [[ "${board:-}" == *_w ]]; then
+	python -m west blobs fetch hal_infineon \
+		--allow-regex 'img/whd/resources/(firmware/COMPONENT_43439/43439A0\.bin|clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0\.clm_blob)$'
 fi
 
 sdk=""

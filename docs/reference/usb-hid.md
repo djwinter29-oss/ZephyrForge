@@ -160,8 +160,9 @@ Each nonzero board model requires the MCU listed under [Board Models](#board-mod
 | 8 | Module memory inventory | Set in extension byte bit 0 | Set in extension byte bit 0 |
 
 Exactly one storage capability is set. The ESP32-S3 native image's low capability byte is `0x97`, or `0xB7` with
-benchmarking; its SPI image uses `0x8F`, or `0xAF` with benchmarking. The Pico native images use `0x12` or `0x32`;
-their SPI images use `0x0A` or `0x2A`. The extension byte is `0x01`.
+benchmarking; its SPI image uses `0x8F`, or `0xAF` with benchmarking. Non-W Pico native images use `0x12` or `0x32`;
+their SPI images use `0x0A` or `0x2A`. W images additionally set wireless bit 7: `0x92`/`0xB2` native and
+`0x8A`/`0xAA` SPI. The extension byte is `0x01`.
 Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
 as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
 Hosts MUST NOT offer LED, settings-save or wireless operations whose capability bit is clear.
@@ -174,7 +175,8 @@ When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailab
 Likewise, opcode `1` without bit 0, opcode `5` without bit 2 and opcodes `6`-`12` without bit 7 return
 Unsupported/error `4` before argument validation.
 Wireless capability does not imply that Wi-Fi is connected
-or that BLE has started.
+or that BLE has started, and does not imply support for both radios. W builds provide Wi-Fi only:
+opcode `8` (Control-key staging) returns Unsupported/error `4` before argument validation.
 
 ### Board Models
 
@@ -189,7 +191,8 @@ or that BLE has started.
 | `6`-`255` | Unassigned | Reserved |
 
 The board model is the configured build target, not automatic hardware detection.
-The Pico W and Pico 2 W models identify the board only; their radios are unused and wireless capability is clear.
+Pico W and Pico 2 W builds enable Wi-Fi scans and temporary candidate joins; BLE remains unavailable.
+They advertise wireless capability without settings-save capability.
 
 ### Firmware RAM Reservation
 
@@ -227,7 +230,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 0 | Card detect configured | Set | Set |
 | 1 | RGB LED data GPIO allocated | Set | Clear |
 | 2 | Monitor UART enabled | Set | Set |
-| 3 | Wi-Fi enabled for next boot | Saved switch | Clear |
+| 3 | Wi-Fi enabled for next boot | Saved switch | Saved switch on W boards; clear on non-W |
 | 4 | BLE enabled for next boot | Saved switch | Clear |
 | 5 | Reserved TCP CLI switch | Clear | Clear |
 | 6 | Native USB MSC with explicit ownership handoff | Set | Set |

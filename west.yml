@@ -8,6 +8,7 @@ manifest:
         name-allowlist:
           - hal_espressif
           - hal_rpi_pico
+          - hal_infineon
           - cmsis_6
           - fatfs
           - mbedtls

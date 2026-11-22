@@ -1,11 +1,11 @@
-/* Pico W and Pico 2 W: the CYW43439 radio is unused, so leave its PIO0 SPI link and control pins idle. */
+/* Pico W and Pico 2 W: CYW43439 Wi-Fi uses PIO0; the native SD host uses PIO1. */
 &pio0 {
-	status = "disabled";
+	status = "okay";
 };
 
 &pio0_spi0 {
-	status = "disabled";
+	status = "okay";
 	airoc-wifi@0 {
-		status = "disabled";
+		status = "okay";
 	};
 };

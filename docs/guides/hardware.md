@@ -108,8 +108,10 @@ The boards have no USB-UART bridge. For diagnostics, connect a 3.3 V USB-UART ad
 ground to GND only; do not connect its supply output. Flash by holding BOOTSEL while connecting micro-USB and
 copying the UF2 image, as described in [getting started](getting-started.md#2-build-now-flash-later).
 
-The Pico images are managed over USB only. They do not use the CYW43439 radio on the Pico W and Pico 2 W, so those
-boards offer no Bluetooth LE or Wi-Fi management. The images do not control the onboard LED, cannot save settings
+The Pico images are managed over USB only. Pico W and Pico 2 W use the CYW43439 radio for
+[Wi-Fi scans and temporary joins](wireless.md); Bluetooth LE remains unsupported. The radio uses PIO0 with GP23
+enable, GP24 shared data/host wake, GP25 chip select and GP29 clock; native SD uses PIO1.
+The images do not control the onboard LED, cannot save settings
 and keep the default system clock: 125 MHz on RP2040 and 150 MHz on RP2350.
 
 GP2-GP8 are reserved for the SD card in both images; the board's default I2C0 (GP4/GP5) and I2C1 (GP6/GP7)

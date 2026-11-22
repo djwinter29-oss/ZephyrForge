@@ -25,7 +25,7 @@ esac
 case "$board" in
 	esp32s3) target=esp32s3_devkitc/esp32s3/procpu
 		overlay="boards/espressif/esp32s3_devkitc_n16r8.overlay;boards/espressif/$mode.overlay"
-		conf+=";boards/espressif/esp32s3_devkitc_n16r8.conf"
+		conf+=";wifi.conf;bluetooth.conf;boards/espressif/esp32s3_devkitc_n16r8.conf"
 		toolchain=xtensa-espressif_esp32s3_zephyr-elf ;;
 	pico) target=rpi_pico/rp2040; soc=rp2040 ;;
 	pico_w) target=rpi_pico/rp2040/w; soc=rp2040 ;;
@@ -36,7 +36,10 @@ esac
 if [[ "$board" != esp32s3 ]]; then
 	build="${build/firmware/firmware-$board}"
 	overlay="boards/rpi_pico/$mode.overlay;boards/rpi_pico/$soc.overlay"
-	[[ "$board" == *_w ]] && overlay+=";boards/rpi_pico/w.overlay"
+	if [[ "$board" == *_w ]]; then
+		overlay+=";boards/rpi_pico/w.overlay"
+		conf+=";wifi.conf;boards/rpi_pico/w.conf"
+	fi
 	toolchain=arm-zephyr-eabi
 fi
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"

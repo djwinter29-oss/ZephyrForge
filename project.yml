@@ -28,6 +28,7 @@
     - -:firmware/src/app/wireless/wifi/wifi.c
     - -:firmware/src/platform/rpi_pico/platform.c
     - -:firmware/src/platform/rpi_pico/sdhc_pio.c
+    - -:firmware/src/platform/rpi_pico/random.c
 
 :defines:
   :test:
@@ -36,6 +37,13 @@
       - ZF_MCU=ZF_MCU_RP2040
       - ZF_BOARD_MODEL=ZF_BOARD_PICO
       - ZF_BOARD_CAPS=0
+      - ZF_MONITOR_UART_TX=0u
+      - ZF_MONITOR_UART_RX=1u
+    :test_pico_w_board:
+      - ZF_MCU=ZF_MCU_RP2040
+      - ZF_BOARD_MODEL=ZF_BOARD_PICO_W
+      - ZF_BOARD_CAPS=ZF_CAP_WIRELESS
+      - ZF_RADIO_MASK=1u
       - ZF_MONITOR_UART_TX=0u
       - ZF_MONITOR_UART_RX=1u
 

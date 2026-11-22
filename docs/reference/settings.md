@@ -28,9 +28,10 @@ API names describe the current implementation; internal source layout is not par
 
 Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record enables both radios.
 
-The clock values and radio settings apply to the ESP32-S3. The Raspberry Pi Pico images load the record at boot but
+The selectable clock values apply to the ESP32-S3. The Raspberry Pi Pico images load the record at boot but
 cannot save it: Report `1` advertises no settings save, so opcode `5` returns Unsupported (error `4`). Those images
-keep the devicetree build clock and start no radios.
+keep the devicetree build clock. W variants apply the saved Wi-Fi switch and credentials, masking out BLE;
+non-W variants start no radios. W candidate credentials remain RAM-only.
 
 ## Architecture
 

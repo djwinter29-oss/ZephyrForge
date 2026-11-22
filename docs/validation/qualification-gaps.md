@@ -7,7 +7,7 @@ details. This is functional evidence, not production qualification.
 | Area | Current boundary |
 | --- | --- |
 | ESP32-S3 target | N16R8 flashing and boot reported working; firmware revision, image hashes and PSRAM memory-test output not recorded |
-| Raspberry Pi Pico targets | Pico, Pico W, Pico 2 and Pico 2 W images are software builds only; UF2 flashing, boot, USB HID/MSC, the UART console, the PIO SD host and SPI storage have no hardware evidence |
+| Raspberry Pi Pico targets | Pico, Pico W, Pico 2 and Pico 2 W images are software builds only; UF2 flashing, boot, USB HID/MSC, the UART console, the PIO SD host, SPI storage and W Wi-Fi have no hardware evidence; W BLE transport is unsupported |
 | Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, SD lifecycle, wireless staging/auth, SHA-256, boot-settings record, Pico board facts and the PIO SD host's wire encoding and clock planning with mocked platform hooks and a fake flash; no Zephyr execution or PIO timing |
 | USB HID | Dashboard connection and [sampled reads/handle reopens](records/2026-11-20-firmware-qualification.md) observed; broader timing, host compatibility and physical reconnect behavior remain unqualified |
 | BLE | Monitoring and authenticated control reported working; MTU variation, reconnect stress and radio coexistence remain unqualified |
