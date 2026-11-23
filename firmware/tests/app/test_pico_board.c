@@ -8,7 +8,8 @@
 
 #include <string.h>
 
-/* Built with the Raspberry Pi Pico board definitions: RP2040 Pico, UART0 on GP0/GP1, no LED, settings or radios. */
+/* Built with the Raspberry Pi Pico board definitions: RP2040 Pico, no LED, settings or radios.
+ * The monitor UART console facts ride the config struct sampled from the devicetree. */
 
 static uint8_t flash[ZF_BOOT_CONFIG_RECORD_SIZE];
 static int write_calls;
@@ -44,7 +45,8 @@ void tearDown(void)
 void test_identity_and_config_advertise_pico_without_led_settings_or_radios(void)
 {
 	const zf_identity_t identity = {0};
-	const zf_config_t config = {.stored_radios = ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE};
+	const zf_config_t config = {.stored_radios = ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE,
+					    .monitor_uart_tx_gpio = 0, .monitor_uart_rx_gpio = 1};
 	uint8_t identity_out[ZF_IDENTITY_SIZE];
 	uint8_t config_out[ZF_CONFIG_SIZE];
 

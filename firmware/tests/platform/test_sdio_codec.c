@@ -228,6 +228,25 @@ void test_clock_plan_rejects_untimeable_requests(void)
 	TEST_ASSERT_FALSE(zf_sdio_plan_clock(150000000u, 51000000u, true, &ticks, &actual));
 	TEST_ASSERT_FALSE(zf_sdio_plan_clock(0u, 400000u, false, &ticks, &actual));
 	TEST_ASSERT_FALSE(zf_sdio_plan_clock(150000000u, 0u, false, &ticks, &actual));
+	/* 150 MHz at 10 Hz needs ~1.92e9 ticks: beyond the 24-bit PIO range is a rejection, not a clamp. */
+	TEST_ASSERT_FALSE(zf_sdio_plan_clock(150000000u, 10u, false, &ticks, &actual));
+	TEST_ASSERT_FALSE(zf_sdio_plan_clock(125000000u, 400000u, false, NULL, &actual));
+	TEST_ASSERT_FALSE(zf_sdio_plan_clock(125000000u, 400000u, false, &ticks, NULL));
+	/* Rejections never write the outputs. */
 	TEST_ASSERT_EQUAL_UINT32(7u, ticks);
 	TEST_ASSERT_EQUAL_UINT32(9u, actual);
+}
+
+void test_response_shapes_and_null_buffer_guards(void)
+{
+	uint32_t response[4] = {0};
+	uint8_t block[8] = {0};
+	uint8_t image[64] = {0};
+
+	/* NONE is the no-reply command: it succeeds without touching a frame; unknown shapes fail closed. */
+	TEST_ASSERT_TRUE(zf_sdio_parse_response(ZF_SDIO_RESPONSE_NONE, 0u, NULL, response));
+	TEST_ASSERT_FALSE(zf_sdio_parse_response((zf_sdio_response_t)4, 0u, NULL, response));
+	TEST_ASSERT_FALSE(zf_sdio_encode(NULL, sizeof(block), 1u, image));
+	TEST_ASSERT_FALSE(zf_sdio_encode(block, sizeof(block), 1u, NULL));
+	TEST_ASSERT_FALSE(zf_sdio_decode(NULL, block, sizeof(block), 1u));
 }

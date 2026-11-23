@@ -87,12 +87,40 @@ static int advertise(bool fast)
 	return err;
 }
 
+/*
+ * Advertise slow-down and restart, serialized with the connection callbacks by the application lock: a
+ * stopped radio with a failed re-start must never leave state claiming the device is advertising. When the
+ * radio ends up silent, the work re-runs after the fast period and retries from the truthful OFF state.
+ */
 static void slow_down(struct k_work *work)
 {
 	ARG_UNUSED(work);
-	if (atomic_get(&state) == ZF_BLE_ADVERTISING && !slow && bt_le_adv_stop() == 0) {
-		(void)advertise(false);
+	int err = 0;
+
+	zf_lock();
+	switch (atomic_get(&state)) {
+	case ZF_BLE_ADVERTISING:
+		if (!slow) {
+			if (bt_le_adv_stop() == 0) {
+				atomic_set(&state, ZF_BLE_OFF);
+				err = advertise(false);
+			} else {
+				err = -EIO;
+			}
+		}
+		break;
+	case ZF_BLE_OFF:
+		if (!failed && name[0] != '\0') {
+			err = advertise(false);
+		}
+		break;
+	default:
+		break;
 	}
+	if (err != 0) {
+		(void)k_work_reschedule(&slow_work, K_MSEC(FAST_PERIOD_MS));
+	}
+	zf_unlock();
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -100,13 +128,14 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (err != 0) {
 		return;
 	}
+	/* Waits for a running slow_down before the state changes, so no stop/start races the connection. */
 	(void)k_work_cancel_delayable(&slow_work);
 	zf_lock();
 	current = bt_conn_ref(conn);
 	zf_auth_session_reset(&session);
 	snapshot_attr = NULL;
-	zf_unlock();
 	atomic_set(&state, ZF_BLE_CONNECTED);
+	zf_unlock();
 	LOG_INF("Central connected");
 }
 
@@ -119,17 +148,19 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 	zf_auth_session_reset(&session);
 	snapshot_attr = NULL;
-	zf_unlock();
 	atomic_set(&state, ZF_BLE_OFF);
+	zf_unlock();
 	LOG_INF("Central disconnected (0x%02x)", reason);
 }
 
 /* The connection object is free again, so connectable advertising can restart. */
 static void recycled(void)
 {
+	zf_lock();
 	if (atomic_get(&state) == ZF_BLE_OFF && !failed && name[0] != '\0') {
 		(void)advertise(true);
 	}
+	zf_unlock();
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {

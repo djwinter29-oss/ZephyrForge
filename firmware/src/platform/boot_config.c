@@ -321,8 +321,3 @@ void zf_boot_config_discard(void)
 {
 	staged = saved;
 }
-
-void zf_boot_config_encode(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE])
-{
-	encode(&staged, record);
-}

@@ -12,20 +12,22 @@
 #define FLAG_COMMIT 0x02u
 #define ARGS_SIZE 64u
 
+/** Feature 20 result slot: the decoded result as replayed by GET_REPORT. */
 typedef struct {
-	uint8_t transaction_id;
-	uint8_t opcode;
-	uint8_t status;
-	uint8_t error;
-	uint8_t data[63];
+	uint8_t transaction_id; /**< Echoed request transaction. */
+	uint8_t opcode; /**< Echoed request opcode. */
+	uint8_t status; /**< ZF_STATUS_* outcome. */
+	uint8_t error; /**< ZF_ERROR_* reason. */
+	uint8_t data[63]; /**< Outcome detail and payload; data[0] is the wire detail byte. */
 } result_t;
 
+/** Normalized control request from either transport before execution. */
 typedef struct {
-	bool ble;
-	uint8_t transaction_id;
-	uint8_t opcode;
-	uint8_t flags;
-	uint8_t args[ARGS_SIZE];
+	bool ble; /**< True for the BLE transport: envelope-restricted opcodes and a zero-flags save. */
+	uint8_t transaction_id; /**< Nonzero request transaction echoed into the result. */
+	uint8_t opcode; /**< Wire opcode, already range-checked by the dispatcher. */
+	uint8_t flags; /**< Wire flags byte: confirm, forced-save and commit bits. */
+	uint8_t args[64]; /**< Fixed 64-byte argument field: opcode-specific layout. */
 } request_t;
 
 static result_t usb_result;
@@ -65,10 +67,12 @@ static bool capable(uint8_t opcode)
 	if (opcode == ZF_OP_SAVE) {
 		return (ZF_CAPABILITIES & ZF_CAP_SETTINGS) != 0;
 	}
-	if (opcode == ZF_OP_STAGE_KEY) {
-		return (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0 && (ZF_RADIO_MASK & ZF_WIRELESS_BLE) != 0;
+	if (opcode >= ZF_OP_STAGE_SSID && opcode <= ZF_OP_SCAN_ENTRY) {
+		const uint8_t radio = opcode == ZF_OP_STAGE_KEY ? ZF_WIRELESS_BLE : ZF_WIRELESS_WIFI;
+
+		return (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0 && (ZF_RADIO_MASK & radio) != 0;
 	}
-	return opcode < ZF_OP_STAGE_SSID || opcode > ZF_OP_SCAN_ENTRY || (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0;
+	return true;
 }
 
 /** Map a platform admission result: zero Completed, -EBUSY Busy, any other error Failed. */

@@ -10,7 +10,10 @@ static uint32_t ticks;
 static bool exists;
 static bool corrupt;
 static bool short_transfer;
+static bool short_read;
+static bool oversize;
 static bool cancel;
+static bool cancel_during_read;
 static bool close_failure;
 static bool removed;
 static bool remove_during_write;
@@ -23,8 +26,8 @@ static zf_benchmark_t last;
 void setUp(void)
 {
 	position = ticks = opens = deletes = 0;
-	exists = corrupt = short_transfer = cancel = close_failure = removed = writing = false;
-	remove_during_write = unlink_failure = false;
+	exists = corrupt = short_transfer = short_read = oversize = cancel = close_failure = removed = false;
+	cancel_during_read = writing = remove_during_write = unlink_failure = false;
 	memset(&last, 0, sizeof(last));
 }
 
@@ -56,7 +59,12 @@ int zf_platform_benchmark_transfer(bool write, uint8_t *data, uint32_t size, uin
 		*count = 0;
 		return -ENOMEDIUM;
 	}
-	*count = short_transfer ? size / 2 : size;
+	if (oversize && write) {
+		/* A driver reporting more bytes than requested must not be trusted or counted. */
+		*count = size + 16u;
+		return 0;
+	}
+	*count = (short_transfer || (short_read && !write)) ? size / 2 : size;
 	TEST_ASSERT_LESS_OR_EQUAL_UINT32(sizeof(file), position + *count);
 	if (write) {
 		memcpy(file + position, data, *count);
@@ -97,6 +105,10 @@ bool zf_platform_benchmark_update(const zf_benchmark_t *status)
 	last = *status;
 	if (remove_during_write && position >= ZF_BENCHMARK_CHUNK_SIZE) {
 		removed = true;
+	}
+	if (cancel_during_read && !writing && position >= ZF_BENCHMARK_CHUNK_SIZE &&
+	    status->state == ZF_BENCHMARK_READING) {
+		return false;
 	}
 	return !(cancel && writing && position >= ZF_BENCHMARK_CHUNK_SIZE);
 }
@@ -191,4 +203,61 @@ void test_cleanup_failure_is_not_reported_as_passed(void)
 	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_CLEANUP, last.error);
 	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.read_bytes);
 	TEST_ASSERT_TRUE(last.flags & ZF_BENCHMARK_FILE_REMAINS);
+}
+
+void test_size_guard_rejects_zero_and_oversize_without_platform_io(void)
+{
+	zf_benchmark_run(0);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_SIZE, last.error);
+	TEST_ASSERT_EQUAL_UINT32(0, last.target_bytes);
+	TEST_ASSERT_EQUAL_UINT(0, opens);
+	TEST_ASSERT_EQUAL_UINT(0, deletes);
+	TEST_ASSERT_FALSE(exists);
+
+	zf_benchmark_run(ZF_BENCHMARK_MAX_MIB + 1u);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_SIZE, last.error);
+	TEST_ASSERT_EQUAL_UINT32(0, last.target_bytes);
+	TEST_ASSERT_EQUAL_UINT(0, opens);
+	TEST_ASSERT_EQUAL_UINT(0, deletes);
+	TEST_ASSERT_FALSE(exists);
+}
+
+void test_oversize_transfer_report_is_not_trusted(void)
+{
+	oversize = true;
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_IO, last.error);
+	TEST_ASSERT_EQUAL_UINT32(0, last.written_bytes);
+	TEST_ASSERT_EQUAL_UINT32(0, last.read_bytes);
+	TEST_ASSERT_EQUAL_UINT(1, opens);
+	TEST_ASSERT_FALSE(exists);
+}
+
+void test_short_read_fails_io_without_reaching_verification(void)
+{
+	short_read = true;
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_FAILED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_IO, last.error);
+	TEST_ASSERT_EQUAL_UINT32(0, last.read_bytes);
+	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.written_bytes);
+	TEST_ASSERT_EQUAL_UINT(2, opens);
+	TEST_ASSERT_EQUAL_UINT(1, deletes);
+	TEST_ASSERT_FALSE(exists);
+}
+
+void test_cancellation_during_read_stops_before_completing_verification(void)
+{
+	cancel_during_read = true;
+	zf_benchmark_run(1);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_CANCELLED, last.state);
+	TEST_ASSERT_EQUAL(ZF_BENCHMARK_ERROR_NONE, last.error);
+	TEST_ASSERT_EQUAL_UINT32(sizeof(file), last.written_bytes);
+	TEST_ASSERT_EQUAL_UINT32(ZF_BENCHMARK_CHUNK_SIZE, last.read_bytes);
+	TEST_ASSERT_EQUAL_UINT(2, opens);
+	TEST_ASSERT_EQUAL_UINT(1, deletes);
+	TEST_ASSERT_FALSE(exists);
 }

@@ -171,11 +171,6 @@ int zf_boot_config_save(void);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */
 void zf_boot_config_discard(void);
 
-/**
- * @brief Serialize the staged configuration into a record, including its CRC.
- * @param record Output buffer of ZF_BOOT_CONFIG_RECORD_SIZE bytes.
- */
-void zf_boot_config_encode(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE]);
 /** @brief Return the IEEE CRC-32 (reflected) used by the record. */
 uint32_t zf_boot_config_crc32(const uint8_t *data, size_t size);
 

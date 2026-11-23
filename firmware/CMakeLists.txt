@@ -8,7 +8,8 @@ if(ZF_ENABLE_STORAGE_BENCHMARK)
   target_sources(app PRIVATE src/app/storage/benchmark.c)
 endif()
 if(CONFIG_SOC_FAMILY_RPI_PICO)
-  # Report 1 identity: MCU 1 RP2040 or 2 RP2350; console UART0 is on GP0/GP1.
+  # Report 1 identity: MCU 1 RP2040 or 2 RP2350. Report 2 monitor UART pins are read from the
+  # console devicetree pinctrl in board.c.
   if(CONFIG_SOC_RP2040)
     set(zf_mcu ZF_MCU_RP2040)
   else()
@@ -42,8 +43,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
     set(zf_radio_mask 0u)
   endif()
   target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_BOARD_CAPS=${zf_board_caps}
-                                         ZF_RADIO_MASK=${zf_radio_mask}
-                                         ZF_MONITOR_UART_TX=0u ZF_MONITOR_UART_RX=1u)
+                                         ZF_RADIO_MASK=${zf_radio_mask})
   list(APPEND zf_board_sources src/platform/rpi_pico/platform.c)
   if(CONFIG_ZF_SDHC_RPI_PICO_PIO)
     list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)

@@ -461,3 +461,101 @@ void test_ble_busy_while_usb_staged_and_slots_are_separate(void)
 	TEST_ASSERT_EQUAL_UINT8(ZF_OP_STAGE_PASSWORD, usb_result[2]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, usb_result[3]);
 }
+
+void test_save_reports_failed_but_keeps_committed_settings_when_reboot_fails(void)
+{
+	const uint8_t args[4] = {0, 0, 0, 3};
+	char password[ZF_WIFI_PASSWORD_SIZE];
+
+	assert_result(stage(ZF_OP_STAGE_PASSWORD, "password", 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	zf_platform_schedule_reboot_ExpectAndReturn(-EIO);
+	assert_result(usb(ZF_OP_SAVE, 2, args, sizeof(args), 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+	/* The record is already persisted; only the reboot scheduling failed. */
+	TEST_ASSERT_EQUAL_INT(1, write_calls);
+	zf_boot_config_load();
+	zf_boot_config_wifi_password(password);
+	TEST_ASSERT_EQUAL_STRING("password", password);
+}
+
+void test_commit_busy_while_scan_active(void)
+{
+	const uint8_t args[4] = {0, 0, 0, 3};
+
+	stage(ZF_OP_STAGE_PASSWORD, "password", 0);
+	zf_wifi_scan_active_StopIgnore();
+	zf_wifi_scan_active_ExpectAndReturn(true);
+	assert_result(usb(ZF_OP_SAVE, 2, args, sizeof(args), 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
+	TEST_ASSERT_EQUAL_INT(0, write_calls);
+}
+
+void test_scan_entry_clamps_driver_reported_oversize_ssid(void)
+{
+	const uint8_t entry[3] = {1, 7, 0};
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
+	uint8_t length = 255;
+	int8_t rssi = -50;
+	uint8_t security = 4;
+	const uint8_t *result;
+
+	memset(ssid, 's', sizeof(ssid));
+	zf_wifi_scan_state_ExpectAndReturn(ZF_SCAN_COMPLETE);
+	zf_wifi_scan_generation_ExpectAndReturn(7);
+	zf_wifi_scan_count_ExpectAndReturn(2);
+	zf_wifi_scan_entry_ExpectAnyArgsAndReturn(0);
+	zf_wifi_scan_entry_ReturnArrayThruPtr_ssid(ssid, sizeof(ssid));
+	zf_wifi_scan_entry_ReturnThruPtr_ssid_length(&length);
+	zf_wifi_scan_entry_ReturnThruPtr_rssi(&rssi);
+	zf_wifi_scan_entry_ReturnThruPtr_security(&security);
+	result = usb(ZF_OP_SCAN_ENTRY, 0, entry, sizeof(entry), 0);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 7);
+	/* The reported length is clamped to the wire field: the copy cannot reach rssi or security. */
+	TEST_ASSERT_EQUAL_UINT8(ZF_SSID_MAX_BYTES, result[8]);
+	TEST_ASSERT_EACH_EQUAL_UINT8('s', result + 9, ZF_SSID_MAX_BYTES);
+	TEST_ASSERT_EQUAL_UINT8((uint8_t)-50, result[41]);
+	TEST_ASSERT_EQUAL_UINT8(4, result[42]);
+}
+
+void test_scan_entry_rejects_stale_state_and_failed_reads(void)
+{
+	const uint8_t entry[3] = {1, 7, 0};
+
+	zf_wifi_scan_state_ExpectAndReturn(ZF_SCAN_RUNNING);
+	assert_result(usb(ZF_OP_SCAN_ENTRY, 0, entry, sizeof(entry), 0), ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT,
+		      ZF_DETAIL_SCAN_STALE);
+	zf_wifi_scan_state_ExpectAndReturn(ZF_SCAN_COMPLETE);
+	zf_wifi_scan_generation_ExpectAndReturn(7);
+	zf_wifi_scan_count_ExpectAndReturn(2);
+	zf_wifi_scan_entry_ExpectAnyArgsAndReturn(-EINVAL);
+	assert_result(usb(ZF_OP_SCAN_ENTRY, 0, entry, sizeof(entry), 0), ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT,
+		      ZF_DETAIL_SCAN_INDEX);
+}
+
+void test_commit_zero_length_key_clears_stored_key(void)
+{
+	const uint8_t args[4] = {0, 0, 0, 3};
+	uint8_t clear[64] = {0};
+	const uint8_t *result;
+
+	assert_result(usb(ZF_OP_STAGE_KEY, 0, clear, sizeof(clear), 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	result = usb(ZF_OP_SAVE, 2, args, sizeof(args), 0);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	TEST_ASSERT_EQUAL_HEX8(ZF_COMMIT_KEY, result[9]);
+	/* Clearing must not install the staged (zero-filled) key as a configured one. */
+	zf_boot_config_load();
+	TEST_ASSERT_FALSE(zf_boot_config_ble_key_configured());
+}
+
+void test_stage_accepts_maximum_length_ssid_and_password(void)
+{
+	uint8_t args[64] = {ZF_SSID_MAX_BYTES};
+	const uint8_t *result;
+
+	memset(args + 1, 'a', ZF_SSID_MAX_BYTES);
+	result = usb(ZF_OP_STAGE_SSID, 0, args, sizeof(args), 0);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	args[0] = ZF_STAGE_PASSWORD_MAX;
+	memset(args + 1, 'p', ZF_STAGE_PASSWORD_MAX);
+	result = usb(ZF_OP_STAGE_PASSWORD, 0, args, sizeof(args), 0);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+}

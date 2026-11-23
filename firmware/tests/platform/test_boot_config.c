@@ -182,6 +182,47 @@ void test_clock_only_change_does_not_require_wireless_restart(void)
 	TEST_ASSERT_FALSE(zf_boot_config_wireless_restart_required());
 }
 
+void test_key_only_change_requires_wireless_restart(void)
+{
+	uint8_t key[ZF_BLE_KEY_SIZE];
+
+	memset(key, 0x11, sizeof(key));
+	zf_boot_config_set_ble_key(key);
+	TEST_ASSERT_EQUAL_INT(0, zf_boot_config_save());
+	/* The record comparison must notice the key alone, or a committed key saves without BLE restart. */
+	TEST_ASSERT_TRUE(zf_boot_config_wireless_restart_required());
+	zf_boot_config_load();
+	TEST_ASSERT_FALSE(zf_boot_config_wireless_restart_required());
+}
+
+void test_auth_only_change_requires_wireless_restart(void)
+{
+	TEST_ASSERT_TRUE(zf_boot_config_set_wifi_auth_state(ZF_WIFI_AUTH_SAE));
+	TEST_ASSERT_EQUAL_INT(0, zf_boot_config_save());
+	TEST_ASSERT_TRUE(zf_boot_config_wireless_restart_required());
+	zf_boot_config_load();
+	TEST_ASSERT_FALSE(zf_boot_config_wireless_restart_required());
+}
+
+void test_save_maps_positive_flash_error_to_eio(void)
+{
+	write_result = 5;
+	TEST_ASSERT_TRUE(zf_boot_config_set_sysclk(ZF_SYSCLK_80MHZ));
+	TEST_ASSERT_EQUAL_INT(-EIO, zf_boot_config_save());
+	/* A positive driver return is a failure: staged values must be discarded, not kept as saved. */
+	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_boot_config_sysclk());
+}
+
+void test_decode_rejects_unterminated_password_field(void)
+{
+	save_valid_record();
+	memset(flash + 45, 'q', ZF_WIFI_PASSWORD_SIZE);
+	reseal();
+	zf_boot_config_load();
+	TEST_ASSERT_EQUAL_INT(ZF_BOOT_CONFIG_DEFAULTS, zf_boot_config_source());
+	assert_defaults();
+}
+
 void test_unchanged_save_does_not_write_flash(void)
 {
 	TEST_ASSERT_EQUAL_INT(0, zf_boot_config_save());
@@ -281,7 +322,9 @@ void test_invalid_fields_with_valid_crc_load_defaults(void)
 	} cases[] = {
 		{0, 'P'},    /* magic */
 		{4, 2},      /* version */
+		{5, 1},      /* version high byte */
 		{6, 147},    /* size */
+		{7, 1},      /* size high byte */
 		{8, 4},      /* clock profile */
 		{9, 1},      /* reserved SD speed byte */
 		{10, 4},     /* unknown service bit */

@@ -257,3 +257,38 @@ void test_detection_error_clears_unmounted_card_identity(void)
 	TEST_ASSERT_EACH_EQUAL_UINT8(0, published.cid, sizeof(published.cid));
 	TEST_ASSERT_EQUAL_UINT32(0, published.block_count);
 }
+
+void test_unconfigured_policy_performs_no_media_io(void)
+{
+	zf_storage_policy_init(false, true, 0);
+	zf_storage_policy_poll(true, 100, 1);
+	zf_storage_policy_poll(true, 200, ZF_STORAGE_NO_REQUEST);
+	TEST_ASSERT_EQUAL_UINT(0, opens);
+	TEST_ASSERT_EQUAL_UINT(0, closes);
+	TEST_ASSERT_EQUAL_UINT(0, refreshes);
+	TEST_ASSERT_FALSE(published.busy);
+	TEST_ASSERT_FALSE(published.present);
+}
+
+void test_export_request_without_a_card_is_rejected_without_media_io(void)
+{
+	zf_storage_policy_init(true, false, 0);
+	zf_storage_policy_poll(false, 10, 1);
+	TEST_ASSERT_EQUAL_UINT(0, opens);
+	TEST_ASSERT_TRUE(published.msc_request_rejected);
+	TEST_ASSERT_FALSE(published.msc_transition_pending);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+}
+
+void test_export_open_failure_rejects_request_and_clears_identity(void)
+{
+	zf_storage_policy_init(true, true, 0);
+	zf_storage_policy_poll(true, 0, ZF_STORAGE_NO_REQUEST);
+	open_result = -EIO;
+	zf_storage_policy_poll(true, 1, 1);
+	TEST_ASSERT_TRUE(published.msc_request_rejected);
+	TEST_ASSERT_FALSE(published.msc_enabled);
+	TEST_ASSERT_FALSE(published.initialized);
+	TEST_ASSERT_FALSE(published.cid_valid);
+	TEST_ASSERT_EQUAL_UINT32(0, published.block_count);
+}

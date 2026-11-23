@@ -67,3 +67,4 @@ host/python/src/zephyrforge/web/
 firmware/secrets.conf
 .bundle/
 vendor/bundle/
+.qwen/

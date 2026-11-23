@@ -41,6 +41,18 @@ extern char _ext_ram_end[];
 #define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(zephyrforge_sd)), pinctrl_0, 0)
 #define GPIO_FROM_MUX(node, index) PIN_FROM_MUX(DT_PROP_BY_IDX(node, pinmux, index))
 
+/* Report 2 monitor UART: the chosen console's controller index and TX/RX pins, read from the same
+ * pinctrl the drivers apply (group1 is TX, group2 is RX), so reported facts cannot drift from hardware. */
+#define CONSOLE_NODE DT_CHOSEN(zephyr_console)
+#define CONSOLE_PINCTRL DT_PHANDLE_BY_IDX(CONSOLE_NODE, pinctrl_0, 0)
+#if DT_SAME_NODE(CONSOLE_NODE, DT_NODELABEL(uart0))
+#define CONSOLE_UART_INDEX 0u
+#elif DT_SAME_NODE(CONSOLE_NODE, DT_NODELABEL(uart1))
+#define CONSOLE_UART_INDEX 1u
+#else
+#define CONSOLE_UART_INDEX ZF_GPIO_UNASSIGNED
+#endif
+
 LOG_MODULE_REGISTER(zf_board, LOG_LEVEL_INF);
 
 K_MUTEX_DEFINE(app_lock);
@@ -158,6 +170,9 @@ void zf_config_report(uint8_t out[ZF_CONFIG_SIZE])
 {
 	zf_config_t config = {
 		.reset_cause = reset_cause,
+		.monitor_uart_index = CONSOLE_UART_INDEX,
+		.monitor_uart_tx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group1), 0),
+		.monitor_uart_rx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group2), 0),
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
 		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),

@@ -43,6 +43,31 @@ void test_argument_checks(void)
 	TEST_ASSERT_EQUAL_UINT8(ZF_DETAIL_KEY_LENGTH, zf_stage_check_key(args));
 	args[0] = 32;
 	TEST_ASSERT_EQUAL_UINT8(0, zf_stage_check_key(args));
+	/* Control characters below the printable range are rejected as thoroughly as DEL. */
+	value("password");
+	args[3] = 0x1F;
+	TEST_ASSERT_EQUAL_UINT8(ZF_DETAIL_PASSWORD, zf_stage_check_password(args));
+	/* The maximum staged password length is 63 printable bytes; one more is rejected. */
+	memset(args, 'p', sizeof(args));
+	args[0] = ZF_STAGE_PASSWORD_MAX;
+	TEST_ASSERT_EQUAL_UINT8(0, zf_stage_check_password(args));
+	args[0] = ZF_STAGE_PASSWORD_MAX + 1;
+	TEST_ASSERT_EQUAL_UINT8(ZF_DETAIL_PASSWORD, zf_stage_check_password(args));
+}
+
+void test_mark_tested_ignores_key_only_stage(void)
+{
+	uint8_t flags;
+	uint8_t staged_state;
+
+	zf_stage_key(&stage, value(""), 0);
+	zf_stage_mark_tested(&stage, ZF_STAGE_LIFETIME_MS);
+	/* A key-only stage is not a network pair: it must not gain TESTED or a refreshed deadline. */
+	TEST_ASSERT_FALSE(stage.pair_tested);
+	zf_stage_status(&stage, &flags, &staged_state);
+	TEST_ASSERT_EQUAL_HEX8(ZF_STAGE_FLAG_KEY, flags);
+	TEST_ASSERT_EQUAL_HEX8(ZF_STAGED_EMPTY_KEY, staged_state);
+	TEST_ASSERT_TRUE(zf_stage_tick(&stage, ZF_STAGE_LIFETIME_MS + 1));
 }
 
 void test_new_ssid_requires_password(void)

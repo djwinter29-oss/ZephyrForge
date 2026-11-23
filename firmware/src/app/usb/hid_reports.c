@@ -8,13 +8,6 @@
 #define HWINFO_RESET_POR 0x08u
 #define HWINFO_RESET_WATCHDOG 0x10u
 
-/* Monitor UART0; the DevKitC pins unless the board build overrides them. */
-#define MONITOR_UART_INDEX 0u
-#ifndef ZF_MONITOR_UART_TX
-#define ZF_MONITOR_UART_TX 43u
-#define ZF_MONITOR_UART_RX 44u
-#endif
-
 /* Report 2 board_flags bits; bit 5, the reserved TCP CLI switch, stays clear. */
 #define BOARD_FLAG_CARD_DETECT 0x01u
 #define BOARD_FLAG_LED 0x02u
@@ -89,9 +82,9 @@ void zf_report_config(const zf_config_t *config, uint8_t out[ZF_CONFIG_SIZE])
 	out[0] = 1;
 	put16(out + 1, config->stored_clock_mhz);
 	out[3] = 0;
-	out[4] = MONITOR_UART_INDEX;
-	out[5] = ZF_MONITOR_UART_TX;
-	out[6] = ZF_MONITOR_UART_RX;
+	out[4] = config->monitor_uart_index;
+	out[5] = config->monitor_uart_tx_gpio;
+	out[6] = config->monitor_uart_rx_gpio;
 	memcpy(out + 7, config->storage_gpios, sizeof(config->storage_gpios));
 	out[13] = flags;
 	out[14] = config->reset_cause;

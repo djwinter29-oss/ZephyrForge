@@ -46,51 +46,58 @@ LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
 	(NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT | NET_EVENT_WIFI_SCAN_RESULT |         \
 	 NET_EVENT_WIFI_SCAN_DONE)
 
+/** Link-machine state of the managed Wi-Fi interface. */
 enum link {
-	LINK_DOWN,
-	LINK_CONNECTING,
-	LINK_UP,
-	LINK_LEAVING,
+	LINK_DOWN, /**< Associated with nothing. */
+	LINK_CONNECTING, /**< A connect request is outstanding. */
+	LINK_UP, /**< Joined, address pending or bound. */
+	LINK_LEAVING, /**< A disconnect is outstanding. */
 };
 
+/** Which profile the link machine is currently serving. */
 enum owner {
-	OWNER_NONE,
-	OWNER_SAVED,
-	OWNER_TEST,
+	OWNER_NONE, /**< Nothing is being served. */
+	OWNER_SAVED, /**< The saved network with retry backoff. */
+	OWNER_TEST, /**< A staged candidate; the saved network resumes when it ends. */
 };
 
+/** Command phase reported through Feature 12 wifi_state. */
 enum command {
-	COMMAND_IDLE,
-	COMMAND_TESTING,
-	COMMAND_JOINED,
-	COMMAND_FAILED,
+	COMMAND_IDLE, /**< No command result to report. */
+	COMMAND_TESTING, /**< A candidate join is in progress (wifi_state 4). */
+	COMMAND_JOINED, /**< The last command joined successfully (wifi_state 5). */
+	COMMAND_FAILED, /**< The last candidate test failed; carries the join detail (wifi_state 6). */
 };
 
+/** Deferred work item queued for the poll loop. */
 enum action {
-	ACTION_NONE,
-	ACTION_DISCONNECT,
-	ACTION_CONNECT,
-	ACTION_SCAN,
+	ACTION_NONE, /**< Nothing queued. */
+	ACTION_DISCONNECT, /**< Leave the current network. */
+	ACTION_CONNECT, /**< Join the owner's profile. */
+	ACTION_SCAN, /**< Refresh the scan table. */
 };
 
+/** Event-queue messages consumed by the poll loop. */
 enum event {
-	EVENT_UP,
-	EVENT_DOWN_CONNECTED,
-	EVENT_DOWN_CONNECTING,
-	EVENT_SCAN_DONE,
+	EVENT_UP, /**< Link established (post-DHCP for AIROC, driver-confirmed otherwise). */
+	EVENT_DOWN_CONNECTED, /**< Link lost after a successful join. */
+	EVENT_DOWN_CONNECTING, /**< A connect attempt failed or was dropped. */
+	EVENT_SCAN_DONE, /**< The scan finished; publish the collected table. */
 };
 
+/** A credential profile being joined: the saved network or the staged candidate. */
 struct network {
-	uint8_t ssid[ZF_SSID_MAX_BYTES];
-	uint8_t ssid_length;
-	char password[ZF_WIFI_PASSWORD_SIZE];
+	uint8_t ssid[ZF_SSID_MAX_BYTES]; /**< Raw SSID bytes. */
+	uint8_t ssid_length; /**< SSID length, 0..ZF_SSID_MAX_BYTES. */
+	char password[ZF_WIFI_PASSWORD_SIZE]; /**< NUL-terminated credential; wiped when unused. */
 };
 
+/** One collected scan result, deduplicated to the strongest entry per SSID. */
 struct scan_entry {
-	uint8_t ssid[ZF_SSID_MAX_BYTES];
-	uint8_t ssid_length;
-	int8_t rssi;
-	uint8_t security;
+	uint8_t ssid[ZF_SSID_MAX_BYTES]; /**< Raw SSID bytes. */
+	uint8_t ssid_length; /**< SSID length, clamped to ZF_SSID_MAX_BYTES. */
+	int8_t rssi; /**< Signal strength for weakest-slot eviction and sorting. */
+	uint8_t security; /**< Driver security bitmask. */
 };
 
 K_MSGQ_DEFINE(events, sizeof(uint8_t), 16, 1);
