@@ -79,7 +79,10 @@ case "$*" in
         fi
         exit "${MOCK_BLOB_STATUS:-0}" ;;
     "-m west sdk list")
-        printf '0.17.4:\n  path: %s\n' "${MOCK_SDK_PATH:-$HOME/zephyr-sdk-0.17.4}" ;;
+        printf '0.17.4:\n  path: %s\n' "${MOCK_SDK_PATH:-$HOME/zephyr-sdk-0.17.4}"
+        # Output larger than a pipe buffer fails under pipefail if the reader stops early.
+        printf '0.18.0:\n'
+        printf '  toolchain: %s\n' $(seq 20000) ;;
     "-m west sdk install "*)
         sdk="${MOCK_SDK_PATH:-$HOME/zephyr-sdk-0.17.4}"
         toolchain=arm-zephyr-eabi

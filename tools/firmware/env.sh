@@ -176,13 +176,14 @@ else
 	sdk_args=(--version 0.17.4 --toolchains "$toolchain")
 	[[ -z "${GH_TOKEN:-}" ]] || sdk_args+=(--personal-access-token "$GH_TOKEN")
 	python -m west sdk install "${sdk_args[@]}"
+	# Read all output: exiting awk early breaks the pipe and pipefail reports west's BrokenPipeError.
 	sdk="$(python -m west sdk list | awk '
 		$0 == "0.17.4:" { selected=1; next }
-		selected && /^[^[:space:]]/ { exit }
+		selected && /^[^[:space:]]/ { selected=0 }
 		selected && /^[[:space:]]+path:/ {
 			sub(/^[[:space:]]*path:[[:space:]]*/, "")
 			print
-			exit
+			selected=0
 		}')"
 	if [[ ! -f "$sdk/sdk_version" || "$(<"$sdk/sdk_version")" != 0.17.4 ||
 		! -x "$sdk/$toolchain/bin/$toolchain-gcc" ]]; then

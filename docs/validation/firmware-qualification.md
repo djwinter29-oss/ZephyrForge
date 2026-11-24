@@ -50,13 +50,15 @@ Record enough information to reproduce and attribute the result:
 
 - **Image:** source revision and local changes, firmware SHA-256, frozen west manifest, SDK, generated `.config`
   and DTS.
-- **Hardware:** board and module revision, wiring, power arrangement, card make and model, CID, capacity, and filesystem.
+- **Hardware:** board and module revision, wiring, power arrangement, card make and model, CID, capacity, and
+  filesystem.
 - **Host:** OS, USB topology, browser and client versions, UART logs, and host USB logs.
 - **Run:** selected checks, thresholds, counts, and duration.
 
 Retain each image's identity with its results. A configured SD clock ceiling is not a measured bus clock or throughput.
 
-Record attempted, passed, failed, and inconclusive counts, the first failure, recovery steps, and whether a file remains.
+Record attempted, passed, failed, and inconclusive counts, the first failure, recovery steps, and whether a file
+remains.
 
 ## Stop conditions
 
@@ -175,7 +177,7 @@ Record a retained `EFTEST.BIN` as cleanup evidence; only the operator may remove
 safe ownership release. A failed cleanup is not a successful benchmark. Power-loss tests need separate approval.
 The single-copy settings save is not power-loss atomic.
 
-## USB, BLE and Wi-Fi lifecycle stress
+## USB, BLE, and Wi-Fi lifecycle stress
 
 | Check | Procedure and proposed minimum | Acceptance |
 | --- | --- | --- |

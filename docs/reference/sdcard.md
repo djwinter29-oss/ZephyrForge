@@ -118,7 +118,7 @@ command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact 
 
 Report `10` carries live detection/ownership snapshots, hardware identity, filesystem type and available capacity
 over USB HID and BLE.
-The [USB HID specification](usb-hid.md#report-id-10-storage-status) owns field values, flags and validation.
+The [USB HID specification](usb-hid.md#report-id-10-storage-status) defines field values, flags, and validation.
 Detection distinguishes confirmed absence from an inserted card whose mount failed.
 During media work or USB ownership, the firmware SD sample is invalid and current SD fields are cleared.
 Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
@@ -126,8 +126,8 @@ ceiling, not a runtime measurement. CID reports manufacturer/product/revision, s
 when no filesystem is mounted. Negotiated bus state is not reported.
 The pinned SD stack includes a public-ioctl extension that retains CID during hardware initialization.
 
-The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
-and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
+The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence and
+hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
 Use the UART log for diagnosis, and do not label every uninitialized sample "no card".
 
 Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
@@ -145,7 +145,7 @@ deterministic pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, the
 of that name is never overwritten or removed. The volume must already be mounted for firmware.
 Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
 
-### Admission, progress, and timing
+### Admission, progress and timing
 
 The command acknowledges **queued admission**, not successful filesystem preflight or a passing benchmark.
 File-existence and free-space checks run asynchronously on the storage worker. Read Report `11` for phases,
@@ -163,7 +163,8 @@ Cancel requests stop at the next cooperative checkpoint and attempt cleanup. Sho
 Observed removal stops further access to that media, including close/unlink; replacement media is not used for cleanup.
 A failed close or cleanup can leave `EFTEST.BIN` behind. Inspect it on a computer after safely releasing ownership;
 remove it manually before starting another run. Unplugging or power loss during writes can still corrupt the volume.
-The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload qualification.
+The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload
+qualification.
 
 ## Safety and ownership
 

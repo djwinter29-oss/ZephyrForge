@@ -51,7 +51,8 @@ dashboard version matches the package metadata for the current checkout. The scr
 if installation fails, it does not start the host with stale metadata. Stop an already-running host before relaunching.
 
 Source-checkout launches need no asset copy. Building a wheel or source distribution requires
-[explicit asset staging](../../docs/development/host-tools.md#python-host-checks-and-packaging) first; there is no custom build hook.
+[explicit asset staging](../../docs/development/host-tools.md#python-host-checks-and-packaging) first; there is no
+custom build hook.
 
 ## Commands
 

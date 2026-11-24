@@ -122,7 +122,8 @@ The release publishes:
 | `SHA256SUMS.txt` | SHA-256 of every package |
 
 Firmware packages contain only the flashable image, `BUILD-INFO.txt`, `LICENSE` and `licenses/`.
-They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree and runner/dependency YAML files.
+They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree, and runner/dependency YAML
+files.
 `BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board and storage
 variant. W firmware packages include Infineon HAL and blob license notices.
 `BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.

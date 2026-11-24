@@ -81,8 +81,9 @@ unauthenticated access.
 
 Service UUID: `ef5c0000-7c91-4d70-8b32-6e856443f502`.
 Characteristic UUIDs use `ef5cXXXX-7c91-4d70-8b32-6e856443f502`, where `XXXX` is the suffix below.
-Breaking wire changes require a new service UUID. Report characteristics use the hexadecimal USB report ID and return that
-report's payload **without** the report ID byte. Suffixes `0001`–`00ff` are reserved for report mirrors; `0100`
+Breaking wire changes require a new service UUID. Report characteristics use the hexadecimal USB report ID and
+return that report's payload **without** the report ID byte. Suffixes `0001`–`00ff` are reserved for report mirrors;
+`0100` and above are BLE-specific.
 and above are BLE-specific. Clients MUST reject an unsupported payload version for a known report or control
 characteristic. Clients MAY ignore unknown characteristics unless they are required for an operation they use.
 
@@ -136,8 +137,8 @@ Clients MUST use Write Requests, not Write Without Response or Prepare/Execute (
 The Bluetooth Core Specification v5.4 (Vol 3, Part G, §2.5.2) limits an unbonded client's attribute cache to the
 current connection. The server uses the standard Generic Attribute service and does **not** send a forced
 full-range Service Changed indication on every subscription.
-Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse cached handles across
-connections. This avoids persisting per-peer cache state.
+Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse
+cached handles across connections. This avoids persisting per-peer cache state.
 
 The Direct client subscribes before ZephyrForge service discovery when Generic Attribute and Service Changed are
 available, then continues without waiting for an indication.
@@ -351,9 +352,9 @@ Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling doe
 | `0x0D` | Invalid Attribute Value Length | `0101` write that is not 16 bytes. |
 
 These ATT errors apply to requests that receive an ATT response. Standard GAP/GATT attributes, including CCCD
-validation and caching, are handled by the Bluetooth stack and can return stack-defined ATT errors. The server's application
-authorization callbacks use `0x80`, not Insufficient Authentication (`0x05`), so a rejected Control-key proof is
-not an instruction to pair through the operating system.
+validation and caching, are handled by the Bluetooth stack and can return stack-defined ATT errors. The server's
+application authorization callbacks use `0x80`, not Insufficient Authentication (`0x05`). A rejected Control-key
+proof is not an instruction to pair through the operating system.
 
 ## Security properties
 

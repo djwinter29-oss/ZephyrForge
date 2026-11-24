@@ -217,7 +217,8 @@ Display **Firmware RAM reserved / total**, in KiB and optionally as a percentage
 or a reservation greater than total. This is build accounting, not free heap, stack high-water use or runtime
 memory pressure.
 
-The ESP32-S3 and ESP32-C6 boards report 524288 bytes of internal SRAM; RP2040 boards report 270336 and RP2350 boards 532480.
+The ESP32-S3 and ESP32-C6 boards report 524288 bytes of internal SRAM; RP2040 boards report 270336 and RP2350
+boards report 532480.
 Reservation covers statically linked RAM,
 including the reserved Zephyr heap pool and thread stacks. PSRAM is separate and
 is not represented by these fields. Count each reservation once; do not infer live allocations.
@@ -269,8 +270,9 @@ Wi-Fi and BLE switches default on and represent next-boot policy, not current li
 Without wireless capability, flag bits 3 and 4 MUST be clear.
 Hosts MUST reject unsupported stored profiles and inconsistent flags/pins.
 Report `3` carries the running CPU clock; Report `10` carries storage status. `0` selects the build clock,
-currently 240 MHz on the ESP32-S3, 160 MHz on the ESP32-C6, 125 MHz on RP2040 and 150 MHz on RP2350. Images without settings save cannot
-store another profile. The SD profile does not promise a clock rate or measured performance.
+currently 240 MHz on the ESP32-S3, 160 MHz on the ESP32-C6, 125 MHz on RP2040, and 150 MHz on RP2350. Images
+without settings save cannot store another profile. The SD profile does not promise a clock rate or measured
+performance.
 
 A successful opcode `5` returns verified saved settings and schedules reboot. During the 1000 ms grace period,
 USB remains available for the result read. Hosts MUST NOT send a second reboot command or require a configuration
@@ -765,7 +767,7 @@ unsupported fields. Unsupported layouts and failed mandatory reads are explicit 
 
 Only Feature `20` is writable.
 LED controls require capability bit 0 and fresh telemetry with an available driver. Completed acknowledges queued
-transmission, not optical verification. Colour is volatile, starts Off, needs no settings save and is never replayed
+transmission, not optical verification. Color is volatile, starts Off, needs no settings save and is never replayed
 automatically after an uncertain command. LED requests are independent of storage ownership and benchmark activity.
 Benchmark writes require capability bit 5, USB transport and fresh benchmark/storage state.
 MSC requires Report `2` flag bit 6, USB transport and fresh, settled ownership status.

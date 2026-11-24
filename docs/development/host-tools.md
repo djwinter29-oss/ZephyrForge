@@ -10,7 +10,8 @@ Run the checks for the component you changed:
 - [Python host](#python-host-checks-and-packaging) - unit tests, strict type checks, and package checks.
 - [.NET host](#net-builds-and-versions) - protocol, monitor, and HTTP API tests.
 - [Shared dashboard](#shared-dashboard) - Node tests, type checks, and browser checks against both hosts.
-- [Direct](#direct-tests-and-type-checks) - Node/server tests and type checks, plus [browser checks](#direct-browser-checks).
+- [Direct](#direct-tests-and-type-checks) - Node/server tests and type checks, plus
+  [browser checks](#direct-browser-checks).
 
 Commands below run from the repository root. Use Python 3.10+ in a virtual environment, Node 22 for JavaScript
 checks, and the .NET 10 SDK for .NET and shared-dashboard browser checks.
@@ -35,7 +36,7 @@ python3 -m unittest discover -s host/python/tests -v
 
 For running against a board, use the [Python host guide](../../host/python/README.md).
 
-The package provides `status`, `web` and `reboot` commands. It validates USB HID reports against the
+The package provides `status`, `web`, and `reboot` commands. It validates USB HID reports against the
 [protocol contract](../reference/usb-hid.md), and the dashboard serializes access through one monitor per board.
 
 The installed package can be imported without opening a device. Source-checkout launches and editable installs use

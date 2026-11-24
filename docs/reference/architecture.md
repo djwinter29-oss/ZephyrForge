@@ -42,21 +42,22 @@ The diagram shows the ESP32-S3. The Raspberry Pi Pico images keep the USB HID pa
 and UART shell, but have no BLE or TCP shell; W variants also include Wi-Fi. They are flashed as UF2 images through
 the MCU's USB bootloader. The ESP32-C6 has no native USB HID or MSC; Direct uses its authenticated BLE service only
 when a Control key is saved through [physical commissioning](../guides/boards/esp32c6-commissioning.md).
-Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
+Its SD-enabled image uses SPI2, not native SDMMC. See the
+[C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
 
 ## Service responsibilities
 
 | Layer | Responsibility |
 | --- | --- |
-| Application lifecycle | Boot order and periodic servicing of control, Wi-Fi, telemetry and USB |
+| Application lifecycle | Boot order and periodic servicing of control, Wi-Fi, telemetry, and USB |
 | Board integration | Shared state locking, UID/serial, reset cause, board facts and delayed reboot |
 | Control dispatcher | Command validation and execution shared by USB and BLE, with separate result slots |
-| Report encoding | Shared identity, configuration, telemetry, storage and wireless payloads |
+| Report encoding | Shared identity, configuration, telemetry, storage, and wireless payloads |
 | Wireless staging and authentication | Expiring credential candidates, BLE session unlock and per-command HMAC proofs |
 | USB HID and BLE | Transport framing, read snapshots, publication/polling, and connection lifecycle |
 | Wi-Fi | Saved-network joins, candidate tests and scans |
 | Diagnostic shells | Native UART and raw TCP inspection without application mutations ([console](../guides/console.md)) |
-| Telemetry and storage | CPU load, temperature and clock; runtime SD detection, FAT mount and exclusive USB handoff |
+| Telemetry and storage | CPU load, temperature, and clock; runtime SD detection, FAT mount, and exclusive USB handoff |
 | Boot settings | One CRC-checked next-boot record for CPU clock, radio switches and credentials ([settings](settings.md)) |
 
 Python and .NET own USB HID connections and serve the same dashboard through a loopback HTTP API. Direct owns

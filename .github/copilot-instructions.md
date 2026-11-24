@@ -35,7 +35,8 @@
 - When behavior changes, update its authoritative document and affected links rather than propagating duplicate copies.
 - Use [README.md](../README.md) as the landing page and [documentation index](../docs/README.md) for ownership.
 - Keep USB HID and Bluetooth LE specifications authoritative; the implementation reference is not a separate protocol.
-- Distinguish software checks from physical qualification. Never rewrite historical results to imply new hardware evidence.
+- Distinguish software checks from physical qualification. Never rewrite historical results to imply new hardware
+  evidence.
 - State each limitation in its authoritative home. Do not add disclaimers for hypothetical misreadings or repeat
   qualification boilerplate at the end of every page. Explain safety rules where they are used and link to their
   full rationale instead of copying it.
@@ -46,7 +47,8 @@
   An internal refactor should not require documentation edits unless a public contract or operating procedure changes.
 - API descriptions may name public types, functions, parameters and return values; avoid tracing their implementation.
 - Make each guide usable without reading source code or following a long chain of other documents.
-- Cross-link only for authoritative details or necessary prerequisites; avoid circular references and repeated link lists.
+- Cross-link only for authoritative details or necessary prerequisites; avoid circular references and repeated link
+  lists.
 - Keep code and tests independent of prose wording, document titles and section anchors. Test behavior and contracts,
   not exact documentation text; dedicated documentation checks may validate links and examples.
 - Preserve exact details needed for safety, interoperability and reproducible commands; reducing coupling must not

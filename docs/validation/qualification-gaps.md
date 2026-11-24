@@ -55,7 +55,8 @@ or physical reconnect reliability.
 - Pico W images have no BLE transport. C6 has no native USB HID dashboard path or USB-controlled benchmark.
 - BLE Control keys authenticate commands, but do not encrypt the link. Saved credentials are unencrypted in flash.
   USB management and UART commissioning rely on physical access, and the diagnostic TCP shell is unauthenticated
-  plaintext. Local hosts stay on loopback. See [wireless security boundaries](../guides/wireless.md#security-boundaries).
+  plaintext. Local hosts stay on loopback. See
+  [wireless security boundaries](../guides/wireless.md#security-boundaries).
 
 ## Recording further checks
 
