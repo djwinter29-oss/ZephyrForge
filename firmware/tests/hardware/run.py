@@ -146,7 +146,7 @@ def benchmark(
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     metrics: dict[str, int | float] = {}
-    identity: dict[str, str] = {}
+    identity: dict[str, str | None] = {}
     benchmark_result: dict[str, object] | None = None
     for connection in range(args.reopens + 1):
         client = ZephyrForgeHid(serial_number=args.serial)

@@ -78,7 +78,7 @@ class BoardConfiguration(TypedDict):
     reset_cause: int
     led_gpio: int
     card_detect_gpio: int
-    storage_transport: str
+    storage_transport: str | None
 
 
 class BootSettings(TypedDict):
