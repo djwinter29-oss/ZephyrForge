@@ -16,7 +16,9 @@ dependencies and SDK 0.17.4 toolchain, applies the tracked Zephyr patches and bu
 First use requires network access and several GB of free space. On Debian/Ubuntu-compatible Linux, missing host
 packages are installed through `apt-get`; other systems should install the reported prerequisites with their package
 manager. See [manual workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace) to provision
-dependencies yourself.
+dependencies yourself. The wrapper builds a standalone Zephyr application and rejects `build.cmake-args` settings
+that override its selected board, firmware profile, version, Zephyr base, SDK, or toolchain; use a manual west
+build when any of these need customization.
 
 The manifest in `west.yml` selects Zephyr 4.3.2 and imported module commits. Use
 `bash tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"` before a manual target build.
@@ -134,10 +136,10 @@ I2C0 because GPIO6/7 are shared. See the [C6 SPI wiring guide](../guides/boards/
 a card. The pin allocation is software-configured and has not been physically qualified.
 
 The C6 has no native USB HID peripheral, so it cannot use the USB-only Python or .NET dashboards. Direct can use its
-authenticated BLE service only after a Control key is already saved. The current repository has no way to provision
-that key to a fresh C6; BLE therefore remains off on a default image. This is a known management limitation, not
-replaced with unauthenticated access. Wi-Fi credential provisioning and the storage benchmark are also unavailable
-without USB HID. Do not treat successful compilation as board qualification.
+authenticated BLE service only after a Control key is saved through
+[initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning). BLE remains off on a fresh
+image until then; there is no unauthenticated bypass. Wi-Fi credential provisioning and the storage benchmark
+remain unavailable without USB HID. Neither compilation nor software commissioning checks qualify the board.
 
 Manual builds use the same pinned workspace. No-storage command:
 

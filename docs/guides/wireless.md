@@ -7,7 +7,8 @@ Control key is saved. Radio switches and saved credentials are boot settings; se
 [settings design](../reference/settings.md) for persistence and save behaviour. Espressif software coexistence is
 enabled on ESP32-S3.
 ESP32-C6 has no USB HID path for first-use setup. Its BLE service remains off until a Control key is saved, and the
-repository currently provides no secure way to provision that key on a fresh C6 board.
+[physical C6 commissioning procedure](#initial-esp32-c6-commissioning) below supplies that key without adding
+unauthenticated BLE access. This procedure has software checks only, not physical qualification.
 
 Pico W and Pico 2 W support USB-controlled scans and temporary candidate joins in both SD images. Their settings
 record is read at boot, but settings save remains unsupported: credentials tested through the dashboard stay in RAM
@@ -28,6 +29,48 @@ Wi-Fi or to create a Control key. The radio switches are separate next-boot cont
 ESP32-C6 has no USB HID and cannot use this setup flow; its BLE service requires a Control key already present in
 saved settings.
 
+### Initial ESP32-C6 commissioning
+
+This is an initial Control-key procedure for ESP32-C6-DevKitC-1 N8, not a Wi-Fi provisioning, key-rotation or
+settings-reset workflow. It requires authorized physical access to an unencrypted board's UART flashing port.
+
+1. Check the module marking and use a trusted, initialized Zephyr workspace to
+   [build and flash the selected C6 image](../development/firmware-build.md#esp32-c6-family).
+   Retain the matching build directory, including compiled configuration and devicetree, not just the release binary.
+   The utility derives the settings address from that build; it does not prove that its image is installed.
+2. Close other programs using the board's flashing port. Obtain exclusive board ownership and explicit authorization
+   to write settings. Activate the workspace's Python venv, which includes esptool. From the checkout, when it is a
+   direct child of the workspace, validate the selected build without reading a key or accessing a device:
+
+   ```sh
+   source ../.venv/bin/activate
+   python tools/firmware/provision-c6.py --build-dir build/firmware-esp32c6-no-storage --port PORT --dry-run
+   ```
+
+   Replace `PORT` with the actual UART flashing port. For an SD-over-SPI image, select
+   `build/firmware-esp32c6-sd-spi` instead. A dry run validates build metadata only, not the board or its settings.
+3. Generate a unique, cryptographically random 32-byte Control key and retain it securely in a password manager.
+   Authorize the write and enter its 64 hexadecimal digits at the hidden terminal prompt:
+
+   ```sh
+   python tools/firmware/provision-c6.py --build-dir build/firmware-esp32c6-no-storage --port PORT --allow-settings-write
+   ```
+
+   Do not put the key in command arguments, environment variables, logs or result records. Piped or echoed key entry
+   is refused. The utility checks the C6 chip and detected 8 MB flash, then requires the entire first settings sector
+   to be erased. It refuses existing settings, makes one write attempt, and compares the full sector after writing.
+   The record contains the key, default clock and enabled radio switches, with no Wi-Fi credentials.
+4. Only after the utility reports verified success, reset the board manually and connect through Direct's
+   **Bluetooth** option with the same key. Device operations leave the board in download mode rather than automatically
+   running the application.
+
+Keys and settings remain unencrypted in flash; Control-key authentication does not encrypt BLE traffic. The utility
+uses private temporary files and removes them on normal success or failure; abrupt process termination can leave
+private files that require authorized cleanup. It never requests a full-chip erase or retries an uncertain write.
+After a failure, timeout or interruption, inspect and reconcile the board with read-only operations before any
+separately authorized recovery. Do not blindly rerun provisioning, erase existing settings or infer success.
+The [settings specification](../reference/settings.md) defines the record and its power-loss limits.
+
 ### Wi-Fi
 
 Select a scanned network or enter a hidden SSID, enter its password if needed, and test the connection. Testing
@@ -38,6 +81,9 @@ test again. The control API also allows an untested staged pair to be saved.
 
 Scanning pauses an in-progress saved-network join, which resumes afterward. Scans and tests can run with the
 Wi-Fi boot switch off; that switch controls only the automatic saved-network join at boot.
+After a cancelled join, replacement admission waits for the driver to confirm disconnect or for an interface-status
+check to confirm it is down. If a timed-out scan never reports completion, scan admission remains blocked rather than
+reusing a possibly active driver; reboot the board to recover.
 
 Use a 2.4 GHz WPA2-Personal or open network with DHCP; WPA3-SAE and enterprise networks are not supported. A test
 succeeds when the board has an IPv4 address. A join that does not finish within 30 seconds fails. While a saved

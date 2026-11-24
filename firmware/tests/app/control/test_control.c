@@ -130,15 +130,17 @@ void test_unassigned_and_unsupported_opcodes(void)
 	assert_result(usb(ZF_OP_TCP_PROOF, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
-#if !ZF_ENABLE_STORAGE
 void test_msc_is_unsupported_when_storage_is_not_built(void)
 {
+#if !ZF_ENABLE_STORAGE
 	const uint8_t enable[1] = {1};
 
 	assert_result(usb(ZF_OP_MSC, 0, enable, sizeof(enable), 0),
 		      ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
-}
+#else
+	TEST_IGNORE_MESSAGE("MSC is built for this configuration");
 #endif
+}
 
 void test_led_admission_and_invalid_arguments(void)
 {
@@ -181,9 +183,9 @@ void test_benchmark_admission_size_and_transport_rules(void)
 	assert_result(ble(ZF_OP_BENCHMARK, 0, NULL, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
-#if ZF_ENABLE_STORAGE
 void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)
 {
+#if ZF_ENABLE_STORAGE
 	const uint8_t enable[1] = {1};
 	const uint8_t invalid[1] = {2};
 
@@ -199,8 +201,10 @@ void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(
 	zf_platform_storage_request_ExpectAnyArgsAndReturn(-EIO);
 	assert_result(usb(ZF_OP_MSC, 0, enable, 1, 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	assert_result(ble(ZF_OP_MSC, 0, enable, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
-}
+#else
+	TEST_IGNORE_MESSAGE("MSC is not built for this configuration");
 #endif
+}
 
 void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
 {
@@ -221,10 +225,70 @@ void test_reboot_requires_confirmation_and_clean_args(void)
 	assert_result(usb(ZF_OP_REBOOT, 0, NULL, 0, 0), ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
 	assert_result(usb(ZF_OP_REBOOT, 3, NULL, 0, 0), ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 	assert_result(usb(ZF_OP_REBOOT, 1, junk, 1, 0), ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
-	zf_platform_schedule_reboot_ExpectAndReturn(0);
-	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 	zf_platform_schedule_reboot_ExpectAndReturn(-EIO);
 	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+}
+
+void test_scheduled_usb_reboot_reserves_storage_across_transports_and_keeps_reads_available(void)
+{
+	const uint8_t save_args[5] = {80, 0, 0, 3, 0};
+	uint8_t result[ZF_CONTROL_SIZE];
+
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	zf_control_usb_get(result);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
+	zf_control_usb_get(result);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
+#if ZF_ENABLE_STORAGE
+	const uint8_t export[1] = {1};
+
+	assert_result(usb(ZF_OP_MSC, 0, export, sizeof(export), 10),
+		      ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+#endif
+#if ZF_ENABLE_STORAGE_BENCHMARK
+	const uint8_t start[5] = {1, 32, 0, 0, 0};
+
+	assert_result(usb(ZF_OP_BENCHMARK, 0, start, sizeof(start), 10),
+		      ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+#endif
+	assert_result(ble(ZF_OP_REBOOT, 1, NULL, 10), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	assert_result(ble(ZF_OP_SAVE, 0, save_args, 10), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	assert_result(usb(ZF_OP_REBOOT, 0, NULL, 0, 10), ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
+	assert_result(usb(ZF_OP_SAVE, 1, NULL, 0, 10), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
+	TEST_ASSERT_EQUAL_INT(0, write_calls);
+	zf_wifi_scan_state_ExpectAndReturn(ZF_SCAN_IDLE);
+	assert_result(usb(ZF_OP_SCAN_ENTRY, 0, NULL, 0, 10),
+		      ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_DETAIL_SCAN_STALE);
+}
+
+void test_scheduled_ble_save_reserves_usb_storage_and_preserves_its_result(void)
+{
+	const uint8_t args[5] = {80, 0, 0, 3, 0};
+	uint8_t result[ZF_BLE_CONTROL_SIZE];
+
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	assert_result(ble(ZF_OP_SAVE, 0, args, 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
+#if ZF_ENABLE_STORAGE
+	const uint8_t export[1] = {1};
+
+	assert_result(usb(ZF_OP_MSC, 0, export, sizeof(export), 10),
+		      ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+#endif
+#if ZF_ENABLE_STORAGE_BENCHMARK
+	const uint8_t start[5] = {1, 32, 0, 0, 0};
+
+	assert_result(usb(ZF_OP_BENCHMARK, 0, start, sizeof(start), 10),
+		      ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+#endif
+	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	assert_result(usb(ZF_OP_SAVE, 0, args, 4, 10), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	TEST_ASSERT_EQUAL_INT(1, write_calls);
+	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_80MHZ, zf_boot_config_sysclk());
+	zf_control_ble_get(result);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
 }
 
 void test_save_settings_without_commit(void)
@@ -268,6 +332,8 @@ void test_save_flash_failure_discards(void)
 	write_result = -EIO;
 	assert_result(usb(ZF_OP_SAVE, 0, args, 4, 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_boot_config_sysclk());
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 }
 
 void test_staged_values_require_commit_flag(void)
@@ -362,6 +428,9 @@ void test_wifi_test_starts_candidate_and_marks_tested(void)
 	zf_wifi_test_start_ExpectAndReturn(NULL, 4, "password", -EIO);
 	zf_wifi_test_start_IgnoreArg_ssid();
 	assert_result(usb(ZF_OP_TEST_WIFI, 0, NULL, 0, 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+	zf_wifi_test_start_ExpectAndReturn(NULL, 4, "password", -EBUSY);
+	zf_wifi_test_start_IgnoreArg_ssid();
+	assert_result(usb(ZF_OP_TEST_WIFI, 0, NULL, 0, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
 }
 
 void test_wifi_test_and_scan_busy(void)
@@ -436,6 +505,10 @@ void test_scan_start_and_entry(void)
 	TEST_ASSERT_EQUAL_MEMORY("cafe", result + 9, 4);
 	TEST_ASSERT_EQUAL_UINT8((uint8_t)-61, result[41]);
 	TEST_ASSERT_EQUAL_UINT8(3, result[42]);
+	zf_wifi_test_active_ExpectAndReturn(false);
+	zf_wifi_scan_active_ExpectAndReturn(false);
+	zf_wifi_scan_start_ExpectAndReturn(-EBUSY);
+	assert_result(usb(ZF_OP_SCAN, 0, NULL, 0, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
 }
 
 void test_ble_rejects_usb_only_opcodes(void)
@@ -487,6 +560,8 @@ void test_save_reports_failed_but_keeps_committed_settings_when_reboot_fails(voi
 	zf_boot_config_load();
 	zf_boot_config_wifi_password(password);
 	TEST_ASSERT_EQUAL_STRING("password", password);
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 }
 
 void test_commit_busy_while_scan_active(void)

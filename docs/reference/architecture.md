@@ -37,7 +37,7 @@ USB HID and BLE share ZephyrForge report payloads and Control semantics, defined
 The diagram shows the ESP32-S3. The Raspberry Pi Pico images keep the USB HID path, control dispatcher, SD storage
 and UART shell, but have no BLE or TCP shell; W variants also include Wi-Fi. They are flashed as UF2 images through
 the MCU's USB bootloader. The ESP32-C6 has no native USB HID or MSC; Direct uses its authenticated BLE service only
-when a Control key is already provisioned. The repository has no fresh-device key-provisioning path for C6.
+when a Control key is saved through [physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning).
 Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
 
 ## Repository responsibilities
@@ -67,12 +67,20 @@ and [host development](../development/host-tools.md) guides.
 
 Boot loads the [settings record](settings.md), applies the CPU clock profile, initializes detected SD storage, starts Wi-Fi
 (joining the saved network when enabled), starts BLE when enabled with a saved Control key, and then enables USB.
-A mount failure is reported in Report 10 and does not stop USB or the radios. No card self-test or file write runs.
+Report 10 can show initialized storage without a mounted filesystem after a mount failure; the mount error code is
+logged but not included in the report. Settings-load source and elapsed time, and initial SD setup/mount duration,
+are logged to UART; a flash settings write also logs its erase/write/verify duration. Such a mount failure does not
+stop USB or the radios. No card self-test or file write runs.
 
 USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thread. Both call the same control
-dispatcher, and every access to settings, staging and wireless state holds one application mutex. Wi-Fi driver
+dispatcher, and every access to settings, staging and wireless state holds one application mutex. Settings saves
+synchronously erase, write and verify flash in the callback while holding that mutex; the nominal 20 ms main-loop
+period is not a response-time guarantee. The logged flash duration does not measure lock wait or total callback
+latency, and save responsiveness and contention have not been hardware-qualified. Wi-Fi driver
 events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
 Reboots are scheduled about one second after the reply so the host can read the result first.
+An accepted reboot or save reserves that reset: new reboot/save and storage-control requests are rejected until
+reset, while diagnostic reads remain available. Failed reset scheduling leaves normal admission available.
 The [SD worker](sdcard.md) handles runtime detection and exclusive firmware/USB ownership outside the application lock;
 native MSC block I/O runs in its own USB class thread. Busy or USB-owned storage blocks reboot/settings-save.
 

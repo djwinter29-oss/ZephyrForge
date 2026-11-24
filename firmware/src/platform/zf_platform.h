@@ -45,7 +45,7 @@ int zf_platform_benchmark_request(bool start, uint32_t size_mib);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */
 bool zf_wifi_test_active(void);
-/** True while a scan is running (Feature 12 scan_state 1). */
+/** True while a scan or its timed-out driver request is still active. */
 bool zf_wifi_scan_active(void);
 
 /** Start joining a candidate pair; password is NUL-terminated (empty for an open network). */

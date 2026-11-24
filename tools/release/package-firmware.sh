@@ -132,8 +132,12 @@ build_board="$(build_value BOARD)"
 build_target="$(build_value TARGET)"
 build_storage="$(build_value STORAGE)"
 image_hash="$(build_value IMAGE_SHA256)"
-if [[ ! "$firmware_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ||
-  ! "$source_commit" =~ ^[0-9a-f]{40}$ || "$source_dirty" != true && "$source_dirty" != false ||
+version_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")/../firmware" && pwd)/release-version.sh"
+if ! bash "$version_helper" "v$firmware_version" >/dev/null 2>&1; then
+  printf 'Error: unsupported firmware version in build identity snapshot: %s.\n' "$build_identity" >&2
+  exit 1
+fi
+if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ || "$source_dirty" != true && "$source_dirty" != false ||
   ! "$image_hash" =~ ^[0-9a-f]{64}$ ]]; then
   printf 'Error: malformed build identity snapshot: %s.\n' "$build_identity" >&2
   exit 1
@@ -155,21 +159,25 @@ if [[ "$board" == pico_w || "$board" == pico2_w ]]; then
     exit 1
   fi
 fi
-package=zephyrforge/build/firmware-package
-mkdir -p "$package/licenses"
-cp zephyrforge/LICENSE "$package/LICENSE"
-cp "$FIRMWARE_BUILD/zephyr/$image" "$package/"
+package_root=zephyrforge/build
+package="$package_root/firmware-package"
+mkdir -p "$package_root"
+staging="$(mktemp -d "$package_root/.firmware-package.XXXXXX")"
+trap 'rm -rf "$staging"' EXIT
+cp zephyrforge/LICENSE "$staging/LICENSE"
+cp "$FIRMWARE_BUILD/zephyr/$image" "$staging/"
 for component in "${components[@]}"; do
   find "$component" -name .git -prune -o -type f \
     \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \
        -o -iname 'copyright*' -o -iname '*third*notice*' \) -print0 |
   while IFS= read -r -d '' source; do
-    destination="$package/licenses/$source"
+    destination="$staging/licenses/$source"
     mkdir -p "$(dirname "$destination")"
     cp "$source" "$destination"
   done
 done
-sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$package/licenses/fatfs-LICENSE"
+mkdir -p "$staging/licenses"
+sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$staging/licenses/fatfs-LICENSE"
 {
   printf 'Firmware version: %s\n' "$firmware_version"
   printf 'Source commit: %s\nSource tree dirty: %s\n' "$source_commit" "$source_dirty"
@@ -189,4 +197,21 @@ sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$package/licenses/fatfs-LICENSE"
     fi
   fi
   printf 'Software build only; not flashed or hardware-qualified. SD testing is deferred.\n'
-} > "$package/BUILD-INFO.txt"
+} > "$staging/BUILD-INFO.txt"
+previous=""
+if [[ -e "$package" ]]; then
+  previous="$(mktemp -d "$package_root/.firmware-package.previous.XXXXXX")"
+  rmdir "$previous"
+  mv "$package" "$previous"
+fi
+if ! mv "$staging" "$package"; then
+  if [[ -n "$previous" && -e "$previous" ]]; then
+    mv "$previous" "$package"
+  fi
+  printf 'Error: could not install staged firmware package at %s.\n' "$package" >&2
+  exit 1
+fi
+trap - EXIT
+if [[ -n "$previous" && -e "$previous" ]]; then
+  rm -rf "$previous"
+fi

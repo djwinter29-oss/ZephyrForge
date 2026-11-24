@@ -617,6 +617,7 @@ internal static partial class HidProtocol
             return detail switch
             {
                 1 or 2 => op is Opcode.Reboot or Opcode.Msc or Opcode.SelfTest or Opcode.SaveSettings,
+                29 => op is Opcode.Reboot or Opcode.Msc or Opcode.SelfTest or Opcode.SaveSettings,
                 25 => op is Opcode.SaveSettings or Opcode.StageSsid or Opcode.StagePassword or Opcode.StageKey
                     or Opcode.WifiTest or Opcode.WifiScan,
                 26 => op is Opcode.SaveSettings or Opcode.WifiTest or Opcode.WifiScan or Opcode.WifiEntry,

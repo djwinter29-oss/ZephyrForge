@@ -8,6 +8,7 @@
  */
 
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/zf_platform.h"
 
 #include <errno.h>
@@ -121,7 +122,7 @@ bool zf_ble_failed(void)
 }
 
 #ifndef CONFIG_WIFI
-void zf_wireless_report(uint8_t out[ZF_WIRELESS_SIZE])
+void zf_wireless_report(uint8_t *out)
 {
 	const zf_wireless_t off = {0};
 

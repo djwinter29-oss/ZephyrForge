@@ -42,9 +42,9 @@ ESP32-S3 and Pico images offer native **four-bit SDMMC** or a separate **SD-over
 | **Application foundation** | Board/platform integration, management services, documented wire contracts and portable firmware tests |
 
 Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect; BLE needs a saved Control key.
-On the C6, USB HID cannot provision that key, and this repository does not yet provide a C6 key-provisioning path;
-fresh C6 images therefore do not advertise BLE until settings are provisioned externally. Wireless setup, the TCP shell
-and LED control remain ESP32-S3 features.
+On the C6, use [initial physical key commissioning](docs/guides/wireless.md#initial-esp32-c6-commissioning);
+fresh images do not advertise BLE before a key is saved. Dashboard Wi-Fi provisioning, the TCP shell and LED control
+remain ESP32-S3 features.
 An SD card is **optional for basic management**.
 Storage requires a compatible external 3.3 V SD socket or module and wiring for the selected firmware image.
 

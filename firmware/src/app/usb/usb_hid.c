@@ -2,6 +2,7 @@
  * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 
 #if CONFIG_USB_DEVICE_STACK_NEXT
 #include "app/control/control.h"
@@ -152,15 +153,24 @@ static int set_report(const struct device *dev, const uint8_t type, const uint8_
 		      const uint8_t *const buf)
 {
 	bool accepted;
+	int64_t lock_started;
+	int64_t lock_acquired;
 
 	ARG_UNUSED(dev);
 	if (type != HID_REPORT_TYPE_FEATURE || id != ZF_REPORT_CONTROL || len != ZF_CONTROL_SIZE + 1 ||
 	    buf[0] != ZF_REPORT_CONTROL) {
 		return -ENOTSUP;
 	}
+	lock_started = k_uptime_get();
 	zf_lock();
+	lock_acquired = k_uptime_get();
 	accepted = zf_control_usb_set(buf + 1, ZF_CONTROL_SIZE, k_uptime_get());
 	zf_unlock();
+	if (accepted && buf[3] == ZF_OP_SAVE) {
+		LOG_INF("USB settings request lock wait %lld ms, hold %lld ms",
+			(long long)(lock_acquired - lock_started),
+			(long long)(k_uptime_get() - lock_acquired));
+	}
 	/* A rejected envelope stalls the status stage and leaves the previous result readable. */
 	return accepted ? 0 : -EINVAL;
 }

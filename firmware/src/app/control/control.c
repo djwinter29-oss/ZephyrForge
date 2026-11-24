@@ -1,4 +1,5 @@
 #include "app/control/control.h"
+#include "app/storage/benchmark.h"
 #include "platform/boot_config.h"
 #include "platform/zf_platform.h"
 #include "app/wireless/wireless_stage.h"
@@ -33,12 +34,14 @@ typedef struct {
 static result_t usb_result;
 static result_t ble_result;
 static zf_stage_t stage;
+static bool reboot_pending;
 
 void zf_control_init(void)
 {
 	memset(&usb_result, 0, sizeof(usb_result));
 	memset(&ble_result, 0, sizeof(ble_result));
 	zf_stage_reset(&stage);
+	reboot_pending = false;
 }
 
 static bool zero(const uint8_t *data, size_t size)
@@ -108,6 +111,8 @@ static void reboot(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 	} else if (!(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
+	} else if (reboot_pending) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 	} else if (zf_platform_storage_busy()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_CONFLICT);
 	} else if (request->ble && zf_stage_active(&stage)) {
@@ -115,6 +120,7 @@ static void reboot(const request_t *request, result_t *result)
 	} else if (zf_platform_schedule_reboot() != 0) {
 		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	} else {
+		reboot_pending = true;
 		zf_stage_reset(&stage);
 		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 	}
@@ -157,6 +163,10 @@ static void save(const request_t *request, result_t *result)
 	if ((unsigned)profile > ZF_SYSCLK_MAX_PROFILE || request->args[2] != 0 ||
 	    (radios & (uint8_t)~(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE))) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
+		return;
+	}
+	if (reboot_pending) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 		return;
 	}
 	if (zf_platform_storage_busy()) {
@@ -213,6 +223,7 @@ static void save(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 		return;
 	}
+	reboot_pending = true;
 	finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 	mhz = zf_sysclk_profile_mhz(zf_boot_config_sysclk());
 	result->data[0] = (uint8_t)mhz;
@@ -279,11 +290,17 @@ static void test_wifi(result_t *result)
 	detail = zf_stage_test_candidate(&stage, &saved, &candidate);
 	if (detail) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, detail);
-	} else if (zf_wifi_test_start(candidate.ssid, candidate.ssid_length, candidate.password) != 0) {
-		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	} else {
-		stage.pair_tested = false;
-		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+		int err = zf_wifi_test_start(candidate.ssid, candidate.ssid_length, candidate.password);
+
+		if (err == -EBUSY) {
+			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
+		} else if (err != 0) {
+			finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+		} else {
+			stage.pair_tested = false;
+			finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+		}
 	}
 	memset(password, 0, sizeof(password));
 }
@@ -337,6 +354,8 @@ static void msc(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 	} else if (action == 0 && !(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
+	} else if (reboot_pending) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 	} else {
 		err = zf_platform_storage_request(action == 1, request->transaction_id);
 		if (err == -ENOMEDIUM) {
@@ -386,6 +405,10 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 
 			if ((start && (size == 0 || size > ZF_BENCHMARK_MAX_MIB)) || (!start && size != 0)) {
 				finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_BENCHMARK_ERROR_SIZE);
+				break;
+			}
+			if (reboot_pending) {
+				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 				break;
 			}
 			detail = zf_platform_benchmark_request(start, size);
@@ -438,10 +461,16 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
 		} else if (zf_wifi_scan_active()) {
 			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
-		} else if (zf_wifi_scan_start() != 0) {
-			finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 		} else {
-			finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+			int err = zf_wifi_scan_start();
+
+			if (err == -EBUSY) {
+				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
+			} else if (err != 0) {
+				finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+			} else {
+				finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+			}
 		}
 		break;
 	case ZF_OP_SCAN_ENTRY:

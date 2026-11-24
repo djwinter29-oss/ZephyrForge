@@ -78,6 +78,7 @@ class ControlDetail(IntEnum):
     WIFI_SCAN_ACTIVE = 26
     STAGED_CREDENTIAL_COMMIT_REQUIRED = 27
     USB_STAGED_CREDENTIALS_BLOCK_BLE_SAVE = 28
+    REBOOT_PENDING = 29
 
 
 class WifiState(IntEnum):

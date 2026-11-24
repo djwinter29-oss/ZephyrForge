@@ -1,5 +1,7 @@
 #include "app/zephyrforge.h"
 #include "app/storage/storage.h"
+#include "app/storage/benchmark.h"
+#include "app/usb/hid_reports.h"
 #include "platform/zf_platform.h"
 
 #include <errno.h>
@@ -217,7 +219,7 @@ int zf_platform_benchmark_request(bool start, uint32_t size_mib)
 #endif
 }
 
-void zf_benchmark_report(uint8_t sequence, uint8_t out[ZF_BENCHMARK_SIZE])
+void zf_benchmark_report(uint8_t sequence, uint8_t *out)
 {
 	zf_benchmark_t status = {0};
 
@@ -392,7 +394,7 @@ bool zf_platform_storage_busy(void)
 	return busy;
 }
 
-void zf_storage_report(uint8_t sequence, uint8_t out[ZF_STORAGE_SIZE])
+void zf_storage_report(uint8_t sequence, uint8_t *out)
 {
 	zf_storage_t storage;
 
@@ -594,6 +596,7 @@ static struct k_thread storage_thread;
 
 void zf_storage_init(void)
 {
+	int64_t started = k_uptime_get();
 	int err = gpio_is_ready_dt(&detect) ? gpio_pin_configure_dt(&detect, GPIO_INPUT) : -ENODEV;
 	int present = err == 0 ? gpio_pin_get_dt(&detect) : err;
 
@@ -601,7 +604,8 @@ void zf_storage_init(void)
 		err = present < 0 ? present : disk_access_register(&usb_disk);
 	}
 	if (err != 0) {
-		LOG_ERR("SD service setup failed: %d", err);
+		LOG_ERR("SD service setup failed: %d after %lld ms", err,
+			(long long)(k_uptime_get() - started));
 		zf_storage_policy_init(false, false, k_uptime_get());
 		return;
 	}
@@ -611,4 +615,6 @@ void zf_storage_init(void)
 	k_thread_create(&storage_thread, storage_stack, K_THREAD_STACK_SIZEOF(storage_stack),
 			storage_worker, NULL, NULL, NULL, 5, 0, K_NO_WAIT);
 	k_thread_name_set(&storage_thread, "sd-storage");
+	LOG_INF("SD initial setup and mount completed in %lld ms",
+		(long long)(k_uptime_get() - started));
 }

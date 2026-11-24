@@ -5,10 +5,12 @@
  * AIROC requests run on a dedicated queue because scans and joins block; no request holds the application lock.
  */
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
 #include "platform/zf_platform.h"
 #include "wireless_limits.h"
+#include "wifi_driver.h"
 
 #include <errno.h>
 #include <string.h>
@@ -18,6 +20,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/sys/atomic.h>
 
 LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
 
@@ -75,6 +78,8 @@ enum action {
 	ACTION_DISCONNECT, /**< Leave the current network. */
 	ACTION_CONNECT, /**< Join the owner's profile. */
 	ACTION_SCAN, /**< Refresh the scan table. */
+	ACTION_VERIFY, /**< Confirm the active interface has a usable connection. */
+	ACTION_VERIFY_DISCONNECT, /**< Confirm the driver has left the current connection attempt. */
 };
 
 /** Event-queue messages consumed by the poll loop. */
@@ -82,14 +87,17 @@ enum event {
 	EVENT_UP, /**< Link established (post-DHCP for AIROC, driver-confirmed otherwise). */
 	EVENT_DOWN_CONNECTED, /**< Link lost after a successful join. */
 	EVENT_DOWN_CONNECTING, /**< A connect attempt failed or was dropped. */
+	EVENT_DISCONNECT_FAILED, /**< A requested disconnect did not complete. */
 	EVENT_SCAN_DONE, /**< The scan finished; publish the collected table. */
+	EVENT_LINK_VERIFIED, /**< The interface is associated and has a preferred IPv4 address. */
+	EVENT_DISCONNECT_VERIFIED, /**< Interface status after an ambiguous disconnect result. */
 };
 
-/** A credential profile being joined: the saved network or the staged candidate. */
-struct network {
-	uint8_t ssid[ZF_SSID_MAX_BYTES]; /**< Raw SSID bytes. */
-	uint8_t ssid_length; /**< SSID length, 0..ZF_SSID_MAX_BYTES. */
-	char password[ZF_WIFI_PASSWORD_SIZE]; /**< NUL-terminated credential; wiped when unused. */
+/** A deferred driver event; status and generation survive the queue boundary. */
+struct wifi_event {
+	uint32_t generation; /**< Connection generation for verification results. */
+	int status; /**< Driver status or verification outcome. */
+	uint8_t type; /**< One event value. */
 };
 
 /** One collected scan result, deduplicated to the strongest entry per SSID. */
@@ -100,7 +108,8 @@ struct scan_entry {
 	uint8_t security; /**< Driver security bitmask. */
 };
 
-K_MSGQ_DEFINE(events, sizeof(uint8_t), 16, 1);
+K_MSGQ_DEFINE(events, sizeof(struct wifi_event), 16, 4);
+static atomic_t event_overflow_pending = ATOMIC_INIT(0);
 
 static struct net_mgmt_event_callback event_cb;
 #ifdef CONFIG_WIFI_AIROC
@@ -109,7 +118,7 @@ static struct net_mgmt_event_callback dhcp_cb;
 static struct net_if *iface;
 
 static bool saved_enabled;
-static struct network saved;
+static zf_wifi_network_t saved;
 static uint8_t wifi_state;
 static uint8_t saved_detail;
 static int64_t retry_at;
@@ -118,21 +127,33 @@ static int64_t retry_delay = RETRY_DELAY_MS;
 static enum link link;
 static enum owner owner;
 static bool leave_requested;
+static bool connect_quarantined;
+static bool disconnect_verify_pending;
 static int64_t connect_deadline;
 static int64_t leave_deadline;
+static uint32_t connection_generation;
+static uint32_t verification_generation;
+static uint32_t disconnect_generation;
+static bool link_verify_pending;
 
 static enum command command;
 static uint8_t join_detail;
-static struct network test;
+static zf_wifi_network_t test;
 static bool test_join_pending;
 static uint8_t test_generation;
 
 static uint8_t scan_state;
 static uint16_t scan_generation;
 static bool scan_pending;
+static bool scan_driver_active;
 static int64_t scan_deadline;
 static uint8_t scan_count;
 static struct scan_entry scan[SCAN_MAX];
+
+static bool driver_operation_available(void)
+{
+	return !scan_driver_active && !connect_quarantined;
+}
 
 static void schedule_retry(int64_t now)
 {
@@ -144,18 +165,25 @@ static void schedule_retry(int64_t now)
 static void release_link(void)
 {
 	owner = OWNER_NONE;
+	link_verify_pending = false;
 	if (link != LINK_DOWN && link != LINK_LEAVING) {
 		leave_requested = true;
 	}
 }
 
-static void wipe(struct network *network)
+static void wipe(zf_wifi_network_t *network)
 {
 	memset(network, 0, sizeof(*network));
 }
 
 static void fail_test(uint8_t detail, int64_t now)
 {
+	if (link != LINK_DOWN) {
+		connect_quarantined = true;
+		if (link != LINK_LEAVING) {
+			leave_deadline = 0;
+		}
+	}
 	command = COMMAND_FAILED;
 	join_detail = detail;
 	test_join_pending = false;
@@ -202,7 +230,10 @@ static void link_down(int64_t now)
 
 	link = LINK_DOWN;
 	if (previous == LINK_LEAVING) {
-		return;
+		connect_quarantined = false;
+		disconnect_verify_pending = false;
+		leave_requested = false;
+		link_verify_pending = false;
 	}
 	if (owner == OWNER_TEST) {
 		owner = OWNER_NONE;
@@ -222,9 +253,19 @@ static void link_down(int64_t now)
 	}
 }
 
-static void finish_scan(void)
+static void finish_scan(int status)
 {
+	if (!scan_driver_active) {
+		return;
+	}
+	scan_driver_active = false;
 	if (scan_state != ZF_SCAN_RUNNING) {
+		return;
+	}
+	if (status != 0) {
+		scan_count = 0;
+		scan_state = ZF_SCAN_FAILED;
+		LOG_WRN("Wi-Fi scan failed: %d", status);
 		return;
 	}
 	for (uint8_t i = 1; i < scan_count; ++i) {
@@ -296,9 +337,12 @@ static void add_scan_result(const struct wifi_scan_result *result)
 	slot->security = security_bits(result->security);
 }
 
-static void post(uint8_t event)
+static void post(uint8_t type, int status, uint32_t generation)
 {
+	struct wifi_event event = {.generation = generation, .status = status, .type = type};
+
 	if (k_msgq_put(&events, &event, K_NO_WAIT) != 0) {
+		atomic_set(&event_overflow_pending, 1);
 		LOG_ERR("Wi-Fi event queue full");
 	}
 }
@@ -315,20 +359,24 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 #ifdef CONFIG_WIFI_AIROC
 		/* AIROC reports association before DHCP; only the bound event completes the join. */
 		if (status != NULL && status->status != 0) {
-			post(EVENT_DOWN_CONNECTING);
+			post(EVENT_DOWN_CONNECTING, status->status, 0);
 		}
 #else
 		/* Failed connects are followed by a disconnect event; success is raised after DHCP binds. */
 		if (status != NULL && status->status == 0) {
-			post(EVENT_UP);
+			post(EVENT_UP, 0, 0);
 		}
 #endif
 		break;
 	case NET_EVENT_IPV4_DHCP_BOUND:
-		post(EVENT_UP);
+		post(EVENT_UP, 0, 0);
 		break;
 	case NET_EVENT_WIFI_DISCONNECT_RESULT:
-		post(status != NULL && status->status == 0 ? EVENT_DOWN_CONNECTED : EVENT_DOWN_CONNECTING);
+		if (status == NULL) {
+			post(EVENT_DISCONNECT_FAILED, -EIO, 0);
+		} else {
+			post(status->status == 0 ? EVENT_DOWN_CONNECTED : EVENT_DISCONNECT_FAILED, status->status, 0);
+		}
 		break;
 	case NET_EVENT_WIFI_SCAN_RESULT:
 		if (cb->info != NULL && cb->info_length >= sizeof(struct wifi_scan_result)) {
@@ -338,7 +386,7 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 		}
 		break;
 	case NET_EVENT_WIFI_SCAN_DONE:
-		post(EVENT_SCAN_DONE);
+		post(EVENT_SCAN_DONE, status != NULL && cb->info_length >= sizeof(*status) ? status->status : -EIO, 0);
 		break;
 	default:
 		break;
@@ -347,19 +395,59 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 
 static void apply_events(int64_t now)
 {
-	uint8_t event;
+	struct wifi_event event;
 
 	while (k_msgq_get(&events, &event, K_NO_WAIT) == 0) {
-		switch (event) {
+		switch (event.type) {
 		case EVENT_UP:
-			link_up(now);
+			if (link == LINK_CONNECTING && owner != OWNER_NONE) {
+				link_verify_pending = true;
+			}
 			break;
 		case EVENT_DOWN_CONNECTED:
-		case EVENT_DOWN_CONNECTING:
 			link_down(now);
 			break;
+		case EVENT_DOWN_CONNECTING:
+			if (link == LINK_LEAVING) {
+				break;
+			} else if (owner == OWNER_TEST && command == COMMAND_TESTING) {
+				fail_test(DETAIL_NONE, now);
+			} else {
+				link_down(now);
+			}
+			break;
+		case EVENT_DISCONNECT_FAILED:
+			disconnect_verify_pending = true;
+			if (link != LINK_LEAVING) {
+				link = LINK_LEAVING;
+			}
+			leave_deadline = now + LEAVE_TIMEOUT_MS;
+			break;
 		case EVENT_SCAN_DONE:
-			finish_scan();
+			finish_scan(event.status);
+			break;
+		case EVENT_LINK_VERIFIED:
+			if (event.generation == connection_generation && owner != OWNER_NONE) {
+				if (event.status == 0 && link == LINK_CONNECTING) {
+					link_verify_pending = false;
+					link_up(now);
+				} else if (event.status == ZF_WIFI_DRIVER_LINK_DOWN && link == LINK_UP) {
+					link_verify_pending = false;
+					link_down(now);
+				}
+			}
+			break;
+		case EVENT_DISCONNECT_VERIFIED:
+			if (event.generation == disconnect_generation && link == LINK_LEAVING) {
+				disconnect_verify_pending = false;
+				if (event.status == 0) {
+					link_down(now);
+				} else {
+					leave_requested = true;
+					leave_deadline = now + LEAVE_TIMEOUT_MS;
+					LOG_WRN("Wi-Fi disconnect state is uncertain; retrying");
+				}
+			}
 			break;
 		default:
 			break;
@@ -367,11 +455,26 @@ static void apply_events(int64_t now)
 	}
 }
 
+static void reconcile_event_overflow(void)
+{
+	if (atomic_clear(&event_overflow_pending) == 0) {
+		return;
+	}
+
+	LOG_ERR("Wi-Fi event queue overflow; reconciling interface state");
+	if (link == LINK_LEAVING) {
+		disconnect_verify_pending = true;
+	} else if (link == LINK_CONNECTING || link == LINK_UP) {
+		link_verify_pending = true;
+	}
+}
+
 static void apply_timeouts(int64_t now)
 {
-	if (link == LINK_LEAVING && now >= leave_deadline) {
-		LOG_WRN("Wi-Fi disconnect not confirmed");
-		link = LINK_DOWN;
+	if (link == LINK_LEAVING && !leave_requested && now >= leave_deadline) {
+		LOG_WRN("Wi-Fi disconnect not confirmed; checking interface state");
+		disconnect_verify_pending = true;
+		leave_deadline = now + LEAVE_TIMEOUT_MS;
 	}
 	if (link == LINK_CONNECTING && now >= connect_deadline) {
 		if (owner == OWNER_TEST && command == COMMAND_TESTING) {
@@ -385,29 +488,62 @@ static void apply_timeouts(int64_t now)
 	if (scan_state == ZF_SCAN_RUNNING && !scan_pending && now >= scan_deadline) {
 		scan_state = ZF_SCAN_FAILED;
 		scan_count = 0;
-		LOG_WRN("Wi-Fi scan timed out");
+		LOG_ERR("Wi-Fi scan timed out; driver remains quarantined until completion or reboot");
 	}
 }
 
 static void start_connect(enum owner next, int64_t now)
 {
+	if (++connection_generation == 0) {
+		++connection_generation;
+	}
 	owner = next;
 	link = LINK_CONNECTING;
 	connect_deadline = now + CONNECT_TIMEOUT_MS;
 }
 
-static enum action next_action(int64_t now, struct network *network)
+static enum action next_action(int64_t now, zf_wifi_network_t *network)
 {
 	if (link == LINK_LEAVING) {
+		if (disconnect_verify_pending) {
+			disconnect_verify_pending = false;
+			if (++disconnect_generation == 0) {
+				++disconnect_generation;
+			}
+			return ACTION_VERIFY_DISCONNECT;
+		}
+		if (leave_requested && now >= leave_deadline) {
+			leave_requested = false;
+			leave_deadline = now + LEAVE_TIMEOUT_MS;
+			return ACTION_DISCONNECT;
+		}
 		return ACTION_NONE;
 	}
 	if (leave_requested) {
-		leave_requested = false;
 		if (link != LINK_DOWN) {
+			leave_requested = false;
+			link_verify_pending = false;
 			link = LINK_LEAVING;
 			leave_deadline = now + LEAVE_TIMEOUT_MS;
 			return ACTION_DISCONNECT;
 		}
+		if (!connect_quarantined) {
+			leave_requested = false;
+		}
+	}
+	if (connect_quarantined) {
+		if (now < leave_deadline) {
+			return ACTION_NONE;
+		}
+		link_verify_pending = false;
+		link = LINK_LEAVING;
+		leave_deadline = now + LEAVE_TIMEOUT_MS;
+		return ACTION_DISCONNECT;
+	}
+	if (link_verify_pending) {
+		link_verify_pending = false;
+		verification_generation = connection_generation;
+		return ACTION_VERIFY;
 	}
 	if (scan_pending) {
 		if (link == LINK_CONNECTING && owner == OWNER_SAVED) {
@@ -420,11 +556,13 @@ static enum action next_action(int64_t now, struct network *network)
 		}
 		scan_pending = false;
 		scan_deadline = now + SCAN_TIMEOUT_MS;
+		scan_driver_active = true;
 		return ACTION_SCAN;
 	}
 	if (test_join_pending) {
 		if (link != LINK_DOWN) {
 			owner = OWNER_NONE;
+			link_verify_pending = false;
 			link = LINK_LEAVING;
 			leave_deadline = now + LEAVE_TIMEOUT_MS;
 			return ACTION_DISCONNECT;
@@ -435,8 +573,8 @@ static enum action next_action(int64_t now, struct network *network)
 		return ACTION_CONNECT;
 	}
 	if (saved_enabled && iface != NULL && owner == OWNER_NONE && link == LINK_DOWN &&
-	    command != COMMAND_TESTING && command != COMMAND_JOINED && scan_state != ZF_SCAN_RUNNING && retry_at != 0 &&
-	    now >= retry_at) {
+	    command != COMMAND_TESTING && command != COMMAND_JOINED && scan_state != ZF_SCAN_RUNNING &&
+	    driver_operation_available() && retry_at != 0 && now >= retry_at) {
 		retry_at = 0;
 		wifi_state = STATE_CONNECTING;
 		start_connect(OWNER_SAVED, now);
@@ -446,46 +584,40 @@ static enum action next_action(int64_t now, struct network *network)
 	return ACTION_NONE;
 }
 
-static int connect(const struct network *network)
-{
-	struct wifi_connect_req_params params = {
-		.ssid = network->ssid,
-		.ssid_length = network->ssid_length,
-		.psk = (const uint8_t *)network->password,
-		.psk_length = (uint8_t)strlen(network->password),
-		.security = network->password[0] ? WIFI_SECURITY_TYPE_PSK : WIFI_SECURITY_TYPE_NONE,
-		.channel = WIFI_CHANNEL_ANY,
-		.band = WIFI_FREQ_BAND_2_4_GHZ,
-		.mfp = WIFI_MFP_OPTIONAL,
-		.timeout = SYS_FOREVER_MS,
-	};
-
-	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params));
-}
-
 #ifdef CONFIG_WIFI_AIROC
 static struct k_work_q request_queue;
 K_THREAD_STACK_DEFINE(request_stack, 4096);
 static enum action request_action;
-static struct network request_network;
-static uint8_t request_generation;
+static zf_wifi_network_t request_network;
+static uint32_t request_generation;
+#else
+static uint32_t verify_request_generation;
+static enum action verify_request_action;
 #endif
 
-static void perform_request(enum action action, struct network *network)
+static void perform_request(enum action action, zf_wifi_network_t *network, uint32_t generation)
 {
 	int err = 0;
 
 	switch (action) {
 	case ACTION_DISCONNECT:
-		err = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+		err = zf_wifi_driver_request(ZF_WIFI_DRIVER_DISCONNECT, iface, NULL);
 		break;
 	case ACTION_CONNECT:
-		err = connect(network);
+		err = zf_wifi_driver_request(ZF_WIFI_DRIVER_CONNECT, iface, network);
 		memset(network, 0, sizeof(*network));
 		break;
 	case ACTION_SCAN:
-		err = net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0);
+		err = zf_wifi_driver_request(ZF_WIFI_DRIVER_SCAN, iface, NULL);
 		break;
+	case ACTION_VERIFY:
+		err = zf_wifi_driver_request(ZF_WIFI_DRIVER_VERIFY_UP, iface, NULL);
+		post(EVENT_LINK_VERIFIED, err, generation);
+		return;
+	case ACTION_VERIFY_DISCONNECT:
+		err = zf_wifi_driver_request(ZF_WIFI_DRIVER_VERIFY_DOWN, iface, NULL);
+		post(EVENT_DISCONNECT_VERIFIED, err, generation);
+		return;
 	default:
 		return;
 	}
@@ -496,12 +628,13 @@ static void perform_request(enum action action, struct network *network)
 	LOG_ERR("Wi-Fi request %d failed: %d", action, err);
 	zf_lock();
 	if (action == ACTION_DISCONNECT) {
-		link = LINK_DOWN;
+		disconnect_verify_pending = true;
+		leave_deadline = k_uptime_get() + LEAVE_TIMEOUT_MS;
 	} else if (action == ACTION_CONNECT) {
 		link = LINK_DOWN;
 		if (owner == OWNER_TEST && command == COMMAND_TESTING
 #ifdef CONFIG_WIFI_AIROC
-		    && test_generation == request_generation
+		    && test_generation == (uint8_t)request_generation
 #endif
 		) {
 			fail_test(DETAIL_TIMEOUT, k_uptime_get());
@@ -509,6 +642,7 @@ static void perform_request(enum action action, struct network *network)
 			saved_failed(DETAIL_NONE, k_uptime_get());
 		}
 	} else if (scan_state == ZF_SCAN_RUNNING) {
+		scan_driver_active = false;
 		scan_state = ZF_SCAN_FAILED;
 		scan_count = 0;
 	}
@@ -519,20 +653,29 @@ static void perform_request(enum action action, struct network *network)
 static void request_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
-	perform_request(request_action, &request_network);
+	perform_request(request_action, &request_network, request_generation);
 }
 
 K_WORK_DEFINE(request_work, request_handler);
+#else
+static void verify_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	perform_request(verify_request_action, NULL, verify_request_generation);
+}
+
+K_WORK_DEFINE(verify_work, verify_handler);
 #endif
 
 void zf_wifi_poll(void)
 {
 	int64_t now = k_uptime_get();
-	struct network network;
+	zf_wifi_network_t network;
 	enum action action;
 
 	zf_lock();
 	apply_events(now);
+	reconcile_event_overflow();
 	apply_timeouts(now);
 #ifdef CONFIG_WIFI_AIROC
 	if (k_work_busy_get(&request_work) != 0) {
@@ -548,6 +691,10 @@ void zf_wifi_poll(void)
 			request_network = network;
 			request_generation = test_generation;
 			memset(&network, 0, sizeof(network));
+		} else if (action == ACTION_VERIFY) {
+			request_generation = verification_generation;
+		} else if (action == ACTION_VERIFY_DISCONNECT) {
+			request_generation = disconnect_generation;
 		}
 		if (k_work_submit_to_queue(&request_queue, &request_work) < 0) {
 			LOG_ERR("Wi-Fi request queue unavailable");
@@ -560,8 +707,13 @@ void zf_wifi_poll(void)
 					saved_failed(DETAIL_RADIO, now);
 				}
 			} else if (action == ACTION_SCAN) {
+				scan_driver_active = false;
 				scan_state = ZF_SCAN_FAILED;
 				scan_count = 0;
+			} else if (action == ACTION_VERIFY) {
+				link_verify_pending = true;
+			} else if (action == ACTION_VERIFY_DISCONNECT) {
+				disconnect_verify_pending = true;
 			} else {
 				leave_requested = true;
 			}
@@ -569,14 +721,40 @@ void zf_wifi_poll(void)
 	}
 	zf_unlock();
 #else
+	if (action == ACTION_VERIFY || action == ACTION_VERIFY_DISCONNECT) {
+		if (k_work_busy_get(&verify_work) != 0) {
+			if (action == ACTION_VERIFY) {
+				link_verify_pending = true;
+			} else {
+				disconnect_verify_pending = true;
+			}
+		} else {
+			verify_request_action = action;
+			verify_request_generation = verification_generation;
+			if (action == ACTION_VERIFY_DISCONNECT) {
+				verify_request_generation = disconnect_generation;
+			}
+			if (k_work_submit(&verify_work) < 0) {
+				if (action == ACTION_VERIFY) {
+					link_verify_pending = true;
+				} else {
+					disconnect_verify_pending = true;
+				}
+				LOG_ERR("Wi-Fi verification work unavailable");
+			}
+		}
+	}
 	zf_unlock();
-	perform_request(action, &network);
+	if (action != ACTION_VERIFY && action != ACTION_VERIFY_DISCONNECT) {
+		perform_request(action, &network, test_generation);
+	}
 #endif
 }
 
 void zf_wifi_init(bool enabled)
 {
 	zf_lock();
+	atomic_clear(&event_overflow_pending);
 	saved.ssid_length = zf_boot_config_wifi_ssid_bytes(saved.ssid);
 	zf_boot_config_wifi_password(saved.password);
 	saved_enabled = enabled && saved.ssid_length != 0;
@@ -611,11 +789,14 @@ bool zf_wifi_test_active(void)
 
 bool zf_wifi_scan_active(void)
 {
-	return scan_state == ZF_SCAN_RUNNING;
+	return scan_state == ZF_SCAN_RUNNING || scan_driver_active;
 }
 
 int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *password)
 {
+	if (!driver_operation_available()) {
+		return -EBUSY;
+	}
 	if (++test_generation == 0) {
 		++test_generation;
 	}
@@ -639,6 +820,12 @@ int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 
 void zf_wifi_test_cancel(void)
 {
+	if (owner == OWNER_TEST && link != LINK_DOWN) {
+		connect_quarantined = true;
+		if (link != LINK_LEAVING) {
+			leave_deadline = 0;
+		}
+	}
 	command = COMMAND_IDLE;
 	test_join_pending = false;
 	wipe(&test);
@@ -656,6 +843,9 @@ int zf_wifi_scan_start(void)
 {
 	if (iface == NULL) {
 		return -ENODEV;
+	}
+	if (!driver_operation_available()) {
+		return -EBUSY;
 	}
 	if (++scan_generation == 0) {
 		++scan_generation;
@@ -704,10 +894,10 @@ static void ipv4_address(uint8_t out[4])
 	}
 }
 
-void zf_wireless_report(uint8_t out[ZF_WIRELESS_SIZE])
+void zf_wireless_report(uint8_t *out)
 {
 	zf_wireless_t status = {0};
-	const struct network *shown;
+	const zf_wifi_network_t *shown;
 	uint8_t stage_flags = 0;
 
 	zf_lock();

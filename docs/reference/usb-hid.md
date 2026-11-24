@@ -536,10 +536,17 @@ Opcode `5` with commit and opcode `9` report expiry with detail `20`.
 Saving without testing is permitted.
 
 Opcode `10` cancels a test, discards all staging and expiry, and returns to saved-network policy.
+If a candidate connection is still being processed by the driver, a replacement test is Busy until its disconnect
+is confirmed by a successful disconnect result or a driver-status check; ambiguous results are reconciled before
+admission resumes. A delayed connection event is accepted only when the interface is connected and has a current
+IPv4 address.
 During a scan it discards staging but leaves the scan running.
 Opcode `11` completes when the scan is admitted, not when finished.
 An admitted scan clears the previous list, advances its nonzero 16-bit generation and retains at most the
-18 strongest unique SSIDs. A scan that does not finish within ten seconds fails.
+18 strongest unique SSIDs. A failed scan publishes zero results. If a scan times out before the driver reports
+completion, another scan remains Busy until that completion arrives, so a delayed result cannot complete a newer scan.
+If the driver never reports completion, reboot is required to recover scan admission; the firmware does not assume
+that a timed-out scan has stopped.
 Scan during a test or another scan, test during scan, and wireless commit during test/scan return Busy
 with detail `25` or `26` as applicable.
 
@@ -615,7 +622,8 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `26` | Wi-Fi scan active | Busy/error `5`, wireless commit `5` or opcodes `9`, `11`, `12` |
 | `27` | Staging exists but commit flag is clear | Invalid/error `3`, opcode `5` |
 | `28` | USB staging blocks BLE save/reboot | Busy/error `5`, BLE opcodes `2`, `5` |
-| `29`-`255` | Reserved | - |
+| `29` | Reset already scheduled | Busy/error `5`, opcodes `2`-`5` |
+| `30`-`255` | Reserved | - |
 
 Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a separate Wi-Fi detail namespace.
 Report `11` separately uses execution error `10` for an unavailable firmware filesystem mount.
@@ -657,6 +665,10 @@ For opcode `5`, Completed means settings passed flash readback verification and 
 A failure scheduling reset after a verified save can report Failed even though flash changed.
 Hosts MUST reconcile saved settings after an uncertain or failed save; they MUST NOT assume no side effects.
 For opcode `2`, Completed means reset was scheduled, not that the host observed reboot.
+After a successful opcode `2` or `5`, further reboot, settings-save, MSC and benchmark requests return Busy/detail
+`29` until reset. Arguments and confirmation are still validated first. Diagnostic reads, including opcode `12`,
+remain available, and the reset deadline is not extended. Failed scheduling leaves normal admission available;
+a failed save can still have changed flash as described above.
 For opcodes `9` and `11`, Completed means a test/scan was admitted; Feature `12` owns its outcome.
 
 USB and BLE have separate result slots and transaction IDs; neither replaces the other's result.

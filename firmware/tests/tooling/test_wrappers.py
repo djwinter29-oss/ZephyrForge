@@ -1,5 +1,6 @@
 """Firmware wrapper checks with mocked downloads, installers and device access."""
 
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -9,14 +10,42 @@ import unittest
 
 
 TOOLS = Path(__file__).resolve().parents[3] / "tools/firmware"
+CHECKER_SPEC = importlib.util.spec_from_file_location(
+    "check_build_cmake_args", TOOLS / "check-build-cmake-args.py")
+CHECKER = importlib.util.module_from_spec(CHECKER_SPEC)
+CHECKER_SPEC.loader.exec_module(CHECKER)
 MOCK = r"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$*" in
     "-")
         printf '%s\n' "${MOCK_SERIAL_PORT:-}" ;;
+    *check-build-cmake-args.py*)
+        if [[ -n "${MOCK_WEST_CMAKE_ARGS:-}" ]]; then
+            case "$MOCK_WEST_CMAKE_ARGS" in
+                *ZEPHYR_TOOLCHAIN_VARIANT*|*ZEPHYR_SDK_INSTALL_DIR*|*Zephyr-sdk_DIR*|\
+                *CROSS_COMPILE*|*CMAKE_TOOLCHAIN_FILE*|*CMAKE_PROJECT_*|*ZEPHYRFORGE_VERSION*|\
+                *ZF_ENABLE_STORAGE*|*CONF_FILE*|*DTC_OVERLAY_FILE*|*-UBOARD*|*-U\**|\
+                *--toolchain*|*"-C "*)
+                    printf 'Error: west build.cmake-args must not override ZEPHYR_TOOLCHAIN_VARIANT.\n' >&2
+                    exit 1 ;;
+            esac
+        fi ;;
     "-c "*)
-        exit "${MOCK_PYTHON_STATUS:-0}" ;;
+        if [[ "$*" == *"configparser"* ]]; then
+            awk -v key="$3" '
+                function lower(value) { return tolower(value) }
+                lower($0) ~ /^[[:space:]]*\[manifest\][[:space:]]*$/ { in_manifest=1; next }
+                /^[[:space:]]*\[/ { in_manifest=0 }
+                in_manifest && lower($0) ~ "^[[:space:]]*" lower(key) "[[:space:]]*=" {
+                    sub(/^[^=]*=[[:space:]]*/, "")
+                    sub(/[[:space:]]+$/, "")
+                    print
+                    exit
+                }' "$4"
+        else
+            exit "${MOCK_PYTHON_STATUS:-0}"
+        fi ;;
     "-m venv "*)
         mkdir -p "$3/bin"
         touch "$3/pyvenv.cfg"
@@ -132,6 +161,16 @@ class WrapperTests(unittest.TestCase):
         python.write_text(MOCK)
         python.chmod(0o755)
         shutil.copy(python, self.bin / "python")
+        bash = self.bin / "bash"
+        bash.write_text("""#!/bin/bash
+set -euo pipefail
+if [[ "$1" == *"/check-pico-pio.sh" ]]; then
+    printf 'check-pico-pio %s\\n' "$2" >> "$MOCK_LOG"
+    exit "${MOCK_PIO_STATUS:-0}"
+fi
+exec /bin/bash "$@"
+""")
+        bash.chmod(0o755)
         for tool in ("git", "cmake", "ninja", "gperf", "dtc", "make", "gcc", "g++", "xz", "wget"):
             path = self.bin / tool
             path.write_text("#!/usr/bin/env bash\n"
@@ -145,7 +184,8 @@ printf 'cmake %s\\n' "$*" >> "$MOCK_LOG"
 if [[ "$*" == *"/cmake/pristine.cmake" ]]; then
     case "$1" in
     "-DBINARY_DIR=$MOCK_ROOT/build/firmware"|"-DBINARY_DIR=$MOCK_ROOT/build/firmware-sd-spi"|\
-    "-DBINARY_DIR=$MOCK_ROOT/build/firmware-no-storage")
+    "-DBINARY_DIR=$MOCK_ROOT/build/firmware-no-storage"|\
+    "-DBINARY_DIR=$MOCK_ROOT/build/firmware-pico2-no-storage")
             rm "${1#-DBINARY_DIR=}/CMakeCache.txt" ;;
         *) printf 'Refusing to clean outside the selected build\\n' >&2; exit 20 ;;
     esac
@@ -156,7 +196,8 @@ fi
                         HOME=str(self.workspace), MOCK_ROOT=str(self.root), MOCK_LOG=str(self.log))
         for key in ("VENV_DIR", "VIRTUAL_ENV", "ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR", "GH_TOKEN",
                     "ZEPHYR_TOOLCHAIN_VARIANT", "CROSS_COMPILE", "WEST_CONFIG_LOCAL",
-                    "WEST_CONFIG_GLOBAL", "WEST_CONFIG_SYSTEM", "MOCK_SDK_PATH",
+                    "WEST_CONFIG_GLOBAL", "WEST_CONFIG_SYSTEM", "MOCK_SDK_PATH", "MOCK_WEST_CMAKE_ARGS",
+                    "MOCK_SERIAL_PORT", "MOCK_PIO_STATUS",
                     "MOCK_BUILD_STATUS", "MOCK_BLOB_STATUS", "MOCK_PIP_STATUS", "MOCK_FLASH_STATUS",
                     "MOCK_PYTHON_STATUS", "MOCK_INVALID_IMAGE"):
             self.env.pop(key, None)
@@ -168,6 +209,26 @@ fi
     def commands(self):
         return self.log.read_text() if self.log.exists() else ""
 
+    def test_build_argument_validator_rejects_wrapper_setting_overrides_and_unsets(self):
+        for arguments in (
+            ["-DZEPHYRFORGE_VERSION=9.8.7"],
+            ["-DBOARD=some_other_board"],
+            ["-DZEPHYR_BASE=/tmp/other-zephyr"],
+            ["-DZephyr_DIR:PATH=/tmp/other-zephyr/share/zephyr-package/cmake"],
+            ["-DCONF_FILE=other.conf"],
+            ["-DDTC_OVERLAY_FILE=other.overlay"],
+            ["-DZF_ENABLE_STORAGE=OFF"],
+            ["-U", "ZEPHYRFORGE_VERSION"],
+            ["-U", "ZF_ENABLE_STORAGE*"],
+            ["-U*"],
+        ):
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    CHECKER.validate_arguments(arguments)
+
+    def test_build_argument_validator_allows_unrelated_cmake_defaults(self):
+        CHECKER.validate_arguments(["-DAPP_OPTION:BOOL=ON", "-USCRATCH_CACHE_*"])
+
     def test_build_bootstraps_then_reuses_venv_workspace_and_sdk(self):
         for _ in range(2):
             result = self.run_script("build.sh")
@@ -177,6 +238,7 @@ fi
             self.assertEqual(commands.count(command), 1)
         self.assertNotIn("-m west init ", commands)
         self.assertEqual(commands.count("-m west build "), 2)
+        self.assertEqual(commands.count("--no-sysbuild"), 2)
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
@@ -295,7 +357,7 @@ esac
     def test_build_refuses_an_alternate_manifest_file_before_updating(self):
         (self.root / "alternate.yml").write_text("manifest:\n  projects: []\n")
         (self.workspace / ".west/config").write_text(
-            "[manifest]\npath = ZephyrForge\nfile = alternate.yml\n")
+            "[manifest]\npath = ZephyrForge\nFILE = alternate.yml\n")
         result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must select this checkout's west.yml", result.stderr)
@@ -335,6 +397,68 @@ esac
         result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-DZEPHYR_TOOLCHAIN_VARIANT=zephyr", self.commands())
+
+    def test_build_rejects_west_cmake_args_that_override_the_sdk(self):
+        self.env["MOCK_WEST_CMAKE_ARGS"] = "-DZEPHYR_TOOLCHAIN_VARIANT=cross-compile"
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("west build.cmake-args must not override", result.stderr)
+        self.assertNotIn("-m west update ", self.commands())
+        self.assertNotIn("-m west build ", self.commands())
+
+    def test_build_rejects_west_cmake_args_that_override_firmware_version(self):
+        self.env["MOCK_WEST_CMAKE_ARGS"] = "-DZEPHYRFORGE_VERSION=9.8.7"
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("-m west build ", self.commands())
+
+    def test_flash_reuses_existing_artifacts_with_build_only_overrides(self):
+        self.assertEqual(self.run_script("build.sh").returncode, 0)
+        self.env["MOCK_WEST_CMAKE_ARGS"] = "-DZEPHYRFORGE_VERSION=9.8.7"
+        self.env["MOCK_SERIAL_PORT"] = "/dev/mock"
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Auto-detected serial port: /dev/mock", result.stdout)
+        self.assertNotIn("-m west build ", self.commands())
+        self.assertNotIn("-m west flash ", self.commands())
+
+    def test_build_cleans_cache_when_cached_sdk_or_toolchain_changes(self):
+        sdk = self.workspace / "sdk-0.17.4"
+        compiler = sdk / "arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        compiler.parent.mkdir(parents=True)
+        compiler.touch()
+        compiler.chmod(0o755)
+        (sdk / "sdk_version").write_text("0.17.4\n")
+        self.env["ZEPHYR_SDK_INSTALL_DIR"] = str(sdk)
+        build_dir = self.root / "build/firmware-pico2-no-storage"
+        build_dir.mkdir(parents=True)
+        (build_dir / "CMakeCache.txt").write_text(
+            f"APPLICATION_BINARY_DIR:PATH={build_dir}\n"
+            f"ZEPHYR_SDK_INSTALL_DIR:PATH={sdk}\n"
+            "Zephyr-sdk_DIR:PATH=/old/sdk/cmake\n"
+            "ZEPHYR_TOOLCHAIN_VARIANT:STRING=zephyr\n"
+            "CMAKE_C_COMPILER:FILEPATH=/old/sdk/bin/compiler\n"
+        )
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"cmake -DBINARY_DIR={build_dir} -DSOURCE_DIR={self.root / 'firmware'}", self.commands())
+        self.assertIn("/cmake/pristine.cmake", self.commands())
+
+    def test_build_cleans_cache_when_cached_source_or_sysbuild_changes(self):
+        build_dir = self.root / "build/firmware-pico2-no-storage"
+        build_dir.mkdir(parents=True)
+        (build_dir / "CMakeCache.txt").write_text(
+            f"APPLICATION_BINARY_DIR:PATH={build_dir}\n"
+            "CMAKE_HOME_DIRECTORY:INTERNAL=/tmp/old-zephyr-share-sysbuild\n"
+            "ZEPHYR_BASE:UNINITIALIZED=/tmp/old-zephyr\n"
+            "Zephyr_DIR:PATH=/tmp/old-zephyr/share/zephyr-package/cmake\n"
+        )
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Build system changed; cleaning", result.stdout)
+        self.assertIn("Zephyr installation changed; cleaning", result.stdout)
+        self.assertIn("/cmake/pristine.cmake", self.commands())
 
     def test_sdk_registered_outside_home_is_selected_after_install(self):
         wrong_sdk = self.workspace / "zephyr-sdk-0.18.0"
@@ -397,6 +521,13 @@ esac
         self.assertIn("-m west blobs fetch hal_infineon --allow-regex", commands)
         self.assertNotIn("-m west blobs fetch hal_espressif", commands)
         self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_pico_build_stops_when_pio_consistency_check_fails(self):
+        self.env["MOCK_PIO_STATUS"] = "17"
+        result = self.run_script("build.sh", "--board", "pico")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("check-pico-pio ", self.commands())
+        self.assertNotIn("-m west build ", self.commands())
 
     def test_rp2350_sdmmc_build_uses_shared_storage_overlay(self):
         result = self.run_script("build.sh", "--board", "pico2", "--storage", "sdmmc")

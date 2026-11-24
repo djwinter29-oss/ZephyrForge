@@ -2,6 +2,7 @@
  * Bluetooth LE peripheral: report mirrors, session unlock, command proofs and the 9-byte control characteristic.
  */
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
 #include "app/wireless/wireless_auth.h"
@@ -158,7 +159,9 @@ static void recycled(void)
 {
 	zf_lock();
 	if (atomic_get(&state) == ZF_BLE_OFF && !failed && name[0] != '\0') {
-		(void)advertise(true);
+		if (advertise(true) != 0) {
+			(void)k_work_reschedule(&slow_work, K_MSEC(FAST_PERIOD_MS));
+		}
 	}
 	zf_unlock();
 }
@@ -263,14 +266,19 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 {
 	const uint8_t *request = buf;
 	int64_t now = k_uptime_get();
+	int64_t lock_started;
+	int64_t lock_acquired;
 	ssize_t result = len;
+	bool save_request = false;
 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
 	if (offset != 0 || (flags & (BT_GATT_WRITE_FLAG_PREPARE | BT_GATT_WRITE_FLAG_CMD))) {
 		return BT_GATT_ERR(BT_ATT_ERR_NOT_SUPPORTED);
 	}
+	lock_started = k_uptime_get();
 	zf_lock();
+	lock_acquired = k_uptime_get();
 	if (!session.unlocked) {
 		result = BT_GATT_ERR(ZF_ATT_ERR_REJECTED);
 	} else if (!zf_control_ble_envelope(request, len)) {
@@ -281,10 +289,16 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 		if (err) {
 			result = BT_GATT_ERR(err);
 		} else {
+			save_request = request[2] == ZF_OP_SAVE;
 			zf_control_ble_execute(request, now);
 		}
 	}
 	zf_unlock();
+	if (save_request) {
+		LOG_INF("BLE settings request lock wait %lld ms, hold %lld ms",
+			(long long)(lock_acquired - lock_started),
+			(long long)(k_uptime_get() - lock_acquired));
+	}
 	return result;
 }
 

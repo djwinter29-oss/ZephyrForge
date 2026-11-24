@@ -70,7 +70,8 @@ python -m esptool --chip esp32c6 --port PORT --baud 460800 write-flash 0x0 zephy
 
 This writes the image without requesting a full-chip erase. After flashing, use the UART console for logs.
 The C6 has no native USB HID; Direct can manage it over authenticated BLE only if a Control key is already present
-in saved settings. The repository does not yet provide a secure way to provision that key on a fresh C6 board.
+in saved settings. Use [initial physical commissioning](wireless.md#initial-esp32-c6-commissioning), which requires
+a matching initialized build directory.
 
 ## 1. Prepare a Zephyr workspace
 
@@ -193,7 +194,7 @@ bash zephyrforge/tools/firmware/flash.sh --board esp32c6 --port PORT
 ```
 
 The C6 has no native USB HID, so the USB dashboards cannot manage it. Direct BLE management requires a Control key
-already saved in settings; fresh-board key provisioning is not yet supported. See the
+saved through [initial physical commissioning](wireless.md#initial-esp32-c6-commissioning). See the
 [C6 build options](../development/firmware-build.md#esp32-c6-family) and
 [C6 SD wiring](boards/esp32c6-sd-spi.md).
 
@@ -239,8 +240,8 @@ Connect the board's **USB** connector. In Direct, click **USB** and choose the Z
 An SD mount failure is expected without a card in storage-enabled images and does not prevent dashboard operation.
 The optional `--storage none` build omits SD, filesystem and USB mass-storage support.
 On the ESP32-S3, test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using
-[wireless setup](wireless.md). ESP32-C6 has no USB HID for provisioning and requires a previously saved Control key
-before its BLE service can be used.
+[wireless setup](wireless.md). ESP32-C6 requires
+[physical Control-key commissioning](wireless.md#initial-esp32-c6-commissioning) before its BLE service can be used.
 Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is
 never retried; confirm the
 re-sync prompt after checking the board.

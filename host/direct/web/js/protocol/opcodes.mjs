@@ -86,14 +86,14 @@ export const OPCODES = Object.freeze({
     facts: { keys: ["led_colour"], read: r => ({ led_colour: r[4] }),
       valid: facts => facts.led_colour !== undefined && inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
-    rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
-  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5 },
+    rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5, 29: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
+  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5, 29: 5 },
     invalidates: [REPORT.STORAGE],
     request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
     facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
       valid: facts => typeof facts.msc_enabled === "boolean" } },
   [OP.BENCHMARK]: { capability: CAP.SELF_TEST, ble: null, excluded: [1],
-    details: { 1: 5, 2: 5, 3: 3, 4: 6 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
+    details: { 1: 5, 2: 5, 3: 3, 4: 6, 29: 5 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
     request: (r, unused) => {
       const size = new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true);
       return r[3] === 0 && [0, 1].includes(r[4]) && unused(9)
@@ -106,7 +106,7 @@ export const OPCODES = Object.freeze({
         ? facts.benchmark_size_mib !== undefined && inRange(facts.benchmark_size_mib, 1, 1024)
         : facts.benchmark_size_mib === 0) } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
-    details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5 }, returnsSettings: true,
+    details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5, 29: 5 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)
       && r[6] === 0 && r[7] <= 3 && unused(8),
     completed: (data, zero) => validSettings(decodeSettings(data)) && data[3] <= 3 && data[4] <= 7

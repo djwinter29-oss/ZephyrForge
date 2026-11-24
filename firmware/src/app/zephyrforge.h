@@ -8,8 +8,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/usb/hid_reports.h"
-
 #ifndef ZEPHYRFORGE_VERSION
 /** Semantic version stamped by the build (ZEPHYRFORGE_VERSION environment) or the development default. */
 #define ZEPHYRFORGE_VERSION "0.1.0"
@@ -36,17 +34,17 @@ const uint8_t *zf_board_uid(void);
 const char *zf_board_serial(void);
 
 /** Encode Feature 1: identity, firmware version, MCU, board model and capabilities. */
-void zf_identity_report(uint8_t out[ZF_IDENTITY_SIZE]);
+void zf_identity_report(uint8_t *out);
 /** Read the immutable boot-sampled module memory inventory. */
-void zf_memory_report(uint8_t out[ZF_MEMORY_SIZE]);
+void zf_memory_report(uint8_t *out);
 /** Encode Feature 2: saved configuration and hardware pin allocation. */
-void zf_config_report(uint8_t out[ZF_CONFIG_SIZE]);
+void zf_config_report(uint8_t *out);
 /** Encode Feature 3: temperature, load, clock and last-LED telemetry with the given Input sequence. */
-void zf_telemetry_report(uint8_t sequence, uint8_t out[ZF_TELEMETRY_SIZE]);
+void zf_telemetry_report(uint8_t sequence, uint8_t *out);
 /** Encode Feature 10: the coherent storage snapshot with the given Input sequence. */
-void zf_storage_report(uint8_t sequence, uint8_t out[ZF_STORAGE_SIZE]);
+void zf_storage_report(uint8_t sequence, uint8_t *out);
 /** Encode Feature 12: Wi-Fi, BLE and staging state. */
-void zf_wireless_report(uint8_t out[ZF_WIRELESS_SIZE]);
+void zf_wireless_report(uint8_t *out);
 
 /**
  * @brief Apply the saved CPU clock profile before transports start.
@@ -65,7 +63,7 @@ void zf_telemetry_poll(void);
 /** Register the storage service and start policy polling with the boot-sampled card state. */
 void zf_storage_init(void);
 /** Read retained benchmark progress without acquiring the media lock. */
-void zf_benchmark_report(uint8_t sequence, uint8_t out[ZF_BENCHMARK_SIZE]);
+void zf_benchmark_report(uint8_t sequence, uint8_t *out);
 /** Let the storage worker change owners after this Feature 20 result has left the control path. */
 void zf_storage_result_read(uint8_t transaction);
 

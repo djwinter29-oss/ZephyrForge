@@ -50,13 +50,14 @@ is not an exact reason code, and no separate Starting state is published.
 | Item | Value |
 | --- | --- |
 | Advertising type | Connectable undirected (`ADV_IND`) on all three advertising channels. |
-| Interval | 96 units (60 ms) for 30 seconds after startup/disconnect, then 800 units (500 ms). |
+| Interval | 96 units (60 ms) for 30 seconds after a successful start; 800 units (500 ms) afterward or on retry. |
 | Address | Selected by the controller stack; the current server does not configure rotating-address privacy. |
 | Advertising data | Flags `0x06` (LE General Discoverable, BR/EDR not supported); complete list of 128-bit service UUIDs containing the ZephyrForge service. |
 | Scan response | Complete Local Name `ZephyrForge-<USB serial>`: 16 uppercase hexadecimal digits of the board unique ID, 25 bytes in total. |
 
 The GAP Device Name characteristic returns the same name without unlocking. Advertising starts when the controller
-reaches the working state and restarts after every disconnect. Fast discovery is temporary; the slower interval
+reaches the working state and restarts after every disconnect. If a restart is rejected transiently, the server remains
+Off and retries advertising rather than claiming it is discoverable. Fast discovery is temporary; the slower interval
 reduces idle radio use. The firmware does not re-advertise while connected, so it serves one central at a time.
 The scan-response name includes the full stable board UID for dashboard selection. Anyone scanning can correlate
 observations using that name, regardless of address behavior; this is an accepted
@@ -68,9 +69,9 @@ Pairing is not required: [session unlock](#session-unlock) and [command proofs](
 application access. The default firmware does not enable a pairing or bonding workflow, request link encryption,
 or persist peer keys. Pairing is not an alternative to the Control key. Bluetooth never writes flash. On USB-HID
 boards the Control key is provisioned through USB and loaded from boot settings. The ESP32-C6 has no native USB HID,
-and the repository does not yet provide another secure key-provisioning path for it. A fresh C6 image therefore leaves
-Bluetooth off until settings containing a Control key are provisioned externally; this limitation is not bypassed
-with unauthenticated access.
+so use [initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning).
+A fresh C6 image leaves Bluetooth off until a Control key is saved; this requirement is not bypassed with
+unauthenticated access.
 
 ## GATT Layout
 
@@ -327,6 +328,8 @@ Clients MUST abandon the transaction and reconnect after an ATT transaction time
 Accepted reboot and save-and-reboot commands are followed by a reset after a 1000 ms
 grace period, intended to allow the result read. This is not a guarantee that a slow
 connection can finish reading before reset.
+During that period, further reboot/save requests on either transport and USB MSC/benchmark commands return
+Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling does not reserve the reset.
 
 ## ATT Errors
 

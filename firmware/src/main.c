@@ -1,4 +1,5 @@
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
 #include "platform/zf_platform.h"
@@ -11,15 +12,23 @@
 int main(void)
 {
 	uint8_t radios;
+	int64_t settings_started;
 	int err;
 
 	zf_board_init();
 	zf_lock();
+	settings_started = k_uptime_get();
 	zf_boot_config_load();
+	zf_boot_config_source_t settings_source = zf_boot_config_source();
 	zf_control_init();
 	radios = zf_boot_config_boot_radios() & ZF_RADIO_MASK;
 	zf_unlock();
 	printk("ZephyrForge %s (%s)\n", ZEPHYRFORGE_VERSION, zf_board_serial());
+	printk("Boot settings load: %lld ms (source %u)\n",
+	       (long long)(k_uptime_get() - settings_started), settings_source);
+	if (settings_source == ZF_BOOT_CONFIG_READ_ERROR) {
+		printk("Boot settings read failed; defaults are active\n");
+	}
 
 	err = zf_system_clock_apply(zf_sysclk_profile_mhz(zf_boot_config_boot_sysclk()));
 	if (err) {

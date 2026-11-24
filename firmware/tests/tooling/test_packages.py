@@ -40,9 +40,10 @@ class FirmwarePackageTests(unittest.TestCase):
 
     def run_package(self, board, target, storage="sdmmc", config_storage=None, identity_storage=None,
                     package_version=None, c6_simple_boot=True, c6_flash_size=8388608,
-                    c6_app_address="0x0", replace_image_after_snapshot=False):
+                    c6_app_address="0x0", replace_image_after_snapshot=False, identity_version="0.1.0",
+                    clear_package=True):
         package = self.repo / "build/firmware-package"
-        if package.exists():
+        if clear_package and package.exists():
             shutil.rmtree(package)
         config = f'CONFIG_BOARD_TARGET="{target}"\n'
         config_storage = storage if config_storage is None else config_storage
@@ -83,7 +84,7 @@ class FirmwarePackageTests(unittest.TestCase):
         image_name = "zephyr.bin" if board.startswith("esp32") else "zephyr.uf2"
         image_hash = hashlib.sha256((self.build / "zephyr" / image_name).read_bytes()).hexdigest()
         identity = (
-            "FIRMWARE_VERSION=0.1.0\n"
+            f"FIRMWARE_VERSION={identity_version}\n"
             "SOURCE_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
             "SOURCE_DIRTY=false\n"
             f"BOARD={board}\nTARGET={target}\nSTORAGE={identity_storage}\n"
@@ -166,12 +167,30 @@ class FirmwarePackageTests(unittest.TestCase):
         self.assertIn("build identity does not match BOARD=pico2 STORAGE=none", result.stderr)
         self.assertFalse(package.exists())
 
+    def test_package_rejects_firmware_version_outside_identity_field_range(self):
+        result, package = self.run_package(
+            "pico2", "rpi_pico2/rp2350a/m33", storage="none", identity_version="0.1.256")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported firmware version in build identity snapshot", result.stderr)
+        self.assertFalse(package.exists())
+
     def test_package_rejects_image_replaced_after_build_snapshot(self):
         result, package = self.run_package(
             "pico2", "rpi_pico2/rp2350a/m33", storage="none", replace_image_after_snapshot=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("firmware image does not match build identity snapshot", result.stderr)
         self.assertFalse(package.exists())
+
+    def test_repackaging_replaces_previous_target_image(self):
+        result, package = self.run_package("esp32s3", "esp32s3_devkitc/esp32s3/procpu", storage="none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((package / "zephyr.bin").is_file())
+
+        result, package = self.run_package(
+            "pico2", "rpi_pico2/rp2350a/m33", storage="none", clear_package=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual({path.name for path in package.iterdir()},
+                         {"zephyr.uf2", "BUILD-INFO.txt", "LICENSE", "licenses"})
 
     def test_c6_package_rejects_incompatible_flash_layout(self):
         target = "esp32c6_devkitc/esp32c6/hpcore"

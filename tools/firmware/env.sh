@@ -48,15 +48,17 @@ west_config="${WEST_CONFIG_LOCAL:-$workspace/.west/config}"
 [[ "$west_config" == /* ]] || west_config="$workspace/$west_config"
 
 west_manifest_setting() {
-	awk -v key="$1" '
-		/^\[manifest\]$/ { in_manifest=1; next }
-		/^\[/ { in_manifest=0 }
-		in_manifest && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-			sub(/^[^=]*=[[:space:]]*/, "")
-			sub(/[[:space:]]+$/, "")
-			print
-			exit
-		}' "$2"
+	"$base" -c '
+import configparser
+import sys
+
+parser = configparser.ConfigParser(allow_no_value=True)
+try:
+    parser.read(sys.argv[2], encoding="utf-8")
+    print(parser.get("manifest", sys.argv[1], fallback=""))
+except configparser.Error as exc:
+    raise SystemExit(f"Error: malformed west configuration {sys.argv[2]}: {exc}")
+' "$1" "$2"
 }
 
 if [[ -f "$west_config" ]]; then
@@ -134,6 +136,9 @@ if [[ ! -f "$manifest_file" || "$(realpath "$manifest_file")" != "$(realpath "$r
 	printf "Error: west workspace must select this checkout's west.yml, not %s.\n" \
 		"$manifest_file" >&2
 	exit 1
+fi
+if [[ "${ZEPHYRFORGE_VALIDATE_BUILD_CONFIG:-}" == 1 ]]; then
+	python "$root/tools/firmware/check-build-cmake-args.py" "$workspace"
 fi
 # Keep dependencies aligned with the pinned manifest; west preserves local working-tree changes.
 python -m west update --narrow -o=--depth=1

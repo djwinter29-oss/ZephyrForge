@@ -35,7 +35,7 @@ non-W variants start no radios. W candidate credentials remain RAM-only.
 
 ## Architecture
 
-All settings pass through the settings service's RAM state. Writers only
+During firmware operation, all settings pass through the settings service's RAM state. Writers only
 stage values in RAM; one save call commits the complete record to flash. Boot initialization uses the boot
 snapshot. Saving does not reconfigure the running hardware; host save commands schedule a subsequent reboot.
 
@@ -153,7 +153,9 @@ key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NO
 
 ## Saving
 
-`zf_boot_config_save()` is the only settings writer in ZephyrForge.
+`zf_boot_config_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
+key-only record before application boot; its authorized procedure is in the
+[wireless guide](../guides/wireless.md#initial-esp32-c6-commissioning).
 
 ```mermaid
 flowchart TD
@@ -176,6 +178,12 @@ The Zephyr ESP32 flash driver suspends the cache and serializes SPI-flash access
 other threads and radio interrupts may be delayed briefly. Saves are rare user actions and execute synchronously
 in the USB or Bluetooth callback thread under the application mutex, not exclusively in the main thread.
 Buffers holding the encoded record and padded page are cleared after use.
+
+Changed saves log `Settings flash operation: N ms, result E` on the UART console. The duration spans erase,
+programming, verification and flash-area closure; `E` is zero on success or a negative errno. It excludes mutex
+acquisition, flash-area opening and transport response delivery. Unchanged saves and failures to open the flash area
+do not emit this timing entry. This is observability, not a response-time guarantee; measure complete host response
+and concurrent read delay using the [qualification procedure](../validation/firmware-qualification.md).
 
 If staged settings equal the last confirmed RAM copy, save returns success without reading or writing flash.
 This does not repair an erased/invalid record or detect external changes to flash. The source indicator remains

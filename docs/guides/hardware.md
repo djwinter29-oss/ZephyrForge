@@ -9,8 +9,9 @@ The Espressif sections come first; the Pico boards are covered in
 The software target is `esp32c6_devkitc/esp32c6/hpcore`, using the ESP32-C6-WROOM-1U-N8 module's 8 MB flash and no
 PSRAM. The C6 has a 160 MHz maximum CPU clock, no onboard LED support in this project, and no native USB HID
 device. Use the board's UART connection for flashing and diagnostic output; Direct's authenticated BLE service is
-available only when a Control key is already present in settings. The project currently has no secure key-provisioning
-path for a fresh C6 board, so fresh images do not advertise BLE.
+available only when a Control key is present in settings. Use
+[initial physical commissioning](wireless.md#initial-esp32-c6-commissioning); fresh images do not advertise BLE
+before a key is saved.
 
 ESP32-C6 supports `none` or SD-over-SPI, not native four-bit SDMMC. The SPI image uses SPI2 with GPIO2 MISO, GPIO6
 SCK, GPIO7 MOSI, GPIO10 active-low CS and GPIO3 active-low card detect. GPIO6/7 are also the default I2C0 pins, so

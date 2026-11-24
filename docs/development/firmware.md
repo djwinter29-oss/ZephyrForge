@@ -68,21 +68,29 @@ The Zephyr application calls these same portable modules;
 tests do not duplicate them. Native compilation enables C11 and treats compiler warnings as errors.
 
 Add portable logic tests here and mock only narrow service interfaces. Do not recreate
-Zephyr internals with large fake headers. A Zephyr native-simulator test covers blocking Wi-Fi request isolation,
-DHCP-bound completion and replacement-candidate fencing using a dummy interface and bounded driver substitutes:
+Zephyr internals with large fake headers. A Zephyr native-simulator suite covers blocking Wi-Fi request isolation,
+DHCP-bound completion and replacement-candidate fencing using a dummy interface and bounded driver substitutes.
+The non-AIROC suite models ESP32 disconnect recovery and verifies that a status-query error does not declare an
+established link down. A separate recovery test verifies that automatic saved-network joins wait for timed-out scans:
 
 ```sh
 west build -b native_sim/native/64 firmware/tests/wifi/native -d build/wifi-native
 build/wifi-native/zephyr/zephyr.exe
+west build -b native_sim/native/64 firmware/tests/wifi/native-esp32 -d build/wifi-native-esp32
+build/wifi-native-esp32/zephyr/zephyr.exe
+west build -b native_sim/native/64 firmware/tests/wifi/native-recovery -d build/wifi-native-recovery
+build/wifi-native-recovery/zephyr/zephyr.exe
 ```
 
 Run this from the repository root in an initialized workspace with the native toolchain available.
 It does not exercise RF, radio firmware or the SPI bus. USB/BLE stacks, real Wi-Fi behavior,
 flash programming, clock changes and boot remain outside this native suite.
+Pico target builds also regenerate the SD PIO header with the manifest-selected Pico HAL assembler and compare it
+with the checked-in output, ignoring only the assembler version banner.
 
-The `firmware-unit` job in [Host Validation](../../.github/workflows/host-validation.yml)
-runs the same command independently of the reusable [target builds](../../.github/workflows/firmware-build.yml).
-Both must pass for firmware changes; a native test pass is not target-build or hardware evidence.
+The [Host Validation workflow](../../.github/workflows/host-validation.yml) runs all native Wi-Fi suites,
+independently of the reusable [target builds](../../.github/workflows/firmware-build.yml). A native test pass is not
+target-build or hardware evidence.
 
 ## Zephyr target build
 

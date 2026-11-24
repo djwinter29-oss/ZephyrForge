@@ -15,8 +15,10 @@ the [qualification gaps](qualification-gaps.md) remain open until the relevant p
   no check may format or repair a card from firmware. Disconnect card power before switching SDMMC/SPI images.
 - Flashing, rebooting, credential changes, card writes and fault injection each require operator authorization.
   Installing tools or running software checks does not provide that authorization.
-- Provision any required Wi-Fi network and BLE Control key through the existing dashboards. Keep credentials out of
-  logs, screenshots, command lines and result records. Control-key authentication is not BLE link encryption.
+- On ESP32-S3, provision any required Wi-Fi network and BLE Control key through the existing dashboards. On C6,
+  authorize [initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning) separately and
+  record its verified outcome before management testing. Keep credentials out of logs, screenshots, command lines
+  and result records. Control-key authentication is not BLE link encryption.
 
 ## Evidence to capture
 
@@ -36,10 +38,14 @@ Before physical checks, run the existing native suite and both target builds fro
 ```sh
 bundle exec ceedling test:all
 bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_hid_reports test:test_control
 bash tools/firmware/build.sh
 bash tools/firmware/build.sh --storage sd-spi
 python3 -m unittest discover -s firmware/tests/tooling -v
 ```
+
+The portable control test functions remain visible to Ceedling's generated runner in every feature configuration;
+the no-storage command checks that configuration-specific MSC behavior still links and runs.
 
 Use the [firmware development guide](../development/firmware.md) for tool/workspace prerequisites.
 Inspect generated configuration: correct PROCPU target, 16 MB flash, 8 MB octal PSRAM, selected storage driver,
@@ -118,7 +124,19 @@ Record a retained `EFTEST.BIN` as cleanup evidence; only the operator may remove
 safe ownership release. A failed cleanup is not a successful benchmark. Test power loss separately only with
 explicit authorization; the single-copy settings save is not power-loss atomic.
 
+The PIO SD host retries failed data transfers. Include a controlled transfer-error case where a write may have
+partially reached the card, then verify the affected data and filesystem on a computer. Do not infer safety from a
+successful retry or replay a higher-level command whose outcome is uncertain.
+
 ## USB, BLE and Wi-Fi lifecycle stress
+
+Settings saves erase, program and verify flash synchronously in a transport callback while holding the application
+mutex. The 20 ms management-loop period is not a callback-latency guarantee. Before assigning a product acceptance
+threshold, measure save-response time and concurrent diagnostic-read delay on the target; no hardware latency result
+or product response-time budget is currently established. The save changes persistent settings and schedules reboot,
+so perform this check only with explicit authorization and known recoverable settings.
+Capture the [flash-operation timing entry](../reference/settings.md#saving) with the host-side measurements; it
+does not include mutex wait or the complete transport response.
 
 | Check | Procedure and proposed minimum | Acceptance |
 | --- | --- | --- |

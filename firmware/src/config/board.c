@@ -8,6 +8,7 @@
 #endif
 
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/boot_config.h"
 #include "platform/zf_platform.h"
 
@@ -157,7 +158,7 @@ static void parse_version(uint8_t out[3])
 	}
 }
 
-void zf_identity_report(uint8_t out[ZF_IDENTITY_SIZE])
+void zf_identity_report(uint8_t *out)
 {
 	zf_identity_t identity = {
 		.ram_total_bytes = RAM_TOTAL_BYTES,
@@ -169,12 +170,12 @@ void zf_identity_report(uint8_t out[ZF_IDENTITY_SIZE])
 	zf_report_identity(&identity, out);
 }
 
-void zf_memory_report(uint8_t out[ZF_MEMORY_SIZE])
+void zf_memory_report(uint8_t *out)
 {
 	zf_report_memory(&memory_inventory, out);
 }
 
-void zf_config_report(uint8_t out[ZF_CONFIG_SIZE])
+void zf_config_report(uint8_t *out)
 {
 	zf_config_t config = {
 		.reset_cause = reset_cause,

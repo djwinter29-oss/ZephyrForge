@@ -67,12 +67,46 @@ if [[ "$board" == pico* ]]; then
 fi
 conf+="$usb_config$storage_config"
 [[ -z "$usb_config" || -z "$storage_config" ]] || conf+=";profiles/usb-msc.conf"
+export ZEPHYRFORGE_VALIDATE_BUILD_CONFIG=1
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+unset ZEPHYRFORGE_VALIDATE_BUILD_CONFIG
+if [[ "$board" == pico* ]]; then
+	bash "$root/tools/firmware/check-pico-pio.sh" "$workspace/modules/hal/rpi_pico"
+fi
 cache="$root/build/$build/CMakeCache.txt"
 if [[ -f "$cache" ]]; then
 	cached_build="$(sed -n 's/^APPLICATION_BINARY_DIR:PATH=//p' "$cache")"
+	cached_sdk="$(sed -n 's/^ZEPHYR_SDK_INSTALL_DIR:[^=]*=//p' "$cache")"
+	cached_sdk_cmake="$(sed -n 's/^Zephyr-sdk_DIR:[^=]*=//p' "$cache")"
+	cached_zephyr_base="$(sed -n 's/^ZEPHYR_BASE:[^=]*=//p' "$cache")"
+	cached_zephyr_dir="$(sed -n 's/^Zephyr_DIR:[^=]*=//p' "$cache")"
+	cached_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$cache")"
+	cached_toolchain="$(sed -n 's/^ZEPHYR_TOOLCHAIN_VARIANT:[^=]*=//p' "$cache")"
+	cached_compiler="$(sed -n 's/^CMAKE_C_COMPILER:[^=]*=//p' "$cache")"
+	expected_compiler="$ZEPHYR_SDK_INSTALL_DIR/$toolchain/bin/$toolchain-gcc"
+	expected_zephyr_dir="$ZEPHYR_BASE/share/zephyr-package/cmake"
+	needs_pristine=false
 	if [[ -n "$cached_build" && "$cached_build" != "$root/build/$build" ]]; then
 		printf 'Build directory moved; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
+	if [[ -n "$cached_home" && "$cached_home" != "$root/firmware" ]]; then
+		printf 'Build system changed; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
+	if [[ -n "$cached_zephyr_base" && "$cached_zephyr_base" != "$ZEPHYR_BASE" ]] ||
+		[[ -n "$cached_zephyr_dir" && "$cached_zephyr_dir" != "$expected_zephyr_dir" ]]; then
+		printf 'Zephyr installation changed; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
+	if [[ -n "$cached_sdk" && "$cached_sdk" != "$ZEPHYR_SDK_INSTALL_DIR" ]] ||
+		[[ -n "$cached_sdk_cmake" && "$cached_sdk_cmake" != "$ZEPHYR_SDK_INSTALL_DIR/cmake" ]] ||
+		[[ -n "$cached_toolchain" && "$cached_toolchain" != zephyr ]] ||
+		[[ -n "$cached_compiler" && "$cached_compiler" != "$expected_compiler" ]]; then
+		printf 'Build toolchain changed; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
+	if "$needs_pristine"; then
 		cmake "-DBINARY_DIR=$root/build/$build" "-DSOURCE_DIR=$root/firmware" \
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
 	fi
@@ -104,7 +138,7 @@ image_file=zephyr.bin
 mkdir -p "$build_dir"
 rm -f "$build_identity" "$build_identity.tmp"
 # Select configuration explicitly because Zephyr does not discover nested board folders.
-python -m west build --pristine auto -b "$target" "$root/firmware" \
+python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware" \
   -d "$root/build/$build" -- \
   -DCONF_FILE="$conf" \
   -DDTC_OVERLAY_FILE="$overlay" \

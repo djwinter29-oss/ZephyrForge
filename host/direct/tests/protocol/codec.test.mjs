@@ -364,10 +364,12 @@ test("staging, scan index/generation and proof requests use64argument bytes with
 test("strict result validation enforces details, scan padding, commit masks and opcode status rules", () => {
   for (const [op, state, error, detail] of [[6, 3, 3, 16], [7, 3, 3, 17], [8, 3, 3, 18],
     [9, 3, 3, 19], [5, 3, 3, 20], [9, 3, 3, 21], [12, 3, 3, 22], [12, 3, 3, 23],
-    [8, 5, 5, 25], [11, 5, 5, 26], [5, 3, 3, 27], [5, 5, 5, 28]]) {
+    [8, 5, 5, 25], [11, 5, 5, 26], [5, 3, 3, 27], [5, 5, 5, 28],
+    [2, 5, 5, 29], [3, 5, 5, 29], [4, 5, 5, 29], [5, 5, 5, 29]]) {
     const bytes = result(1, op, state, error); bytes[5] = detail;
     assert.equal(decodeControlResult(bytes, { ble: detail === 28 }).detail, detail);
     if (detail === 28) assert.throws(() => decodeControlResult(bytes));
+    if (detail === 29 && [2, 5].includes(op)) assert.equal(decodeControlResult(bytes, { ble: true }).detail, 29);
     bytes[6] = 1; assert.throws(() => decodeControlResult(bytes));
     bytes[6] = 0; bytes[2] = 1; assert.throws(() => decodeControlResult(bytes));
   }
