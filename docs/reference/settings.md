@@ -170,7 +170,7 @@ values is not guaranteed. At next boot, the device loads a complete valid record
 defaults with no credentials. Under defaults, both radio switches are enabled, Wi-Fi has no saved network and BLE
 stays off because no Control key is saved.
 
-One sector and no wear levelling are used because saves are infrequent user actions. If old
+One sector and no wear leveling are used because saves are infrequent user actions. If old
 values must survive a power loss, or writes become frequent, upgrade to a dual-sector journal or Zephyr ZMS/NVS.
 An incompatible record-format change MUST increment the record version and explicitly define migration or
 default-reset behavior; it MUST NOT silently reinterpret a previous record.

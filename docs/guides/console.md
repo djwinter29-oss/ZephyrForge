@@ -4,8 +4,6 @@ ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and, 
 on port **2323**.
 Neither shell carries dashboard commands or changes saved settings, wireless credentials or SD ownership.
 USB HID and authenticated BLE remain the management interfaces.
-The shell paths have software checks but limited hardware evidence; see
-[qualification gaps](../validation/qualification-gaps.md).
 
 ## UART
 
