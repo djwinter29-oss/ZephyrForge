@@ -14,7 +14,8 @@ to the board and no other application using that port. The procedure has softwar
    [flash it](../flashing.md#from-a-source-build).
 2. Retain the matching build directory, including compiled configuration and devicetree. The utility derives the
    settings address from that build; it does not prove the matching image is installed.
-3. Close all other programs using the port. The write replaces the first settings sector.
+3. Close all other programs using the port. The `--allow-settings-write` flag in the next step enables the
+   settings-sector write.
 
 ## Validate without writing
 
@@ -49,9 +50,26 @@ same key. Device operations leave the board in download mode rather than automat
 
 ## If the operation fails
 
-After a failure, timeout, or interruption, do not rerun provisioning or erase settings. If you cannot confirm that
-the first settings sector is still erased, leave the board unchanged and resolve its state before attempting another
-write.
+After a failure, timeout, or interruption, do not rerun provisioning or erase settings. To inspect the sector,
+rerun the dry run to get its address, then read the sector without writing:
+
+```sh
+python tools/firmware/provision-c6.py --build-dir build/firmware-esp32c6-no-storage --port PORT --dry-run
+readback=$(mktemp)
+chmod 600 "$readback"
+python -m esptool --chip esp32c6 --port PORT --after no-reset read-flash OFFSET 4096 "$readback"
+python - "$readback" <<'PY'
+from pathlib import Path
+import sys
+
+print("erased" if Path(sys.argv[1]).read_bytes() == b"\xff" * 4096 else "not erased")
+PY
+rm -f -- "$readback"
+```
+
+Replace `OFFSET` with the address printed by the dry run. The temporary readback may contain settings; keep it
+private and remove it after inspection. If the sector is not erased, leave the board unchanged. Only retry
+commissioning after readback confirms the entire sector is erased.
 The utility never requests a full-chip erase or retries an uncertain write.
 
 The utility removes its private temporary files on normal success or failure. Abrupt process termination can leave

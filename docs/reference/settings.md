@@ -1,7 +1,7 @@
 # Boot settings specification
 
 For an application change, read [RAM Copy Lifecycle](#ram-copy-lifecycle) and [Using the API](#using-the-api).
-For tooling or image compatibility, use [Record Format](#record-format) and [Flash Reservation](#flash-reservation).
+For tooling or image compatibility, use [record format](#record-format) and [flash reservation](#flash-reservation).
 
 ## Scope and conventions
 
@@ -77,7 +77,7 @@ a failed save restores the last confirmed RAM values:
 
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
   by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
-  Flash-save failure calls `zf_boot_config_discard()`. See [Host Dashboard Settings](#host-dashboard-settings).
+  Flash-save failure calls `zf_boot_config_discard()`. See [host dashboard settings](#host-dashboard-settings).
 - Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
 
@@ -109,7 +109,7 @@ key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NO
 ## Saving
 
 `zf_boot_config_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
-key-only record before application boot; its authorized procedure is in the
+key-only record before application boot; the procedure is in the
 [first-key commissioning guide](../guides/boards/esp32c6-commissioning.md).
 
 For a changed record, save encodes the fields and CRC, erases the first 4 KiB sector, writes one 256-byte page

@@ -169,7 +169,7 @@ To unlock:
    `HMAC-SHA256(key, nonce[16] || UID[8] || "PFBLECTL1" || "SESSION01")`.
 
 An accepted proof unlocks the connection until it disconnects. Disconnect clears the unlock, nonce, proof and any
-frozen read snapshot. For the `0101` validation order and failure behavior, see [Proof Rules](#proof-rules).
+frozen read snapshot. For the `0101` validation order and failure behavior, see [proof rules](#proof-rules).
 
 The server MUST obtain the 16-byte challenge from a cryptographically secure random source. The protocol relies
 on fresh, unpredictable challenges and does not detect repeated values. Random-source failure produces an empty
@@ -190,7 +190,7 @@ proof:
 4. A successful ATT Write Response means the command was admitted and its BLE result is already terminal. Clients
    MUST read `0014` and match `transaction_id` and `opcode`.
 
-Proof consumption and retry-delay behavior are defined in [Proof Rules](#proof-rules). The Direct dashboard
+Proof consumption and retry-delay behavior are defined in [proof rules](#proof-rules). The Direct dashboard
 disconnects after a rejected session proof.
 
 The board does not enforce transaction-ID uniqueness; clients MUST advance the nonzero ID for every command and
@@ -208,7 +208,7 @@ operation:
   against the session request. Otherwise it is checked against the next valid non-LED `0014` request. The
   missing-key check is defensive: BLE starts only after the control key is loaded, and the key is not cleared while
   BLE is running.
-- For a non-LED `0014` write, after the locked-link and envelope checks in [Validation Order](#validation-order),
+- For a non-LED `0014` write, after the locked-link and envelope checks in [validation order](#validation-order),
   authentication checks retry delay (`0x82`), key/challenge availability (`0x83`), proof presence (`0x80`), and
   then the MAC (`0x80`), in that order. Once the retry-delay check passes, if no nonce was read the missing
   challenge returns `0x83`; if a fresh nonce exists but no proof was written, the missing proof returns `0x80`
@@ -272,7 +272,7 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | `1`. |
 | 1 | 1 | `transaction_id` | Nonzero; independent of the USB sequence. |
-| 2 | 1 | `opcode` | `1` RGB LED colour, `2` confirmed reboot or `5` save settings and reboot. |
+| 2 | 1 | `opcode` | `1` RGB LED color, `2` confirmed reboot or `5` save settings and reboot. |
 | 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcodes `1` and `5` require zero. |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
@@ -308,7 +308,7 @@ prove which connection produced it.
 1. Locked link: ATT error `0x80`. The envelope is not checked.
 2. Invalid envelope (length other than 9, version other than `1`, or transaction ID `0`): ATT error `0x81`. The
    result slot, nonce and proof are unchanged.
-3. Non-LED requests follow the proof lifecycle and failure mapping in [Proof Rules](#proof-rules). LED requests
+3. Non-LED requests follow the proof lifecycle and failure mapping in [proof rules](#proof-rules). LED requests
    skip authentication.
 4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
@@ -361,7 +361,7 @@ not an instruction to pair through the operating system.
 | --- | --- | --- |
 | Passive traffic observation | The Control key never crosses the link. | The default link is not encrypted; observers within radio range can read unlocked status (including SSID and IPv4 address) and command traffic. |
 | Cross-session result disclosure | Session unlock is required to read `0014`. The result slot is shared across connections and survives disconnects. | A later authorized central can read the previous central's last admitted command result. Successful opcode `5` results include the saved clock, SD-card profile and switch mask; transaction IDs do not identify the originating connection. |
-| Proof replay or alteration | One-use challenges, a cryptographically secure random source and HMAC request binding prevent reuse of a proof for a different request. | Repeated or compromised nonces weaken replay protection; the application does not detect repeats. See [Session Unlock](#session-unlock). |
+| Proof replay or alteration | One-use challenges, a cryptographically secure random source and HMAC request binding prevent reuse of a proof for a different request. | Repeated or compromised nonces weaken replay protection; the application does not detect repeats. See [session unlock](#session-unlock). |
 | Cross-board or cross-protocol proof reuse | The proof binds the board UID and uses the fixed `PFBLECTL1` domain. | The proof does not authenticate the board; the client SHOULD verify the selected UID before trusting status. The domain is not a unique project identity; another protocol using the same key, UID and proof inputs is not isolated by it. |
 | Active attacker on a live link | A command proof is bound to one exact request and is accepted once. | An attacker able to inject traffic into an unlocked connection can race an observed proof and its exact bound command, or control/proxy the live link. Proofs do not provide link security. |
 | Session left unattended | Authorization is cleared on disconnect. | An unlocked session stays authorized until disconnect; clients SHOULD disconnect when finished. |
@@ -402,9 +402,7 @@ ownership.
 
 These tests use portable modules and simulated browser transports. They do not qualify the Zephyr GATT callbacks,
 controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 or
-ESP32-C6 hardware.
-See the [qualification gaps](../validation/qualification-gaps.md). Test commands are in the
-[firmware](../development/firmware.md) and [host development](../development/host-tools.md) guides.
+ESP32-C6 hardware. See the [qualification gaps](../validation/qualification-gaps.md).
 
 ## Implementation
 

@@ -1,8 +1,7 @@
 # Functional hardware test report
 
-Report received on **2026-11-14**. The user confirmed programming and testing an
-**ESP32-S3-DevKitC-1 N16R8**, marked all checks below as passed, and reported no issues.
-These are user-reported manual hardware results, not tests independently executed by the automated suites.
+On **2026-11-14**, a tester reported programming and testing an **ESP32-S3-DevKitC-1 N16R8**. The report marked all
+checks below as passed and noted no issues. These are reported manual hardware results, not automated test results.
 
 ## Reported results
 
@@ -29,12 +28,7 @@ hashes, host application versions, operating system/browser, SDK/tool versions, 
 test procedures. No raw logs, measurements, cycle counts or test durations accompanied the report.
 It does not establish a pass for every combination of dashboard, host OS, card or board revision.
 
-This records functional testing without changing earlier software-only records. It does not establish sustained
-throughput, benchmark results, memory-accounting accuracy, power-loss recovery, removal-during-write safety,
-endurance, radio coexistence, RF/EMC compliance or production qualification. Those results were not supplied.
-
-Control-key authentication still does not encrypt BLE traffic; settings remain a single-copy flash record,
-and the diagnostic TCP shell remains unauthenticated plaintext. Successful functional testing does not change
-those design limits.
+The checks did not measure sustained throughput, benchmark results, memory-accounting accuracy, power-loss recovery,
+removal-during-write safety, endurance, radio coexistence, RF/EMC compliance or production qualification.
 
 See [qualification gaps](../qualification-gaps.md) for the current boundaries.

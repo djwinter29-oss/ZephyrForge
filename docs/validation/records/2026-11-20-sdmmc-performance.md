@@ -5,7 +5,7 @@ native board's clock ceiling changed from 25 to 40 MHz. No production C code cha
 SPI remains at 25 MHz. Card-speed negotiation uses the existing Zephyr SD stack, not a new retry mechanism.
 The [SD reference](../../reference/sdcard.md#driver-and-filesystem-configuration) owns configuration and recovery.
 
-## Configuration and authorization
+## Configuration and test access
 
 - ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
 - Native four-bit SDMMC with unchanged pin allocation and 10 mA pad drive.
@@ -15,8 +15,8 @@ The [SD reference](../../reference/sdcard.md#driver-and-filesystem-configuration
 - Card CID `03534453523634478660A8CB47016BEF`, capacity 63,864,569,856 bytes.
 - CPU clock profile remained `0` before/after flashing; post-flash telemetry reported 240 MHz.
 
-The operator authorized flashing/reboot, both benchmark sizes, exclusive access and a backed-up dedicated card,
-and confirmed `/dev/ttyACM0` as this board's UART connector (USB serial `5A7A040081`).
+Before testing, the operator confirmed the planned flashing/reboot, benchmark sizes, exclusive access and use of a
+backed-up dedicated card, and identified `/dev/ttyACM0` as this board's UART connector (USB serial `5A7A040081`).
 The flashing tool reported chip MAC `50:78:7d:17:3e:8c`, verified the image hash and reset the board.
 No full-chip erase, card formatting, MSC ownership change or physical fault injection was requested or performed.
 

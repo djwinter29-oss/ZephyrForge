@@ -300,9 +300,9 @@ failed submissions can therefore leave gaps. Sequences are not delivery acknowle
 | **Total** | **22** | | **23 bytes including report ID** |
 
 `zephyrforge_flags`: bit 0 USB configured; bit 1 reserved CDC-open indication, always clear; bit 2 temperature valid;
-bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero colour mask.
+bit 3 LED driver available; bits 4-7 zero. Unavailable LEDs transmit a zero color mask.
 Masks 0-7 mean Off, Red, Green, Yellow, Blue, Purple, Cyan and White. Driver availability and successful transmission
-do not prove an LED is fitted, the selected data GPIO is correct, or the physical colour.
+do not prove an LED is fitted, the selected data GPIO is correct, or the physical color.
 USB configured means the host configured the device, not storage ownership.
 When temperature-valid is clear, the temperature field MUST be zero and MUST NOT be displayed as a measurement.
 
@@ -333,7 +333,7 @@ It reflects the storage worker's detection, mount and ownership state; it perfor
 | 30 | 1 | `filesystem_format` | Firmware mount format: enum below; current firmware clears it when unavailable |
 | 31 | 1 | `msc_enabled` | Boolean: USB currently owns the medium |
 | 32 | 1 | `msc_transition_pending` | Boolean: ownership request queued or storage worker busy |
-| 33 | 1 | `msc_request_rejected` | Boolean: last attempted handoff failed/cancelled; cleared by a successful handoff |
+| 33 | 1 | `msc_request_rejected` | Boolean: last attempted handoff failed/canceled; cleared by a successful handoff |
 | **Total** | **34** | | **35 bytes including report ID** |
 
 | SD flag bit | Meaning |
@@ -510,7 +510,7 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 
 | Opcode | Operation | Flags | Arguments / support |
 | ---: | --- | --- | --- |
-| `1` | RGB LED colour | `0` | Byte 0 RGB mask `0`-`7`; bytes 1-63 zero |
+| `1` | RGB LED color | `0` | Byte 0 RGB mask `0`-`7`; bytes 1-63 zero |
 | `2` | Reboot | Bit 0 confirmation required; other bits zero | All zero |
 | `3` | USB MSC ownership | Enable: `0`; return: bit 0 eject confirmation required | Byte 0: `1` USB, `0` firmware; bytes 1-63 zero |
 | `4` | Optional storage benchmark | `0` | Byte 0 action: `1` start, `0` cancel; bytes 1-4 LE32 size MiB; bytes 5-63 zero |
@@ -522,7 +522,7 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 | `10` | Cancel test and discard staging | `0` | All zero |
 | `11` | Start Wi-Fi scan | `0` | All zero |
 | `12` | Read Wi-Fi scan entry | `0` | Byte 0 index; bytes 1-2 scan generation; bytes 3-63 zero |
-| `13` | Reserved TCP CLI proof | - | Unsupported/error `4` |
+| `13` | Reserved | - | Unsupported/error `4` |
 | Other | Unassigned | - | Unsupported/error `7` |
 
 Reboot requires explicit confirmation and discards staged wireless values and any expiry marker.
@@ -543,7 +543,7 @@ forms are invalid. Extra flag/argument bits are rejected.
 
 Completed/error `0`, with zero result data, means the ownership request was admitted (or the requested owner was
 already active). It does not prove media work succeeded. Report `10` then shows a pending transition and the
-settled ownership or rejection. The request is cancelled if the card changes before execution.
+settled ownership or rejection. The request is canceled if the card changes before execution.
 Export briefly reconnects native USB; the same UID must be selected after reconnection.
 Handoff is deferred about one second, shortened to about 50 ms after the exact Feature `20` result is read.
 An uncertain request MUST NOT be replayed; reconcile its result explicitly and obtain fresh storage status.
@@ -707,7 +707,7 @@ Validation follows these rules:
 1. Invalid report framing/type/length, version or zero transaction ID rejects SET without changing the result.
    The host MUST treat the transfer failure as authoritative, not wait for a matching result.
 2. Unassigned or unsupported opcodes return Unsupported before interpreting their arguments.
-   Opcode `5` forced-save bit 0 also returns Unsupported before save-argument validation.
+   Opcode `5` flag bit 0 also returns Unsupported before save-argument validation.
 3. For supported opcodes, validate flags and unused bytes, then argument ranges and confirmation.
    Credential length/content errors use details `16`-`18`; trailing nonzero bytes are malformed/error `1`.
 4. Check resource conflicts before stateful preconditions: test/scan Busy precedes candidate/scan-state errors.

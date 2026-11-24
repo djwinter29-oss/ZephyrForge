@@ -131,9 +131,8 @@ the local recovery record after confirmation; it does not change the board.
 
 ## Protocol and connection
 
-Direct validates the [USB HID](../../docs/reference/usb-hid.md) and
-[BLE](../../docs/reference/bluetooth.md) contracts before enabling controls. Control transactions are serialized
-and matched by transaction ID and opcode. Reconnect verifies the same board UID and reads outstanding results
-without replaying a write.
+Direct checks the [USB HID](../../docs/reference/usb-hid.md) and
+[BLE](../../docs/reference/bluetooth.md) reports before enabling controls. After reconnecting, it verifies the same
+board and reads outstanding results without resending commands.
 
 Direct disables controls when reports are stale or invalid. Protocol references define polling and freshness limits.

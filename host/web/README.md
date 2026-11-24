@@ -26,7 +26,7 @@ including heap pools, not live usage; flash capacity is not free space.
 | `GET /api/status` | Identity, telemetry, storage, boot configuration and wireless status |
 | `POST /api/settings` | Save clock and radio switches, then reboot; `system_clock_mhz` is `0`, `80`, `160` or `240`, `sdcard_profile` is `0`, `radios` is `0`-`3` |
 | `POST /api/reboot` | Confirmed reboot, with `{"confirm":true}` |
-| `POST /api/led` | Volatile onboard RGB colour |
+| `POST /api/led` | Volatile onboard RGB color |
 | `POST /api/msc` | Explicitly enable USB storage or return it after confirmed OS eject |
 | `POST /api/benchmark` | Explicitly start or cancel the temporary-file storage benchmark |
 | `POST /api/control/resync` | Explicitly reconcile an uncertain command outcome |
@@ -40,8 +40,8 @@ including heap pools, not live usage; flash capacity is not free space.
 Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts.
 Successful settings saves return the confirmed values as
 `{"settings":{"system_clock_mhz":240,"sdcard_profile":0,"radios":0}}` on both hosts.
-Wireless requests may omit `tcp_cli_enabled` or supply `false`; `true` is rejected. Omitted credentials are not
-restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
+The `tcp_cli_enabled` compatibility field may be omitted or set to `false`; `true` is rejected. Omitted credentials
+are not restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.
 
 ### USB storage
@@ -98,7 +98,7 @@ disconnect. If controls remain blocked after reconnection, reload the dashboard 
 `POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
 zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
 Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
-dropdown beside Device information displays reported colour and uses the existing explicit Re-sync flow after an
+dropdown beside Device information displays the reported color and uses Re-sync after an
 uncertain outcome.
 
 ## Browser shell
@@ -125,6 +125,6 @@ requests and close during host shutdown. Invalid bodies are HTTP 400, conflicts 
 the existing overall body limit still returns HTTP 413.
 
 The terminal renders only text, with bounded scrollback and native cursor/edit/erase support, not full VT100
-emulation or colour styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
+emulation or color styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
 multiline paste before sending. Closing the page tears down its relay. Reopening is always explicit.
 The raw shell is unauthenticated plaintext even when management uses authenticated BLE.

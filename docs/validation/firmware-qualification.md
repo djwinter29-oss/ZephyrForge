@@ -24,7 +24,7 @@ Time depends on the selected checks and repetitions. Record the actual duration 
 For a shared bench, agree with the board owner on each state-changing or physical action before starting. Confirm
 the board, ports, card, network, and test interval; agreement on one action does not cover the others.
 
-| Action | Required approval |
+| Action | Before you start |
 | --- | --- |
 | Board access | Reserve the exact board, USB and UART ports, and test interval; stop other clients and automated jobs |
 | Flashing, rebooting, or saving settings | Confirm before replacing firmware, restarting the board, or changing persistent settings |
@@ -35,7 +35,7 @@ the board, ports, card, network, and test interval; agreement on one action does
 
 ## Ownership and safety prerequisites
 
-- Use only the approved board and ports. Never select an arbitrary connected board.
+- Use only the board and ports selected for this run. Never select an arbitrary connected board.
 - Use the N16R8 image and [wiring](../reference/sdcard.md#pin-allocation) matching the selected storage transport.
   Preserve 16 MB flash, 8 MB octal PSRAM, native USB pins and the native image's 10 mA SD pad drive.
 - Use a backed-up, dedicated card containing only expendable test data. Prepare FAT16, FAT32 or exFAT on a computer;

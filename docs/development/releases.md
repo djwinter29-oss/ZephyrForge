@@ -19,7 +19,7 @@ PR checks validate the source; release jobs package it; publication jobs deploy 
 Actions are pinned to commit SHAs. CI has read-only repository access; only the release job
 can publish release assets, and only Pages and PyPI deployment get OIDC write permissions.
 SDK release discovery uses the workflow's read-only GitHub token to avoid anonymous API rate limits.
-PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
+PR checks cancel superseded runs; release/publication runs are not canceled mid-flight.
 Host Validation runs the firmware tooling suite, including mocked workspace, build-wrapper, packaging and archive
 checks on Linux. Release builds require these checks to pass. No workflow flashes hardware or tests an SD card.
 

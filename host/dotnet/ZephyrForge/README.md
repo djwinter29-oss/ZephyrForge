@@ -51,4 +51,4 @@ Run with `ASPNETCORE_ENVIRONMENT=Development` to expose `/openapi/v1.json`.
 ## Development
 
 Use [host development](../../../docs/development/host-tools.md) for tests, versions, and shared assets.
-The tests use fake devices; they do not validate physical USB detach/reconnect.
+The host tests cover protocol and transport behavior; they do not validate physical USB detach/reconnect.
