@@ -1,9 +1,9 @@
-# SD Storage Reference
+# SD storage
 
 ESP32-S3 and Raspberry Pi Pico boards have **native four-bit SDMMC** (the default) and **SD-over-SPI** images.
 ESP32-C6 has SD-over-SPI only. The build wrapper also provides a `none` profile that omits all SD and filesystem
 support; see the
-[family-organized build guide](../development/firmware-build.md).
+[firmware build guide](../development/firmware-build.md).
 The ESP32-S3-DevKitC-1 N16R8 uses SDMMC slot 0 or SPI3; the ESP32-C6 uses SPI2. The Raspberry Pi Pico boards have no
 SD controller, so their native image runs the bus on a PIO block and their SPI image uses SPI0.
 Select the image that matches the wiring; there is no runtime fallback.
@@ -12,9 +12,8 @@ with native USB HID and MSC support.
 This is the SD memory-card bus, not an SDIO peripheral/function API.
 The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage on boards
 that provide that interface.
-This reference owns driver configuration, mount lifecycle, status reporting and the data-safety contract.
-The board/storage guides below own physical pin allocations. See the
-[hardware guide](../guides/hardware.md#sd-card-sdmmc-wiring) for board selection and electrical precautions.
+Use the board guides below for physical connections, or [hardware setup](../guides/hardware.md#sd-card-wiring)
+for board selection and electrical precautions.
 
 ## Pin allocation
 
@@ -85,8 +84,6 @@ A card's write-speed class does not determine its negotiated bus clock.
 Keep the ESP32-S3 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
 set `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
 On the Pico boards that setting withdraws High Speed, leaving cards on the one-bit legacy bus.
-The C6 SPI image reports GPIO2 MISO, GPIO6 SCK, GPIO7 MOSI, GPIO10 CS and active-low card detect on GPIO3; its
-wiring guide documents the GPIO6/7 conflict with the default I2C0 pins.
 
 ## Boot and runtime mount lifecycle
 
@@ -140,6 +137,7 @@ During media work or USB ownership, the firmware SD sample is invalid and curren
 Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
 ceiling, not a runtime measurement. CID reports manufacturer/product/revision, serial and manufacturing date even
 when no filesystem is mounted. Negotiated bus state is not reported.
+The pinned SD stack includes a public-ioctl extension that retains CID during hardware initialization.
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
 and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.

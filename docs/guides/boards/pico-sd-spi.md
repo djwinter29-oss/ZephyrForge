@@ -2,8 +2,7 @@
 
 This wiring applies to Pico, Pico W, Pico 2 and Pico 2 W images ending in `sd-spi`.
 Choose the release archive for the **exact board**; RP2040 and RP2350 images are not interchangeable.
-Follow [release-image flashing](../getting-started.md#flash-a-release-image) for BOOTSEL installation.
-This guide owns the SD pin allocation for this board family and storage variant.
+Follow [release-image flashing](../flashing.md#flash-a-release-image) for BOOTSEL installation.
 
 ## Connections
 

@@ -1,5 +1,8 @@
 # Architecture
 
+ZephyrForge separates management policy from board integration and slow device work. This page describes those
+boundaries; use [firmware development](../development/firmware.md) for source layout and test commands.
+
 ```mermaid
 flowchart LR
     subgraph Browsers["Browser clients"]
@@ -37,7 +40,7 @@ USB HID and BLE share ZephyrForge report payloads and Control semantics, defined
 The diagram shows the ESP32-S3. The Raspberry Pi Pico images keep the USB HID path, control dispatcher, SD storage
 and UART shell, but have no BLE or TCP shell; W variants also include Wi-Fi. They are flashed as UF2 images through
 the MCU's USB bootloader. The ESP32-C6 has no native USB HID or MSC; Direct uses its authenticated BLE service only
-when a Control key is saved through [physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning).
+when a Control key is saved through [physical commissioning](../guides/boards/esp32c6-commissioning.md).
 Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
 
 ## Repository responsibilities
@@ -49,19 +52,29 @@ Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](..
 | Control dispatcher | Command validation and execution shared by USB and BLE, with separate result slots |
 | Report encoding | Shared identity, configuration, telemetry, storage and wireless payloads |
 | Wireless staging and authentication | Expiring credential candidates, BLE session unlock and per-command HMAC proofs |
-| USB HID | Native USB management, snapshots and periodic telemetry/storage delivery |
-| BLE | GATT service, read snapshots, Control writes and advertising |
+| USB HID and BLE | Transport framing, read snapshots, publication/polling, and connection lifecycle |
 | Wi-Fi | Saved-network joins, candidate tests and scans |
 | Diagnostic shells | Native UART and raw TCP inspection without application mutations ([console](../guides/console.md)) |
 | Telemetry and storage | CPU load, temperature and clock; runtime SD detection, FAT mount and exclusive USB handoff |
 | Boot settings | One CRC-checked next-boot record for CPU clock, radio switches and credentials ([settings](settings.md)) |
-| Board configuration | USB interfaces, native SDMMC/card-detect wiring and temperature sensor |
-| Direct dashboard | Independent browser app with WebHID and Web Bluetooth |
-| Shared dashboard | Browser UI served by the Python and .NET loopback hosts |
-| Python/.NET hosts | USB HID ownership and a local HTTP API for the shared dashboard |
 
-For source layout, dependencies and test commands, see the [firmware development](../development/firmware.md)
-and [host development](../development/host-tools.md) guides.
+Python and .NET own USB HID connections and serve the same dashboard through a loopback HTTP API. Direct owns
+its browser frontend and talks through WebHID/Web Bluetooth. It does not import the shared dashboard.
+See [host development](../development/host-tools.md) for these boundaries.
+
+## Platform integration
+
+| Integration | ESP32-S3 | ESP32-C6 | Pico family |
+| --- | --- | --- | --- |
+| Application core | PROCPU only | High-performance core | Core 0 only |
+| USB device stack | Zephyr `device_next`, native OTG | No native HID/MSC | Zephyr `device_next`, native device controller |
+| Wi-Fi | Espressif network management and DHCP | Espressif network management and DHCP | AIROC/WHD and DHCP on W boards; none on non-W boards |
+| Bluetooth | Zephyr host and SoC controller | Zephyr host and SoC controller | Not included |
+
+Storage uses Zephyr disk access and FatFs over the selected native or SPI host. The Pico native host implements
+the Zephyr SDHC API on PIO. The [SD reference](sdcard.md) covers driver configuration and limits.
+Settings use a fixed CRC-checked record rather than Zephyr settings/NVS; the [settings reference](settings.md)
+defines its lifecycle and durability.
 
 ## Lifecycle and failure handling
 
@@ -83,6 +96,10 @@ An accepted reboot or save reserves that reset: new reboot/save and storage-cont
 reset, while diagnostic reads remain available. Failed reset scheduling leaves normal admission available.
 The [SD worker](sdcard.md) handles runtime detection and exclusive firmware/USB ownership outside the application lock;
 native MSC block I/O runs in its own USB class thread. Busy or USB-owned storage blocks reboot/settings-save.
+
+Scan completion and AIROC interface-down are retained independently of the bounded Wi-Fi event queue.
+Uncertain link observations are rechecked rather than treated as proven disconnection. AIROC interface-down
+requires driver cleanup before another join.
 
 Hosts reject reports outside the wire contracts and never retry a command whose outcome is uncertain; they block further
 writes until the user confirms a re-sync. There is no implicit demo fallback.

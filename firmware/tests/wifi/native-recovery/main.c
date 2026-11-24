@@ -9,6 +9,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/ztest.h>
@@ -89,6 +90,14 @@ int net_mgmt_NET_REQUEST_WIFI_DISCONNECT(uint64_t request, struct net_if *iface,
 	return 0;
 }
 
+static uint8_t wireless_state(void)
+{
+	uint8_t report[ZF_WIRELESS_SIZE];
+
+	zf_wireless_report(report);
+	return report[1];
+}
+
 ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 {
 	struct wifi_status failed_disconnect = {.status = -1};
@@ -113,6 +122,40 @@ ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 	}
 	zassert_equal(connect_requests, 2, "confirmed recovery must release the saved-network owner");
 
+	struct wifi_status successful_connect = {.status = 0};
+	struct in_addr address;
+
+	station_status.state = WIFI_STATE_COMPLETED;
+	zassert_ok(net_addr_pton(AF_INET, "192.0.2.2", &address));
+	zassert_not_null(net_if_ipv4_addr_add(wifi_iface, &address, NET_ADDR_MANUAL, 0));
+	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_CONNECT_RESULT, wifi_iface, &successful_connect,
+					sizeof(successful_connect));
+	for (int i = 0; i < 100 && wireless_state() != 2; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_equal(wireless_state(), 2, "saved connection should reach connected before link-loss test");
+
+	unsigned int disconnects_before_link_loss = disconnect_requests;
+
+	for (int i = 0; i < 17; ++i) {
+		net_mgmt_event_notify_with_info(NET_EVENT_WIFI_CONNECT_RESULT, wifi_iface, &successful_connect,
+						sizeof(successful_connect));
+	}
+	k_sleep(K_MSEC(20));
+	net_mgmt_event_notify_with_info(NET_EVENT_IF_DOWN, wifi_iface, NULL, 0);
+	for (int i = 0; i < 100 && disconnect_requests == disconnects_before_link_loss; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_equal(disconnect_requests, disconnects_before_link_loss + 1,
+		      "operational link loss must explicitly clear the AIROC driver's association");
+	for (int i = 0; i < 1400 && connect_requests == 2; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_equal(connect_requests, 3, "saved network should reconnect after driver cleanup");
+
 	zf_lock();
 	zassert_ok(zf_wifi_scan_start());
 	zf_unlock();
@@ -133,7 +176,7 @@ ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(connect_requests, 2, "automatic saved reconnect must wait for scan completion");
+	zassert_equal(connect_requests, 3, "automatic saved reconnect must wait for scan completion");
 }
 
 ZTEST_SUITE(wifi_recovery, NULL, NULL, NULL, NULL, NULL);

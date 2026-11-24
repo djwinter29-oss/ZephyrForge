@@ -2,8 +2,7 @@
 
 Use the `esp32s3-devkitc-sd-spi` release image only with an ESP32-S3-DevKitC-1 N16R8:
 16 MB flash, 8 MB octal PSRAM, PROCPU. Check the module marking before
-[flashing the release image](../getting-started.md#flash-a-release-image).
-This guide owns the SD pin allocation for this board family and storage variant.
+[flashing the release image](../flashing.md#flash-a-release-image).
 
 ## Connections
 

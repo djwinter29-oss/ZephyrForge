@@ -216,6 +216,16 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	zf_wifi_poll();
 	zassert_true(status_queries > queries_before_overflow, "query error should exercise established-link recovery");
 	zassert_equal(wireless_state(), 5, "a status-query error must not report a proven disconnect");
+
+	unsigned int failed_query_count = status_queries;
+
+	status_error = 0;
+	for (int i = 0; i < 400 && status_queries == failed_query_count; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_true(status_queries > failed_query_count, "an uncertain established link must be rechecked");
+	zassert_equal(wireless_state(), 5, "a later connected observation must retain the joined state");
 }
 
 ZTEST_SUITE(wifi_esp32_lifecycle, NULL, NULL, NULL, NULL, NULL);

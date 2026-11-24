@@ -175,7 +175,7 @@ jobs:
 
             ### Flashing and SD wiring
 
-            Read the [release-image flashing procedure](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/getting-started.md#flash-a-release-image) and select the wiring guide matching your archive:
+            Read the [release-image flashing procedure](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/flashing.md#flash-a-release-image) and select the wiring guide matching your archive:
 
             | Board family | Native SDMMC | SD-over-SPI |
             | --- | --- | --- |

@@ -1,8 +1,8 @@
 # ESP32-C6-DevKitC-1 N8: SD-over-SPI wiring
 
 Use the ESP32-C6 `sd-spi` image only with the ESP32-C6-DevKitC-1 N8 target. The target uses the
-ESP32-C6-WROOM-1U-N8 module's 8 MB flash, without PSRAM. See the [build options](../../development/firmware-build.md#esp32-c6-family)
-and verify the board/module before flashing. This guide owns the C6 SD-SPI pin allocation.
+ESP32-C6-WROOM-1U-N8 module's 8 MB flash, without PSRAM. Verify the board/module before
+[flashing](../flashing.md#esp32-c6-release-image).
 
 ## Connections
 

@@ -39,7 +39,8 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   if(CONFIG_WIFI)
     set(zf_board_caps ZF_CAP_WIRELESS)
     set(zf_radio_mask 1u)
-    list(APPEND zf_board_sources src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c)
+    list(APPEND zf_board_sources src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c
+      src/app/wireless/wifi/wifi_policy.c)
     set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
     target_sources(app PRIVATE src/platform/rpi_pico/random.c ${zf_pico_rand}/rand.c)
     target_include_directories(app PRIVATE ${zf_pico_rand}/include
@@ -78,7 +79,7 @@ else()
   set(zf_clock_source src/platform/system_clock.c)
   set(zf_led_source src/platform/led.c)
   set(zf_board_sources src/app/wireless/bluetooth/ble.c src/app/wireless/wifi/wifi.c
-    src/app/wireless/wifi/wifi_driver.c)
+    src/app/wireless/wifi/wifi_driver.c src/app/wireless/wifi/wifi_policy.c)
   target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board}
     ZF_BOARD_CAPS=${zf_board_caps} ZF_RADIO_MASK=${zf_radio_mask})
   if(DEFINED zf_sysclk_max_profile)

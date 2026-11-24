@@ -1,51 +1,58 @@
 # Documentation
 
-Start with operating guides; distinguish project contracts from validation evidence.
-Guides and references describe behavior, configuration and APIs rather than internal source-file walkthroughs.
-Development guides keep the source-layout and command details needed to build, test and extend the project.
+New to the project? Start with [getting started](guides/getting-started.md). You do not need to read the references
+to connect a board or use a dashboard.
 
-## Start with your task
+## Set up and use a board
 
-- **Connect a board:** [Getting started](guides/getting-started.md).
-- **Flash a downloaded release:** [Release-image flashing](guides/getting-started.md#flash-a-release-image).
-- **Use a dashboard:** [Direct](../host/direct/README.md), [Python](../host/python/README.md) or
-  [.NET](../host/dotnet/ZephyrForge/README.md).
-- **Check a contract or maintain the project:** choose its owner below. No sequential reading is required.
-
-## Authoritative ownership
-
-Keep each topic in one document; other documents link rather than duplicate its contract.
-
-| Topic | Owner |
+| Task | Guide |
 | --- | --- |
-| Targets, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
-| Workspace creation, source/release flashing, first dashboard | [Getting started](guides/getting-started.md) |
-| Wi-Fi network requirements, provisioning and radio troubleshooting | [Wireless](guides/wireless.md) |
-| UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |
-| Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
-| Project overview and entry points | [Repository README](../README.md) |
-| Platform integration and measurement limits | [ZephyrForge implementation](reference/zephyrforge-implementation.md) |
-| Shared report layouts, identity values, capabilities, USB control and validation | [USB HID](reference/usb-hid.md) |
-| ZephyrForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
-| Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
-| SD pin allocation and variant-specific electrical precautions | ESP32-S3 [SDMMC](guides/boards/esp32s3-sdmmc.md) / [SPI](guides/boards/esp32s3-sd-spi.md); ESP32-C6 [SPI](guides/boards/esp32c6-sd-spi.md); Pico family [SDMMC](guides/boards/pico-sdmmc.md) / [SPI](guides/boards/pico-sd-spi.md) |
-| SD driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
-| Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |
-| Target families, storage profiles and firmware build options | [Firmware builds](development/firmware-build.md) |
-| Firmware source layout, unit tests and development | [Firmware development](development/firmware.md) |
-| Host toolchains and software validation | [Host tools](development/host-tools.md) |
-| Firmware target checks and SD/USB/BLE/Wi-Fi qualification procedure | [Firmware qualification](validation/firmware-qualification.md) |
-| Packaging and publication | [Release](deployment/release.md) |
-| Unqualified behavior and observed results | [Gaps](validation/qualification-gaps.md), [records](validation/records/README.md) |
+| Choose a board, firmware image, and dashboard | [Getting started](guides/getting-started.md) |
+| Check connectors, memory variants, and electrical limits | [Hardware](guides/hardware.md) |
+| Install a release image or upload a source build | [Flashing](guides/flashing.md) |
+| Scan/test Wi-Fi, save credentials, or connect over BLE | [Wireless](guides/wireless.md) |
+| Set the first BLE Control key on an ESP32-C6 | [C6 commissioning](guides/boards/esp32c6-commissioning.md) |
+| Read logs or use the diagnostic terminal | [Console](guides/console.md) |
+| Run a dashboard | [Direct](../host/direct/README.md), [Python](../host/python/README.md), [.NET](../host/dotnet/ZephyrForge/README.md) |
 
-`guides/` is for use, `reference/` for contracts, `development/` for maintenance,
-`deployment/` for publishing, and `validation/` for evidence and limitations.
+### Wire an SD card
 
-## Maintenance principles
+Choose the guide for both your board and the image's storage bus. GPIO numbers are not interchangeable across boards.
 
-- Change the owner of a contract, not every overview that mentions the feature.
-- Keep navigation in this index and the repository README; avoid repeating full reading lists in each document.
-- Use links only for prerequisites or detailed contracts. A guide should remain usable without a source walkthrough.
-- Keep exact safety and interoperability details where needed; do not replace them with vague summaries.
-- Internal refactors do not require prose changes unless behavior, a public API or an operating command changes.
-- Keep dated evidence unchanged. A software test result does not establish physical qualification.
+| Board | Native four-bit SDMMC | SD-over-SPI |
+| --- | --- | --- |
+| ESP32-S3 N16R8 | [Wiring](guides/boards/esp32s3-sdmmc.md) | [Wiring](guides/boards/esp32s3-sd-spi.md) |
+| ESP32-C6 N8 | Not supported | [Wiring](guides/boards/esp32c6-sd-spi.md) |
+| Pico family | [Wiring](guides/boards/pico-sdmmc.md) | [Wiring](guides/boards/pico-sd-spi.md) |
+
+## Build and develop
+
+| Task | Guide |
+| --- | --- |
+| Understand service boundaries, startup, and locking | [Architecture](reference/architecture.md) |
+| Create a workspace and choose a board/storage build | [Firmware builds](development/firmware-build.md) |
+| Extend firmware and run its tests | [Firmware development](development/firmware.md) |
+| Change a host, dashboard, or codec | [Host development](development/host-tools.md) |
+| Package and publish a release | [Releases](development/releases.md) |
+| Submit a change | [Contributing](../CONTRIBUTING.md) |
+
+## Look up a contract
+
+These are the authoritative references. Guides link here for exact fields and behavior rather than repeating them.
+
+| Reference | Covers |
+| --- | --- |
+| [USB HID](reference/usb-hid.md) | Discovery, report layouts, control commands, and host validation |
+| [Bluetooth LE](reference/bluetooth.md) | Advertising, GATT, authentication, and BLE control |
+| [Boot settings](reference/settings.md) | Record format, defaults, load/save lifecycle, API, and flash safety |
+| [SD storage](reference/sdcard.md) | Driver configuration, mounting, ownership, reporting, and benchmark behavior |
+| [Shared dashboard HTTP API](../host/web/README.md) | Python/.NET routes, JSON fields, and request/error semantics |
+
+## Check what has been tested
+
+- [Qualification gaps](validation/qualification-gaps.md): what remains unverified.
+- [Firmware qualification](validation/firmware-qualification.md): authorized target-test procedures and acceptance criteria.
+- [Validation records](validation/records/README.md): dated software and hardware observations.
+
+Builds and simulated tests are not hardware qualification. Records apply to the revision, board, and configuration
+they describe; they are not installation instructions for the current release.

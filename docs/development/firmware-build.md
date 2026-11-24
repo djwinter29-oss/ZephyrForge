@@ -1,7 +1,15 @@
 # Firmware builds
 
-This guide covers target selection, storage profiles, output locations and manual Zephyr configuration.
-For workspace setup and native tests, see the [firmware development guide](./firmware.md).
+Build commands below run from the repository root unless marked as manual `west` commands; those run from the
+workspace root with the checkout named `zephyrforge`. A build does not flash hardware.
+
+- [Build wrapper and profiles](#shared-build-behavior)
+- [Manual workspace setup](#manual-workspace-setup)
+- [ESP32-S3](#esp32-s3-family), [ESP32-C6](#esp32-c6-family), [Pico family](#raspberry-pi-pico-family)
+- [Build verification](#build-verification)
+
+For portable tests and application changes, see [firmware development](firmware.md). For uploads, use
+[flashing](../guides/flashing.md).
 
 ## Shared build behavior
 
@@ -15,7 +23,7 @@ The wrapper creates or reuses the Zephyr workspace and Python virtual environmen
 dependencies and SDK 0.17.4 toolchain, applies the tracked Zephyr patches and builds the selected target.
 First use requires network access and several GB of free space. On Debian/Ubuntu-compatible Linux, missing host
 packages are installed through `apt-get`; other systems should install the reported prerequisites with their package
-manager. See [manual workspace setup](../guides/getting-started.md#1-prepare-a-zephyr-workspace) to provision
+manager. See [manual workspace setup](#manual-workspace-setup) to provision
 dependencies yourself. The wrapper builds a standalone Zephyr application and rejects `build.cmake-args` settings
 that override its selected board, firmware profile, version, Zephyr base, SDK, or toolchain; use a manual west
 build when any of these need customization.
@@ -27,6 +35,14 @@ The helper verifies the expected Zephyr checkout before applying patches.
 `PYTHON` selects the interpreter used to create the workspace venv (for example `PYTHON=python3.12`).
 `VENV_DIR` selects another venv; relative paths are resolved from the current directory. The scripts do not
 automatically select an unrelated active venv. To run manual west commands, activate the workspace venv yourself.
+
+For a moved checkout, the wrappers update `manifest.path` only if its old directory no longer exists and a local
+firmware build cache identifies it as the previous application source. They do not redirect another manifest
+checkout. A relocated build cache is cleaned only in the selected build directory, never at its old cached path.
+West's automatic pristine handling covers a moved application source.
+
+### Configuration and storage profiles
+
 `firmware/prj.conf` holds settings common to every image. Optional feature fragments live in `firmware/profiles/`:
 `usb.conf` (native USB HID; ESP32-S3 and Pico), `wifi.conf` (ESP32 and Pico W), `bluetooth.conf` (ESP32),
 `tcp-shell.conf` (Wi-Fi diagnostic shell; ESP32-S3 only), `storage.conf` (SD disk access and FAT/exFAT) and
@@ -44,7 +60,8 @@ Board hardware lives under `firmware/boards/`, one folder per board family:
 Apply the board overlay first, then the SoC overlay. Storage-enabled builds add exactly one storage wiring overlay;
 W boards also add the wireless overlay.
 
-`--board` selects a board family target. `--storage` selects a storage profile; it does not select wiring.
+`--board` selects the board target. `--storage` selects its storage profile and matching board overlay; it cannot
+adapt to arbitrary wiring.
 The ESP32-S3 is the default board, and SDMMC is the default storage profile. ESP32-C6 defaults to `none`.
 
 | Storage profile | Build behavior | Benchmark |
@@ -62,6 +79,50 @@ its storage report remains present but unconfigured. Storage control operations 
 ESP32-S3 and Pico images, not for `none` or ESP32-C6; the C6 has no USB HID path for its USB-only start command.
 Benchmarking requires storage.
 See the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before authorizing card writes.
+
+## Manual workspace setup
+
+Use this instead of automatic setup when you need to manage dependencies yourself. The Linux example uses
+Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4. Install Zephyr's
+[host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html), including CMake,
+Ninja, the device-tree compiler, compiler utilities, and Python venv support.
+
+From outside this repository:
+
+```sh
+mkdir zephyrforge-workspace
+cd zephyrforge-workspace
+git clone https://github.com/djwinter29-oss/ZephyrForge zephyrforge
+python3.12 -m venv .venv
+. .venv/bin/activate
+python -m pip install west
+west init -l zephyrforge
+west update --narrow -o=--depth=1
+python -m pip install -r zephyr/scripts/requirements-base.txt
+```
+
+For ESP32-S3, install the Espressif requirements, radio blobs, and Xtensa toolchain:
+
+```sh
+python -m pip install -r modules/hal/espressif/zephyr/requirements.txt
+west blobs fetch hal_espressif
+west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+```
+
+ESP32-C6 uses the same Espressif requirements and blobs, but the `riscv64-zephyr-elf` SDK toolchain.
+Pico boards use `arm-zephyr-eabi` and do not need Espressif requirements or blobs; W boards need the
+[Infineon blobs](#raspberry-pi-pico-family). Radio blobs have their own licenses.
+If SDK discovery fails, set `ZEPHYR_SDK_INSTALL_DIR` to the installed SDK directory.
+
+Apply the project's patches before a manual target build:
+
+```sh
+bash zephyrforge/tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"
+```
+
+For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` or use a Linux symlink, then run
+`west init -l zephyrforge` in the new workspace. Do not nest a second workspace inside an existing one.
+The manifest pins Zephyr and imports only the required modules; do not substitute an unrelated Zephyr checkout.
 
 ## ESP32-S3 family
 
@@ -137,7 +198,7 @@ a card. The pin allocation is software-configured and has not been physically qu
 
 The C6 has no native USB HID peripheral, so it cannot use the USB-only Python or .NET dashboards. Direct can use its
 authenticated BLE service only after a Control key is saved through
-[initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning). BLE remains off on a fresh
+[initial physical commissioning](../guides/boards/esp32c6-commissioning.md). BLE remains off on a fresh
 image until then; there is no unauthenticated bypass. Wi-Fi credential provisioning and the storage benchmark
 remain unavailable without USB HID. Neither compilation nor software commissioning checks qualify the board.
 
@@ -151,7 +212,7 @@ west build -p always -b esp32c6_devkitc/esp32c6/hpcore zephyrforge/firmware \
   -DZF_ENABLE_STORAGE=OFF -DZF_ENABLE_STORAGE_BENCHMARK=OFF
 ```
 
-For SD-over-SPI, replace the output directory with `firmware-esp32c6-sd-spi` and append
+For SD-over-SPI, set `-DZF_ENABLE_STORAGE=ON`, replace the output directory with `firmware-esp32c6-sd-spi`, and append
 `boards/esp32c6/storage/sd_spi.overlay` to `DTC_OVERLAY_FILE` and `profiles/storage.conf` to `CONF_FILE`. Omit the
 USB-only `profiles/usb-msc.conf`; keep the benchmark option `OFF`.
 
@@ -188,7 +249,7 @@ profiles use the project's PIO SD host for native four-bit SDMMC or SPI0 for SD-
 does not add the SD bus, card-detect GPIO, disk, FAT or MSC device tree and driver configuration.
 
 The wrapper does not flash Pico boards. Copy the UF2 image to the board's BOOTSEL drive using the
-[Pico flashing procedure](../guides/getting-started.md#2-build-now-flash-later).
+[Pico flashing procedure](../guides/flashing.md#raspberry-pi-pico-release-image).
 
 For manual Pico builds, select the board overlay and the SoC overlay. Add the storage overlay for storage-enabled
 builds. W boards also need the radio overlay and config:
@@ -225,8 +286,8 @@ wiring, card detection, mount behavior or USB ownership on physical hardware.
 
 CI builds the supported targets and packages each image with build identity and dependency license notices. Firmware
 packages do not include the west manifest, generated configuration or flashing instructions; see the
-[release package contents](../deployment/release.md#publish-a-stable-tag) and the linked flashing guides.
+[release package contents](releases.md#publish-a-stable-tag) and the linked flashing guides.
 `ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version. Each component must be from 0 to 255 to
 fit the firmware identity report. The wrapper passes the version as a CMake cache value so reusing a build directory
 with a different version rebuilds the image and its build-time identity snapshot. Invalid values fail configuration.
-See [release automation](../deployment/release.md).
+See [release automation](releases.md).

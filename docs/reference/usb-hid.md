@@ -1,5 +1,9 @@
 # USB HID Specification
 
+Use [Report IDs](#report-ids) to find a payload, [Control](#report-id-20-control-command--result) for commands,
+and [Host Polling and Validation](#host-polling-and-validation) for client requirements.
+For board setup rather than protocol implementation, start with [getting started](../guides/getting-started.md).
+
 ## Scope and Conventions
 
 This document is the project's USB HID specification for firmware and clients. It defines device discovery,
@@ -50,7 +54,7 @@ Report ID `0` is unused. Unassigned IDs have no payload and require no padding.
 | IDs | Role | Assignments |
 | --- | --- | --- |
 | `1`-`9` | Device information and telemetry | `1` Identity; `2` Board Configuration; `3` Telemetry |
-| `10`-`19` | Application status | `10` Storage; `11` optional benchmark; `12` Wireless |
+| `10`-`19` | Application status | `10` Storage; `11` optional benchmark; `12` Wireless; `13` Memory inventory |
 | `20`-`29` | Device and application control | `20` Control Command & Result |
 | `30`-`255` | Expansion | Unassigned |
 
@@ -65,7 +69,9 @@ The descriptor defines each exposed report's type and length.
 | Stored next-boot settings and board facts | Feature `2` | Read-only; not measured runtime settings |
 | Board measurements | Input `3` | Periodic telemetry and current-snapshot GET |
 | Storage facts | Input `10` | Periodic detection, mount and USB ownership snapshot |
+| Optional benchmark progress and result | Input `11` | Available with capability bit 5 |
 | Wireless link, test, scan and staging | Feature `12` | Read-only snapshot |
+| Module memory inventory | Feature `13` | Read-only boot inventory; available with extension bit 0 |
 | Reboot, settings save and wireless operations | Feature `20` | SET submits a command; GET returns the latest USB result |
 
 Read-only status MUST NOT perform an action. GET MUST NOT repeat an operation, consume a result or clear it.
@@ -76,13 +82,14 @@ and scan state. MSC handoff and optional benchmarking use USB-only commands.
 
 | Report ID | Name | Type | Direction | Payload |
 | --- | --- | --- | --- | ---: |
-| `1` | Device Identity & Capabilities | Feature | Host reads | 26 |
-| `2` | Board Configuration | Feature | Host reads | 17 |
-| `3` | Board Telemetry | Input | Device publishes / host reads | 22 |
-| `10` | Storage Status | Input | Device publishes / host reads | 34 |
-| `12` | Wireless Status | Feature | Host reads | 48 |
-| `13` | Module Memory Inventory | Feature | Host reads | 16 |
-| `20` | Control Command & Result | Feature | Host writes/reads | 68 |
+| `1` | [Device Identity & Capabilities](#report-id-1-device-identity--capabilities) | Feature | Host reads | 26 |
+| `2` | [Board Configuration](#report-id-2-board-configuration) | Feature | Host reads | 17 |
+| `3` | [Board Telemetry](#report-id-3-board-telemetry) | Input | Device publishes / host reads | 22 |
+| `10` | [Storage Status](#report-id-10-storage-status) | Input | Device publishes / host reads | 34 |
+| `11` | [Storage Benchmark Status](#report-id-11-storage-benchmark-status), optional | Input | Device publishes / host reads | 32 |
+| `12` | [Wireless Status](#report-id-12-wireless-status) | Feature | Host reads | 48 |
+| `13` | [Module Memory Inventory](#report-id-13-module-memory-inventory) | Feature | Host reads | 16 |
+| `20` | [Control Command & Result](#report-id-20-control-command--result) | Feature | Host writes/reads | 68 |
 
 ### Wire Framing
 
@@ -107,7 +114,8 @@ All current report layouts use version `1`, independently of firmware semantic v
 5. Submit operations through Feature `20` and read the matching result. Monitor Feature `12` for an admitted
    Wi-Fi test or scan; control completion does not mean association or scanning has finished.
 
-Report `11` is not exposed and MUST NOT be requested or subscribed to.
+Monitor Report `11` only when capability bit 5 is set; it is absent otherwise.
+Read Feature `13` only when identity extension bit 0 advertises memory inventory.
 
 ## Report ID 1: Device Identity & Capabilities
 
@@ -231,7 +239,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
-| 16 | 1 | `card_detect_gpio` | Card-detect input GPIO, `8` on S3, `3` on C6, `255` on Pico or older firmware without detection |
+| 16 | 1 | `card_detect_gpio` | Card-detect input GPIO: `8` on S3/Pico, `3` on C6; `255` when unallocated or not reported by older firmware |
 | **Total** | **17** | | **18 bytes including report ID** |
 
 | Board flag bit | Meaning | ESP32-S3 | ESP32-C6 | Raspberry Pi Pico boards |
@@ -788,8 +796,8 @@ requires an affected report-version increment and coordinated firmware/host upda
 Capability-selected transports do not change the existing byte layout: native SDMMC assigns bit 4,
 uses all six Report `2` pin slots and bus-mode value `3`; SPI uses bit 3, four assigned pin slots and mode `2`.
 The Pico PIO host drives the same native four-bit bus and reports mode `3`.
-SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either image,
-reject both/neither transport bits and require initialized storage samples to match identity.
+SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either storage image
+or a no-storage image. They reject both transport bits being set and require initialized samples to match identity.
 Older native-only hosts reject SPI identities. Firmware and hosts MUST be updated together.
 There is no wire-level SPI fallback or assumption that version `1` alone guarantees transport compatibility.
 Wire-layout versioning is independent of firmware semantic version and

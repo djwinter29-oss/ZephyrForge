@@ -1,10 +1,13 @@
 # Bluetooth LE Specification
 
+For client implementation, start with [GATT Layout](#gatt-layout), then [Session Unlock](#session-unlock),
+[Command Proofs](#command-proofs), and [Control Characteristic](#control-characteristic).
+For connecting a dashboard, use [wireless setup](../guides/wireless.md#bluetooth-le).
+
 ## Scope and Conventions
 
-This document is the project's Bluetooth LE specification for firmware and clients. It defines startup gating,
-advertising, the GATT
-layout, session unlock, per-command proofs, the 9-byte control form, and ATT error codes. Breaking wire changes use a
+This specification defines startup gating, advertising, GATT, session unlock, per-command proofs, the 9-byte
+control form, and ATT error codes. Breaking wire changes use a
 new service UUID; compatible additions MAY retain this UUID. Byte 0 of each report and control payload remains its
 payload version. Payload layouts reused from USB and cross-transport command semantics are defined once in the [USB HID
 reference](usb-hid.md). Credential persistence is defined in [boot settings](settings.md).
@@ -27,7 +30,8 @@ Software tests do not establish hardware qualification; see [Conformance](#confo
 
 ## Availability
 
-BLE is present only when Report `1` capability bit 7 is set. At boot the firmware loads the saved Control key and
+ESP32-S3 and ESP32-C6 provide BLE; Pico-family images do not. Report `1` capability bit 7 denotes wireless support,
+not BLE specifically. At boot the firmware loads the saved Control key and
 then starts the controller only when the Report `2` Bluetooth switch is on **and** a key is saved. Enabling the
 switch without a key logs a warning and leaves the controller off. Saving or clearing the key takes effect at the
 next boot. The separate [diagnostic TCP shell](../guides/console.md) is not protected by the BLE Control key.
@@ -67,9 +71,10 @@ privacy tradeoff for a local development tool.
 
 Pairing is not required: [session unlock](#session-unlock) and [command proofs](#command-proofs) authorize
 application access. The default firmware does not enable a pairing or bonding workflow, request link encryption,
-or persist peer keys. Pairing is not an alternative to the Control key. Bluetooth never writes flash. On USB-HID
+or persist peer keys. Pairing is not an alternative to the Control key. BLE cannot provision credentials, but its
+settings-save command can write the settings record. On USB-HID
 boards the Control key is provisioned through USB and loaded from boot settings. The ESP32-C6 has no native USB HID,
-so use [initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning).
+so use [initial physical commissioning](../guides/boards/esp32c6-commissioning.md).
 A fresh C6 image leaves Bluetooth off until a Control key is saved; this requirement is not bypassed with
 unauthenticated access.
 

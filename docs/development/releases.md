@@ -1,9 +1,10 @@
 # Release procedure
 
+Use this guide to prepare and publish packages. To install firmware, use [flashing](../guides/flashing.md).
+
 ## GitHub workflows
 
-The automation follows PicoForge's validation, release and publication split, adapted to the
-Zephyr ESP32-S3, ESP32-C6 and Raspberry Pi Pico firmware and its USB HID/BLE hosts.
+PR checks validate the source; release jobs package it; publication jobs deploy the verified release assets.
 
 | Workflow | Trigger | Responsibility |
 | --- | --- | --- |
@@ -49,7 +50,7 @@ The download helpers do not publish anything themselves. Package smoke checks st
 Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
 `zephyrforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
 `zephyrforge/web` without a custom build hook. For local builds, follow the
-[asset-staging procedure](../development/host-tools.md#python-host-design). Git tags determine ordinary package versions;
+[asset-staging procedure](host-tools.md#python-host-design). Git tags determine ordinary package versions;
 release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
 The release installs the wheel in a clean environment and runs
 [the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Browser checks
@@ -62,7 +63,7 @@ verifies both the package metadata and the dashboard display against that versio
 Direct packages stamp a static copy with the validated release version and record its source commit and dirty
 state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages verifies
 the page and build identity against the published tag before deploying the same released files.
-See [Direct startup](../../host/direct/README.md#choose-how-to-run-it) for checkout development versions.
+See [Direct development](host-tools.md#direct-versions-and-local-serving) for checkout version rules.
 
 ## Before the first release
 
@@ -129,12 +130,12 @@ HTML templates are checked through their rendered routes (`/` and `/console`), n
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 
-Release notes link to the [release-image flashing procedure](../guides/getting-started.md#flash-a-release-image),
-the four [board/storage wiring guides](../reference/sdcard.md#pin-allocation) and qualification limits
+Release notes link to the [release-image flashing procedure](../guides/flashing.md#flash-a-release-image),
+the [board/storage wiring guides](../reference/sdcard.md#pin-allocation) and qualification limits
 **at the release tag**, not the default branch. These guides are the authoritative instructions; save them
 before working offline. Pico ZIPs contain `zephyr.uf2`; ESP32-S3 ZIPs contain `zephyr.bin`.
 Each firmware ZIP is not a relocatable west build directory; the
-[source-build flash wrapper](../guides/getting-started.md#2-build-now-flash-later) remains the west-based path.
+[source-build flash wrapper](../guides/flashing.md#from-a-source-build) remains the west-based path.
 Choose the archive matching the board and wiring, and power-cycle the card before switching buses.
 No image has automatic bus fallback.
 

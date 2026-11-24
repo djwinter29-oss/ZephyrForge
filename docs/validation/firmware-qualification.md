@@ -16,7 +16,7 @@ the [qualification gaps](qualification-gaps.md) remain open until the relevant p
 - Flashing, rebooting, credential changes, card writes and fault injection each require operator authorization.
   Installing tools or running software checks does not provide that authorization.
 - On ESP32-S3, provision any required Wi-Fi network and BLE Control key through the existing dashboards. On C6,
-  authorize [initial physical commissioning](../guides/wireless.md#initial-esp32-c6-commissioning) separately and
+  authorize [initial physical commissioning](../guides/boards/esp32c6-commissioning.md) separately and
   record its verified outcome before management testing. Keep credentials out of logs, screenshots, command lines
   and result records. Control-key authentication is not BLE link encryption.
 

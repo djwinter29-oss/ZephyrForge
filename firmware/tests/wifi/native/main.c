@@ -181,12 +181,19 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
 	zassert_ok(k_mutex_lock(&app_mutex, K_NO_WAIT), "driver retained the application lock");
 	k_mutex_unlock(&app_mutex);
+	struct wifi_status failed_connect = {.status = -EIO};
+	for (int i = 0; i < 17; ++i) {
+		net_mgmt_event_notify_with_info(NET_EVENT_WIFI_CONNECT_RESULT, iface, &failed_connect,
+						sizeof(failed_connect));
+	}
+	k_sleep(K_MSEC(20));
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_DONE, iface, &success, sizeof(success));
 	for (int i = 0; i < 100 && zf_wifi_scan_state() != ZF_SCAN_COMPLETE; ++i) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
 	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_COMPLETE);
+	zassert_false(zf_wifi_scan_active(), "scan completion must release quarantine after event queue overflow");
 	finish_request();
 
 	zf_lock();

@@ -1,24 +1,15 @@
-# ZephyrForge Shared Web Dashboard
+# Shared dashboard HTTP API
 
-The browser frontend served by both the [Python host](../python/README.md) and the
-[.NET host](../dotnet/ZephyrForge/README.md). It uses static assets and browser ES modules without a build step.
-The independent Direct dashboard does not share this code.
-Dashboard modules live under `src/js/dashboard/`; the standalone terminal lives under `src/js/console/`.
-Unit, integration and type checks follow the same split under `tests/dashboard/` and `tests/console/`;
-shared browser, CSS and fixture checks stay at the test root.
-
-Use **Configure Wi-Fi** or **Configure Bluetooth** beside the radio switch to open its provisioning dialog without
-changing the radio's Enabled/Disabled selection. Wireless edits are saved with **Save&Reboot**.
+The [Python](../python/README.md) and [.NET](../dotnet/ZephyrForge/README.md) hosts serve this frontend and implement
+the same HTTP contract. The browser assets use ES modules without a build step. Direct does not share them.
+For development checks and package asset handling, see [host development](../../docs/development/host-tools.md).
 
 ## HTTP API
 
 Both hosts must serve the same ZephyrForge routes and JSON field names.
 Board-scoped routes take `?board=ID` from `/api/boards`.
 
-Device information shows compact, aligned values. Product exposes separate Board and MCU rows in its detail pop-up;
-Module memory summarizes flash and PSRAM capacities, with SRAM and reservation accounting in its details.
-Hover or focus either item to see its details; click or tap to toggle them, or press Escape to close.
-The details separate internal SRAM, external PSRAM and module SPI flash. `/api/status` adds
+`/api/status` separates internal SRAM, external PSRAM, and module SPI flash. It adds
 `hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when the firmware advertises
 [memory inventory](../../docs/reference/usb-hid.md#report-id-13-module-memory-inventory).
 Unsupported or unavailable values are `null` or absent and display `--`. RAM reservation is linked accounting,
@@ -44,12 +35,16 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 | `POST /api/wireless/test` | Test candidate credentials |
 | `POST /api/wireless/cancel` | Cancel a test and clear temporary credentials |
 
+### Settings and wireless
+
 Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts;
 there is no forced-save workflow. Successful settings saves return the confirmed values as
 `{"settings":{"system_clock_mhz":240,"sdcard_profile":0,"radios":0}}` on both hosts.
 Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Omitted credentials are not
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.
+
+### USB storage
 
 MSC requests use `{"enabled":true}` to export or `{"enabled":false,"confirm_ejected":true}` to return.
 `enabled` is required and boolean; optional `confirm_ejected` is boolean and defaults to false. Extra fields,
@@ -61,6 +56,8 @@ both hosts return `{"accepted":true}`. Poll `/api/status` for `memory.msc.transi
 
 Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
 
+### Storage benchmark
+
 `POST /api/benchmark` accepts `{"start":true,"size_mib":32,"confirm":true}` or
 `{"start":false,"size_mib":0}`. Start requires 1–1024 MiB and explicit write confirmation.
 Fields are strictly typed, extras are rejected (HTTP 400), and cancel requires zero size.
@@ -71,8 +68,10 @@ Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-
 progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
 Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.
 Never automatically replay a start/cancel request.
-`wireless.tcp_cli_enabled` remains false; it does not describe native diagnostic-shell readiness.
 
+### Status and recovery
+
+`wireless.tcp_cli_enabled` remains false; it does not describe native diagnostic-shell readiness.
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
 still produce a warning. Unknown card presence is not treated as a confirmed missing card.
@@ -80,7 +79,6 @@ Storage stays hidden until a fresh report detects a card or confirms successful 
 remain visible if initialization fails. USB-owned storage remains visible without a valid firmware SD sample.
 Busy or stale reports retain visibility; disconnect clears detection.
 Service load shows **Core 0 / Core 1**, for example `3.1% / --` when Core 1 is unavailable.
-Diagnostic tiles expand to fill each responsive row, including rows with fewer visible tiles.
 
 Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
 remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
@@ -92,12 +90,19 @@ ineligible to save. Save confirmation identifies the target board, boot and radi
 Wi-Fi credentials or the Control key are unchanged, replaced or erased. A replacement Wi-Fi action names the tested
 network; credentials are never displayed. Safety warnings are included only when relevant. Failed status polls remain
 visible in open wireless dialogs, including guidance when a generated Bluetooth key is still locally available.
-Wi-Fi test progress is shown without repeatedly announcing its countdown. The dashboard reports the age of the last
-successful status fetch until a poll recovers.
+The dashboard reports the age of the last successful status fetch until a poll recovers.
 Reboot confirmation expires on disconnect and identifies the selected board.
 After a confirmed reboot, writes remain blocked until the dashboard observes a disconnect/reconnect or a host-reported
 reboot-pending transition followed by clear. A fresh lower uptime also confirms a restart when the tab missed the
 disconnect. If controls remain blocked after reconnection, reload the dashboard to reconcile with the host.
+
+## RGB LED control
+
+`POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
+zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
+Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
+dropdown beside Device information displays reported colour and uses the existing explicit Re-sync flow after an
+uncertain outcome.
 
 ## Browser shell
 
@@ -126,23 +131,3 @@ The terminal renders only text, with bounded scrollback and native cursor/edit/e
 emulation or colour styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
 multiline paste before sending. Closing the page tears down its relay. Reopening is always explicit.
 The raw shell is unauthenticated plaintext even when management uses authenticated BLE.
-
-## Tests
-
-From the repository root:
-
-```sh
-node host/web/tests/run-tests.mjs
-tsc --project host/web/tsconfig.json
-python host/web/tests/browser/run.py
-```
-
-The browser checks need Playwright for Python and the .NET SDK because they serve the UI through both hosts.
-
-## RGB LED control
-
-`POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
-zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
-Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
-dropdown beside Device information displays reported colour and uses the existing explicit Re-sync flow after an
-uncertain outcome.
