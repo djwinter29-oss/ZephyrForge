@@ -23,6 +23,14 @@ not in the management loop or under the application lock. Read the
 Add tests beside the relevant component. Mock narrow service interfaces rather than recreating Zephyr internals
 with fake headers. Changes to reports or commands also need matching host and specification updates.
 
+## ESP32-S3 RGB LED integration
+
+The WS2812-compatible LED uses SPI2 MOSI only. Keep SPI2's output idle-low: the ESP32 default high idle level
+prevents the required low reset interval. The driver sends eight-bit transfers at up to 6.4 MHz, uses a MOSI
+pull-down and holds the reset interval low for 350 microseconds. The LED starts Off at low fixed intensity; a
+transmission error disables control until reboot. Keep the configured pin and reported board facts aligned when
+supporting another board revision.
+
 ## Host-native unit tests
 
 Portable C tests use Ceedling, Unity, and CMock; they need neither Zephyr nor hardware.
@@ -61,6 +69,8 @@ bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}
 ## Zephyr native Wi-Fi tests
 
 These suites use the real application and Zephyr scheduling with a dummy interface and controlled driver responses.
+The Pico W-family random source is used for noncryptographic network identifiers only; do not use it for
+authentication challenges.
 From the repository root in an initialized workspace with the native toolchain available:
 
 ```sh
@@ -97,7 +107,7 @@ from the reusable [target builds](../../.github/workflows/firmware-build.yml).
 
 ## Target qualification
 
-Use the [firmware qualification procedure](../validation/firmware-qualification.md) for authorized USB, storage,
+Use the [firmware qualification procedure](../validation/firmware-qualification.md) for USB, storage,
 BLE, and Wi-Fi checks. Its runner reuses the installed Python host package. The runner's own safety checks need
 no hardware:
 
@@ -105,5 +115,5 @@ no hardware:
 python3 -m unittest discover -s firmware/tests/hardware -v
 ```
 
-Building or running software tests does not authorize flashing, card writes, or fault injection. Record physical
-results separately in dated [validation records](../validation/records/README.md).
+Builds and software tests do not flash boards, write cards, or perform fault injection. Record physical results
+separately in dated [validation records](../validation/records/README.md).

@@ -3,6 +3,7 @@
 Use the ESP32-C6 `sd-spi` image only with the ESP32-C6-DevKitC-1 N8 target. The target uses the
 ESP32-C6-WROOM-1U-N8 module's 8 MB flash, without PSRAM. Verify the board/module before
 [flashing](../flashing.md#esp32-c6-release-image).
+C6 storage wiring has no hardware test record; see [qualification gaps](../../validation/qualification-gaps.md).
 
 ## Connections
 
@@ -28,13 +29,10 @@ The image uses SPI2 with a requested 25 MHz ceiling, not a measured frequency or
 GPIO7 are the board's default I2C0 pins, so I2C0 is disabled in this storage variant. Do not assign those pins to
 another peripheral while using SD-SPI.
 
-## Card safety and qualification
+## Card safety
 
 Back up the card and prepare an existing FAT16, FAT32 or exFAT volume on a computer. Firmware mounts at `/SD:`
 without automatic formatting. The C6 image has no native USB HID or USB MSC; Direct's authenticated BLE connection
 can read storage status but cannot export the card to a computer or run the USB-only storage benchmark.
-Power-cycle the card before changing between storage variants. There is no runtime bus fallback or card power
-switching.
-
-These are not electrically qualified wiring instructions. Software builds do not qualify physical USB, radio or SD
-behavior. See [qualification limits](../../validation/qualification-gaps.md) before use.
+Before changing storage variants, follow the
+[card power-cycle instruction](../../reference/sdcard.md#safety-and-ownership).

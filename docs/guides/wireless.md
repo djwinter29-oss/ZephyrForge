@@ -12,18 +12,15 @@ Wireless features depend on the board:
 Radio switches default to enabled where supported. Wi-Fi needs saved credentials for an automatic boot-time join;
 BLE needs a saved Control key before it advertises. An enabled switch is not evidence of a working connection.
 
-Pico W settings are read at boot but cannot be saved. Dashboard credentials stay in RAM and disappear on
-cancellation, expiry, or reset. Saving is disabled and Bluetooth provisioning is hidden on these boards.
-Their shared-SPI CYW43439 connection is not supported by the pinned Zephyr Bluetooth transport.
-The W-board PRNG is used for noncryptographic network identifiers, not authentication nonces.
-Before deploying W-board RF, set `CONFIG_WHD_WIFI_COUNTRY` to the appropriate `WHD_COUNTRY_*` value; the pinned
-driver defaults to `WHD_COUNTRY_AUSTRALIA`. A build is not regulatory qualification.
+Pico W reads settings at boot but cannot save them. Wi-Fi credentials entered in the dashboard stay in RAM and are
+discarded on cancellation, expiry, or reset. Before using Pico W-family radio, configure its country code in the
+[firmware build guide](../development/firmware-build.md#raspberry-pi-pico-family).
 
-## Configuration and operation
+## Open radio settings
 
 On ESP32-S3 or Pico W, connect over USB and open **Boot configuration** in Python/.NET or **Board configuration**
 in Direct. Choose **Configure…** beside the radio. This opens provisioning without changing the next-boot switch.
-The C6 cannot use this USB setup flow.
+The C6 uses the [physical commissioning procedure](boards/esp32c6-commissioning.md) for its first BLE key.
 
 ### Wi-Fi
 
@@ -38,14 +35,12 @@ Testing does not write flash. Staged credentials expire after ten minutes; cance
 to the saved network. Save a successful pair before expiry or test it again. The dashboard requires a successful
 test before saving; the control API also permits saving an untested staged pair.
 
-The Wi-Fi boot switch controls automatic joining, not explicit tests or scans. Scanning pauses an in-progress
-saved-network join, which resumes afterward. A test succeeds only with an IPv4 address; association alone is
-insufficient. Joins time out after 30 seconds. Lost saved networks retry after 5 seconds, doubling up to 60 seconds.
-Scans time out after 15 seconds on W boards and 10 seconds on ESP32-S3.
+The Wi-Fi boot switch controls automatic joining, not manual tests or scans. Scanning pauses an in-progress
+saved-network join, which resumes afterward. A test needs an IPv4 address; association alone is not enough. See the
+[wireless lifecycle notes](../reference/architecture.md#wi-fi-lifecycle) for retry and timeout behavior.
 
-After canceling a join, a replacement waits for confirmed driver disconnection. A timed-out scan remains
-quarantined until its driver reports completion; if completion never arrives, reboot to recover rather than
-starting another request against a possibly active driver.
+After canceling a join, wait for the existing request to finish before starting another. If a scan times out and
+never completes, reboot the board before trying again.
 
 ### Bluetooth LE
 
@@ -58,31 +53,29 @@ After saving and rebooting:
 2. Choose **Bluetooth** and enter the saved key.
 3. Select `ZephyrForge-<serial>`.
 
-Python and .NET can provision a key over USB but cannot connect through BLE.
-The Control key authenticates commands; it is not a pairing password and does not encrypt the link.
+Python and .NET can provision a key over USB; use Direct for a BLE connection.
+The Control key authenticates commands but does not encrypt the link.
 See the [BLE specification](../reference/bluetooth.md) for client and authentication details.
 
-### Save and dashboard differences
+### Save settings
 
 **Save&Reboot** commits boot settings and staged credentials, then reboots after a verified save.
-There is no forced save: safely eject and [return an exported SD card](../reference/sdcard.md#usb-drive-handoff)
-before saving. Radio switches and saved credentials take effect at the next boot.
+Safely eject and [return an exported SD card](../reference/sdcard.md#usb-drive-handoff) before saving.
+Radio switches and saved credentials take effect at the next boot.
 
-Direct supports USB and a restricted set of BLE actions. Python and .NET manage the selected USB-attached board.
-BLE cannot provision credentials, test/scan Wi-Fi, or change the saved radio switches.
 See [boot settings](../reference/settings.md) for persistence and failure semantics.
 
 ## Troubleshooting and recovery
 
-The driver does not reliably distinguish a wrong password from a missing access point. Check the network band,
-SSID, password, DHCP service, and [UART log](console.md#uart) rather than inferring the cause from a generic failure.
+The driver reports a generic connection failure for both a wrong password and a missing access point. Check the
+network band, SSID, password, DHCP service, and [UART log](console.md#uart).
 
-If delivery or a test result is lost, choose **Re-sync**, not another test or save. The Python dashboard can recover
-an interrupted RAM-only Wi-Fi operation after a reset by checking the reset control slot, wireless generations,
-and absence of staged credentials. It reports the operation as discarded, never successful.
+If a command times out or the connection drops, reconnect to the same board and choose **Re-sync**. Check the
+reported command result and reread the board configuration before starting another operation. For **Save&Reboot**,
+confirm the saved clock and radio switches in the configuration view; credentials are not returned by the board.
+If the result remains uncertain, leave the operation unresolved rather than submitting it again.
 
-An uncertain Save or Reboot needs separate reconciliation of the saved state. Power-cycling alone does not clear
-the dashboard's recovery state.
+For a timed-out scan that remains active, reboot the board before trying another scan.
 
 On ESP32-S3, the [raw TCP diagnostic shell](console.md#raw-tcp) is reachable on a usable IPv4 connection, including
 a temporary test join. Pico and C6 images do not include that shell.
@@ -90,13 +83,10 @@ a temporary test join. Pico and C6 images do not include that shell.
 ## Security boundaries
 
 - BLE telemetry, storage, and wireless reads require an unlocked session. The Control key authenticates commands,
-  but BLE traffic is not encrypted.
+  but the radio link is not encrypted.
 - Wi-Fi credentials and the Control key are unencrypted in flash. Physical flash, UART-download, or JTAG access can
   expose them. Reports do not return secrets, and the clients do not keep them in browser storage or on the SD card.
 - Python and .NET bind to loopback and reject foreign Host/Origin headers. Do not expose or reverse-proxy them to a
   LAN without a separate authentication design.
 - The diagnostic TCP shell is unauthenticated plaintext; the BLE key does not protect it. Use a trusted, isolated
   network without port forwarding.
-
-Current physical evidence and remaining RF, coexistence, and recovery tests are listed in
-[qualification gaps](../validation/qualification-gaps.md).

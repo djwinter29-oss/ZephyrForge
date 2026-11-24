@@ -2,6 +2,8 @@
 
 Use the image built for your exact board and memory variant. ZephyrForge supports ESP32-S3-DevKitC-1 N16R8,
 ESP32-C6-DevKitC-1 N8, and the four Raspberry Pi Pico boards below.
+Hardware results are limited to selected ESP32-S3 setups; C6 and Pico have software checks only. See
+[qualification gaps](../validation/qualification-gaps.md) for the recorded coverage.
 
 - [ESP32-S3 N16R8](#esp32-s3-devkitc-1-n16r8)
 - [ESP32-C6 N8](#esp32-c6-devkitc-1-n8)
@@ -36,29 +38,23 @@ GPIO33-37 serve octal PSRAM and are unavailable on N16R8. Leave flash/PSRAM and 
 the schematic for the exact board revision.
 
 The dashboard distinguishes SRAM reservation, PSRAM reservation/capacity, and module-flash capacity. Reservations
-include linked regions and permanent heap pools, not live usage. Unknown inventory stays `--`; it is not inferred
-from the board name. No additional flash chip or interface is configured.
+include linked regions and permanent heap pools, not live usage. Unavailable inventory displays as `--`.
 
 ### Onboard RGB LED
-
-SPI2 drives the WS2812-compatible LED through MOSI only; no clock, MISO, or chip select is assigned.
-SPI3 is disabled in the native SDMMC image and used by the card in the SPI image.
 
 The default LED pin is GPIO48. Official DevKitC-1 revisions use GPIO48 (v1.0) or GPIO38 (v1.1); the default is
 unverified for the diymore dual-USB-C N16R8 clone. For GPIO38, select `SPIM2_MOSI_GPIO38` instead of
 `SPIM2_MOSI_GPIO48` in the hardware overlay and rebuild. Reported board facts follow that selection.
 
-The driver uses low fixed intensity, boots Off, and sends Off twice with a reset/latch interval between transfers.
-MOSI has a pull-down. The waveform uses eight-bit SPI at up to 6.4 MHz and a 350-microsecond low reset interval.
-SPI2 needs `line-idle-low`; the ESP32 driver's default high idle level prevents the reset interval even if
-transmission succeeds. A logged transmission failure disables LED control until reboot.
+The dashboard offers volatile color control at low fixed intensity. The LED boots Off; a reported transmission
+failure disables control until reboot.
 
 Some YD-ESP32-S3-style clones have a solder link marked **RGB** beside the white LED. An open link disconnects
 GPIO48 from the LED input. Check the [board-family pinout](https://github.com/vcc-gnd/YD-ESP32-S3) and
 [reference photo](https://github.com/HiraAbbas/Esp32-s3-Onboard-Leds-Rgb-Blinking/blob/main/rgb_solder_jumper.jpeg),
 but verify the actual board before changing anything. Disconnect both USB cables and all external power first.
 Do not confuse **RGB** with **IN-OUT** or **USB-OTG**, which alter power connections.
-Pin choice, waveform, and optical colour still need qualification on each board revision.
+Pin choice and visible output still need checking on each board revision.
 
 ## ESP32-C6-DevKitC-1 N8
 
@@ -72,8 +68,6 @@ Fresh images do not advertise before that key exists.
 Storage choices are `none` and SD-over-SPI, not SDMMC. The SPI2 image uses GPIO2 MISO, GPIO6 SCK, GPIO7 MOSI,
 GPIO10 active-low CS, and GPIO3 active-low card detect. It disables I2C0 because the default GPIO6/7 allocation
 conflicts. See [C6 SPI wiring](boards/esp32c6-sd-spi.md).
-
-C6 boot, radios, commissioning, and card wiring have not been physically qualified.
 
 ## Raspberry Pi Pico targets
 
@@ -104,7 +98,6 @@ Native SD uses PIO1.
 Pico images do not control the onboard LED or save settings. They keep the build clock: 125 MHz on RP2040,
 150 MHz on RP2350. SD-enabled images reserve GP2-GP8 and disable default I2C0 (GP4/GP5) and I2C1 (GP6/GP7)
 assignments. Card detect is active-high with no MCU pull; the breakout must drive or bias it.
-These targets have software builds only.
 
 ## SD-card wiring
 
@@ -124,6 +117,6 @@ Back up the card and prepare FAT16, FAT32, or exFAT on a computer. Firmware does
 Insertion mounts the card for firmware, not automatically for USB. Safely eject in the OS before confirming
 return from USB ownership; removal during I/O can corrupt data.
 
-There is no card power switching. Disconnect card power when changing between SDMMC and SPI images; resetting
-only the board may leave the card in SPI mode. See [SD storage](../reference/sdcard.md) for mount and ownership
-behavior, and [qualification gaps](../validation/qualification-gaps.md) for current hardware evidence.
+Before changing buses, follow the
+[card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
+The SD storage reference also covers mount and ownership behavior.

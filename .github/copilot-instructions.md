@@ -36,6 +36,9 @@
 - Use [README.md](../README.md) as the landing page and [documentation index](../docs/README.md) for ownership.
 - Keep USB HID and Bluetooth LE specifications authoritative; the implementation reference is not a separate protocol.
 - Distinguish software checks from physical qualification. Never rewrite historical results to imply new hardware evidence.
+- State each limitation in its authoritative home. Do not add disclaimers for hypothetical misreadings or repeat
+  qualification boilerplate at the end of every page. Explain safety rules where they are used and link to their
+  full rationale instead of copying it.
 
 ### Low-coupling documentation
 

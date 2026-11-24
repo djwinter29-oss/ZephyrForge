@@ -1,10 +1,10 @@
-# USB HID Specification
+# USB HID specification
 
-Use [Report IDs](#report-ids) to find a payload, [Control](#report-id-20-control-command--result) for commands,
-and [Host Polling and Validation](#host-polling-and-validation) for client requirements.
+Use [report IDs](#report-ids) to find a payload, [control](#report-id-20-control-command--result) for commands,
+and [host polling and validation](#host-polling-and-validation) for client requirements.
 For board setup rather than protocol implementation, start with [getting started](../guides/getting-started.md).
 
-## Scope and Conventions
+## Scope and conventions
 
 This document is the project's USB HID specification for firmware and clients. It defines device discovery,
 report types and byte layouts, control requests and results, wireless staging, and client validation.
@@ -23,9 +23,9 @@ in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
 [SD storage](sdcard.md) defines mounting and data safety.
 
 References to Zephyr and host libraries describe the current implementation, not additional
-wire fields. Software tests do not establish hardware qualification; see [Design Validation](#design-validation).
+wire fields. Software tests do not establish hardware qualification; see [design validation](#design-validation).
 
-## USB Interface and Discovery
+## USB interface and discovery
 
 ESP32-S3 and Raspberry Pi Pico images expose one vendor-defined HID interface with no boot protocol. SD-enabled
 images also expose native USB mass storage; no-storage images expose HID only. There is no CDC ACM interface.
@@ -47,7 +47,7 @@ ESP32-S3, ROM flashing; it has no HID management protocol. HID carries no CLI te
 Hosts MUST read Feature `1` before interpreting other reports or enabling commands. USB descriptors help find
 the interface but do not replace validation of its product ID, report version, lengths and fields.
 
-## Report ID Allocation
+## Report ID allocation
 
 Report ID `0` is unused. Unassigned IDs have no payload and require no padding.
 
@@ -82,16 +82,16 @@ and scan state. MSC handoff and optional benchmarking use USB-only commands.
 
 | Report ID | Name | Type | Direction | Payload |
 | --- | --- | --- | --- | ---: |
-| `1` | [Device Identity & Capabilities](#report-id-1-device-identity--capabilities) | Feature | Host reads | 26 |
-| `2` | [Board Configuration](#report-id-2-board-configuration) | Feature | Host reads | 17 |
-| `3` | [Board Telemetry](#report-id-3-board-telemetry) | Input | Device publishes / host reads | 22 |
-| `10` | [Storage Status](#report-id-10-storage-status) | Input | Device publishes / host reads | 34 |
-| `11` | [Storage Benchmark Status](#report-id-11-storage-benchmark-status), optional | Input | Device publishes / host reads | 32 |
-| `12` | [Wireless Status](#report-id-12-wireless-status) | Feature | Host reads | 48 |
-| `13` | [Module Memory Inventory](#report-id-13-module-memory-inventory) | Feature | Host reads | 16 |
-| `20` | [Control Command & Result](#report-id-20-control-command--result) | Feature | Host writes/reads | 68 |
+| `1` | [Device identity & capabilities](#report-id-1-device-identity--capabilities) | Feature | Host reads | 26 |
+| `2` | [Board configuration](#report-id-2-board-configuration) | Feature | Host reads | 17 |
+| `3` | [Board telemetry](#report-id-3-board-telemetry) | Input | Device publishes / host reads | 22 |
+| `10` | [Storage status](#report-id-10-storage-status) | Input | Device publishes / host reads | 34 |
+| `11` | [Storage benchmark status](#report-id-11-storage-benchmark-status), optional | Input | Device publishes / host reads | 32 |
+| `12` | [Wireless status](#report-id-12-wireless-status) | Feature | Host reads | 48 |
+| `13` | [Module memory inventory](#report-id-13-module-memory-inventory) | Feature | Host reads | 16 |
+| `20` | [Control command & result](#report-id-20-control-command--result) | Feature | Host writes/reads | 68 |
 
-### Wire Framing
+### Wire framing
 
 On the USB HID wire, each report begins with its nonzero report ID. In the tables below, offset `0` is the first
 payload byte after that ID. HIDAPI buffers include the ID at index `0`; WebHID supplies the ID separately and
@@ -105,7 +105,7 @@ span multiple 64-byte packets; they do not require oversized interrupt endpoints
 
 All current report layouts use version `1`, independently of firmware semantic version.
 
-### Connection and Read Flow
+### Connection and read flow
 
 1. Read Feature `1` and validate product, layout, length, capabilities and SRAM accounting.
 2. Read Feature `2` for stored settings, reset cause and configured GPIOs.
@@ -117,7 +117,7 @@ All current report layouts use version `1`, independently of firmware semantic v
 Monitor Report `11` only when capability bit 5 is set; it is absent otherwise.
 Read Feature `13` only when identity extension bit 0 advertises memory inventory.
 
-## Report ID 1: Device Identity & Capabilities
+## Report ID 1: Device identity & capabilities
 
 Read after connection. Identity and capabilities remain stable for that boot.
 
@@ -130,7 +130,7 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | 12 | 1 | `firmware_minor` | Firmware semantic-version minor |
 | 13 | 1 | `firmware_patch` | Firmware semantic-version patch |
 | 14 | 1 | `mcu` | `1` RP2040, `2` RP2350, `3` ESP32-S3, `4` ESP32-C6; other values unassigned |
-| 15 | 1 | `board_model` | `0` unspecified; `1`-`6` per [Board Models](#board-models) |
+| 15 | 1 | `board_model` | `0` unspecified; `1`-`6` per [board models](#board-models) |
 | 16 | 1 | `capabilities_extension` | Capability bits 8-15; bit 0 advertises Report `13` |
 | 17 | 1 | `capabilities` | Static capabilities and selected storage transport |
 | 18 | 4 | `ram_total_bytes` | Total internal SRAM, not free memory or PSRAM |
@@ -147,9 +147,9 @@ host-generated identifier. Espressif boards use their six-byte eFuse base MAC fo
 Raspberry Pi Pico boards use the eight-byte unique ID of their flash chip.
 Clients MUST preserve the eight reported bytes for identity matching and BLE proofs.
 Unknown MCU or board-model values MAY be retained for diagnostics, but MUST NOT be guessed or corrected.
-Each nonzero board model requires the MCU listed under [Board Models](#board-models); model `0` makes no board claim.
+Each nonzero board model requires the MCU listed under [board models](#board-models); model `0` makes no board claim.
 
-### Product IDs and Capabilities
+### Product IDs and capabilities
 
 | Product ID | Meaning |
 | ---------: | ------- |
@@ -186,7 +186,7 @@ bit 3 selects its four-signal SPI layout. When both bits are clear, the image ha
 unassigned storage/card-detect pins and no MSC support, and opcode `3` is unsupported/error `4`.
 Neither storage bit alone implies USB mass-storage support.
 Report `2` board flag bit 6 advertises MSC ownership control.
-Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
+Opcode `5` flag bit 0 returns Unsupported/error `4`.
 When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
 Likewise, opcode `1` without bit 0, opcode `5` without bit 2 and opcodes `6`-`12` without bit 7 return
 Unsupported/error `4` before argument validation.
@@ -194,7 +194,7 @@ Wireless capability does not imply that Wi-Fi is connected
 or that BLE has started, and does not imply support for both radios. W builds provide Wi-Fi only:
 opcode `8` (Control-key staging) returns Unsupported/error `4` before argument validation.
 
-### Board Models
+### Board models
 
 | Board model | MCU | Meaning |
 | ----------: | --- | ------- |
@@ -211,7 +211,7 @@ The board model is the configured build target, not automatic hardware detection
 Pico W and Pico 2 W builds enable Wi-Fi scans and temporary candidate joins; BLE remains unavailable.
 They advertise wireless capability without settings-save capability.
 
-### Firmware RAM Reservation
+### Firmware RAM reservation
 
 Display **Firmware RAM reserved / total**, in KiB and optionally as a percentage. Hosts MUST reject a zero total
 or a reservation greater than total. This is build accounting, not free heap, stack high-water use or runtime
@@ -222,7 +222,7 @@ Reservation covers statically linked RAM,
 including the reserved Zephyr heap pool and thread stacks. PSRAM is separate and
 is not represented by these fields. Count each reservation once; do not infer live allocations.
 
-## Report ID 2: Board Configuration
+## Report ID 2: Board configuration
 
 Read-only; SET is rejected. Read after connection and again after reboot or re-enumeration.
 Settings describe the next boot, while GPIOs describe configured board facts.
@@ -249,7 +249,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 2 | Monitor UART enabled | Set | Set | Set |
 | 3 | Wi-Fi enabled for next boot | Saved switch | Saved switch | Saved switch on W boards; clear on non-W |
 | 4 | BLE enabled for next boot | Saved switch | Saved switch | Clear |
-| 5 | Reserved TCP CLI switch | Clear | Clear | Clear |
+| 5 | Reserved | Clear | Clear | Clear |
 | 6 | Native USB MSC with explicit ownership handoff | Set with storage | Clear | Set with storage |
 | 7 | Reserved | Zero | Zero | Zero |
 
@@ -280,7 +280,7 @@ Reset values: `0` Unknown, `1` Power-on, `2` watchdog, `3` software-requested, `
 `5`-`255` unassigned. Hosts MUST NOT infer a reset cause from missing evidence.
 The current implementation maps Zephyr hardware reset flags to `1`, `2` or `3`, otherwise `0`.
 
-## Report ID 3: Board Telemetry
+## Report ID 3: Board telemetry
 
 Published nominally every 250 ms while HID is ready. Input GET returns a current snapshot with sequence `0`.
 Publication sequences wrap modulo 256. The current implementation allocates a sequence when submitting a report;
@@ -313,7 +313,7 @@ Hosts MUST reject `10001`-`65534`, not clamp them, and MUST display unavailable 
 The reported clock is the running clock, not a requested setting. Die temperature is not calibrated ambient
 temperature.
 
-## Report ID 10: Storage Status
+## Report ID 10: Storage status
 
 Published nominally every 500 ms while HID is ready. Input GET returns a snapshot with sequence `0` and does not
 advance the publication sequence. Publication sequences have the same gap/wrap behavior as Report `3`.
@@ -375,7 +375,7 @@ Older firmware may not mount exFAT. A format enum does not imply support for cre
 There is no automatic formatting, repair or management file-transfer API.
 See [SD storage](sdcard.md) for mount lifecycle and data-safety rules.
 
-## Report ID 11: Storage Benchmark Status
+## Report ID 11: Storage benchmark status
 
 When capability bit 5 is set, Input `11` publishes the retained benchmark snapshot nominally every 500 ms.
 Its payload is 32 bytes (33 including USB report ID). When disabled it is absent from the USB descriptor;
@@ -411,7 +411,59 @@ Progress is `(written + read) * 50 / target` (zero for zero target).
 Rates are bytes multiplied by 1000 divided by the corresponding elapsed milliseconds; zero elapsed means unavailable.
 See [benchmark safety and timing](sdcard.md#optional-storage-benchmark) for cleanup and measurement boundaries.
 
-## Report ID 13: Module Memory Inventory
+## Report ID 12: Wireless status
+
+Read-only Feature `12` reports link, test, scan and staging state. Saved switches come from Feature `2`.
+BLE exposes the same payload through its [GATT layout](bluetooth.md#gatt-layout).
+
+| Offset | Size | Field | Meaning |
+| -----: | ---: | ----- | ------- |
+| 0 | 1 | `version` | Layout version, `1` |
+| 1 | 1 | `wifi_state` | `0` off; `1` connecting; `2` connected; `3` failed; `4` testing/joining; `5` test joined; `6` test failed |
+| 2 | 1 | `detail` | Wi-Fi/test detail enum below |
+| 3 | 1 | `ble_state` | `0` off; `1` advertising; `2` connected |
+| 4 | 1 | `flags` | Bit 0 network configured; bit 1 Control key saved; bits 2-3 zero; bit 4 SSID staged; bit 5 password staged; bit 6 key staged; bit 7 pair tested |
+| 5 | 4 | `ipv4` | Display-order/network-order octets `a.b.c.d`; zero when no connected link |
+| 9 | 1 | `ssid_length` | `0`-`32` bytes |
+| 10 | 32 | `ssid` | Raw active/retained test SSID, otherwise saved SSID; zero-padded |
+| 42 | 1 | `scan_state` | `0` idle; `1` scanning; `2` complete; `3` failed |
+| 43 | 2 | `scan_generation` | Generation of current scan; zero before any scan |
+| 45 | 1 | `scan_count` | `0`-`18`; zero until complete |
+| 46 | 1 | `test_generation` | Zero before a test; then `1`-`255`, skipping zero on wrap |
+| 47 | 1 | `staged_state` | Bit 0 empty SSID; bit 1 empty password; bit 2 empty key; bit 3 staging expired; bits 4-7 zero |
+| **Total** | **48** | | **49 bytes including report ID** |
+
+Wi-Fi detail values: `0` no reason supplied; `1` interface/radio initialization unavailable;
+`2` reserved network-not-found; `3` reserved password-rejected; `4` reserved no-DHCP-address;
+`5` timeout or join could not start; `6` tested link lost; `7`-`255` reserved.
+The current Zephyr driver does not supply the 802.11 join reason, so wrong passwords and missing APs may both
+report Failed/detail `0`. A Bluetooth startup failure can appear as detail `1` in saved-network status when
+no Wi-Fi detail takes precedence. This is not a dedicated BLE error field.
+Hosts MUST interpret state and detail together; detail `0` does not make a Failed state successful.
+
+Bits 2-3 of `flags` are zero.
+Staged flags expose candidate presence and test validity, never passwords or keys.
+An empty SSID implicitly stages an empty password, setting bits 4 and 5.
+`staged_state` bits 0-2 are meaningful only with the matching staged flags.
+When expired bit 3 is set, staged flags 4-7 are clear.
+Pair-tested bit 7 applies to the exact unexpired Wi-Fi pair, not the Control key.
+Saving without testing remains allowed.
+
+Each admitted test advances its nonzero generation, including an immediate test failure.
+Keep the generation with its status; it is independent of scan generation.
+SSID is not a string terminator-based field: hosts SHOULD display printable UTF-8 and escape invalid bytes/control
+characters, for example `\xNN`, without changing the bytes used for comparison or restaging.
+
+Each admitted scan clears the previous list and advances the nonzero 16-bit generation.
+Completion publishes retained count; failure publishes count zero.
+Use opcode `12` with that generation and an index to reject stale reads.
+Features `2`, `12` and `20` are independent snapshots, not an atomic board-wide observation.
+
+Hosts SHOULD poll Feature `12` every 500 ms during test/scan and every 2 seconds otherwise.
+At three polling intervals (1.5 seconds active, 6 seconds otherwise), hosts MUST mark status stale and MUST NOT
+enable operations based on its old staging flags or scan state.
+
+## Report ID 13: Module memory inventory
 
 This read-only Feature is available when Report `1` extension bit 0 (capability bit 8) is set.
 It has a 16-byte payload, or 17 bytes including the USB report ID. Authenticated BLE reads the same payload
@@ -437,13 +489,13 @@ free heap. Flash capacity is physical chip size, not application image size, fre
 settings capacity. The ESP32-S3 has no on-chip flash: N16R8 module flash is external to the SoC, and PSRAM is RAM.
 The Pico boards have no PSRAM; their flash capacity comes from the JEDEC ID of the board's external QSPI flash.
 
-## Report ID 20: Control Command & Result
+## Report ID 20: Control command & result
 
 Feature `20` carries reboot, MSC ownership, settings-save, credential-staging, Wi-Fi test and scan commands.
 SET submits one typed operation; GET returns the latest USB result. Both payloads are exactly 68 bytes
 (69 including the report ID). BLE uses a separate [control form](bluetooth.md#control-characteristic).
 
-### SET Request
+### SET request
 
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
@@ -462,7 +514,7 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 | `2` | Reboot | Bit 0 confirmation required; other bits zero | All zero |
 | `3` | USB MSC ownership | Enable: `0`; return: bit 0 eject confirmation required | Byte 0: `1` USB, `0` firmware; bytes 1-63 zero |
 | `4` | Optional storage benchmark | `0` | Byte 0 action: `1` start, `0` cancel; bytes 1-4 LE32 size MiB; bytes 5-63 zero |
-| `5` | Save settings and reboot | Bit 1 commits staged wireless values; bit 0 forced save is unsupported | Bytes 0-1 clock MHz; byte 2 SD profile `0`; byte 3 switches, bit 0 Wi-Fi / bit 1 BLE; bytes 4-63 zero |
+| `5` | Save settings and reboot | Bit 1 commits staged wireless values; bit 0 returns Unsupported/error `4` | Bytes 0-1 clock MHz; byte 2 SD profile `0`; byte 3 switches, bit 0 Wi-Fi / bit 1 BLE; bytes 4-63 zero |
 | `6` | Stage Wi-Fi SSID | `0` | Byte 0 length; bytes 1-32 raw SSID, length 1-32; remaining bytes zero. Length `0` clears network/password |
 | `7` | Stage Wi-Fi password | `0` | Byte 0 length; bytes 1-63 printable ASCII; remaining bytes zero. Length `0` selects open network, otherwise 8-63 |
 | `8` | Stage Control key | `0` | Byte 0 length; bytes 1-32 raw key, length exactly 32; remaining bytes zero. Length `0` clears key |
@@ -476,10 +528,10 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 Reboot requires explicit confirmation and discards staged wireless values and any expiry marker.
 Hosts SHOULD warn when Feature `12` indicates staging or expiry.
 Opcode `5` accepts clocks `0`, `80`, `160`, `240` MHz, SD profile `0`, and only the Wi-Fi/BLE switch bits.
-Switch bit 2 is invalid. Forced-save bit 0 returns Unsupported/error `4` before other save-argument validation.
+Switch bit 2 is invalid. Bit 0 returns Unsupported/error `4` before other save-argument validation.
 A 64-character hexadecimal raw Wi-Fi PSK is not supported.
 
-### MSC Command Rules
+### MSC command rules
 
 Report `2` flag bit 6 advertises this workflow; Report `1` capabilities are unchanged.
 Older firmware with bit 6 clear and card-detect GPIO `255` remains readable, but hosts MUST hide MSC controls.
@@ -499,7 +551,7 @@ An uncertain request MUST NOT be replayed; reconcile its result explicitly and o
 Busy/error `5`, detail `0`, means storage is already busy. Invalid/error `3` means no usable card is available.
 Other backend admission failures return Failed/error `6`. See [SD ownership](sdcard.md#usb-drive-handoff).
 
-### Benchmark Command Rules
+### Benchmark command rules
 
 Opcode `4` is USB-only and requires capability bit 5; otherwise it returns Unsupported/error `4`.
 Start action `1` requires 1–1024 MiB. Cancel action `0` requires zero size; idle cancellation is a no-op.
@@ -512,7 +564,7 @@ free-space preflight happen on the worker after admission and can produce Failed
 Never replay uncertain requests; explicitly reconcile Feature `20`, then obtain fresh Reports `10` and `11`.
 See [benchmark safety](sdcard.md#optional-storage-benchmark) before confirming writes.
 
-### Wireless Command Rules
+### Wireless command rules
 
 Credential staging, test and scan are USB-only; BLE has its restricted control form.
 Wireless capability does not imply that either radio is currently enabled or connected.
@@ -568,7 +620,7 @@ Scan results contain no credentials.
 Scans and tests may run with the Wi-Fi boot switch off; that switch controls the automatic saved-network join.
 The ESP32-S3 firmware supports open and WPA2-Personal networks, not WPA3-SAE.
 
-### GET Result
+### GET result
 
 GET returns the latest operation without replaying it or consuming the result.
 Unused bytes MUST be zero.
@@ -664,7 +716,7 @@ Validation follows these rules:
 6. Execute the operation; failures return Failed/error `6`.
 
 Every valid-envelope request updates the USB result slot, including invalid and unsupported operations.
-There is no forced-save suppression of later SETs.
+Later SET requests are not suppressed while a save is pending.
 BLE adds its own lock/proof checks and restrictions; see [BLE validation order](bluetooth.md#validation-order).
 Hosts MUST reject unknown status/error values and impossible status/error/opcode combinations, not interpret
 them as success.
@@ -689,59 +741,7 @@ Timeout or disconnect can leave admission/outcome uncertain. Hosts MUST NOT auto
 or submit further writes on that transport until the uncertainty is resolved by result/device-state inspection.
 GET is non-destructive and never extends or restarts an operation.
 
-## Report ID 12: Wireless Status
-
-Read-only Feature `12` reports link, test, scan and staging state. Saved switches come from Feature `2`.
-BLE exposes the same payload through its [GATT layout](bluetooth.md#gatt-layout).
-
-| Offset | Size | Field | Meaning |
-| -----: | ---: | ----- | ------- |
-| 0 | 1 | `version` | Layout version, `1` |
-| 1 | 1 | `wifi_state` | `0` off; `1` connecting; `2` connected; `3` failed; `4` testing/joining; `5` test joined; `6` test failed |
-| 2 | 1 | `detail` | Wi-Fi/test detail enum below |
-| 3 | 1 | `ble_state` | `0` off; `1` advertising; `2` connected |
-| 4 | 1 | `flags` | Bit 0 network configured; bit 1 Control key saved; bits 2-3 zero; bit 4 SSID staged; bit 5 password staged; bit 6 key staged; bit 7 pair tested |
-| 5 | 4 | `ipv4` | Display-order/network-order octets `a.b.c.d`; zero when no connected link |
-| 9 | 1 | `ssid_length` | `0`-`32` bytes |
-| 10 | 32 | `ssid` | Raw active/retained test SSID, otherwise saved SSID; zero-padded |
-| 42 | 1 | `scan_state` | `0` idle; `1` scanning; `2` complete; `3` failed |
-| 43 | 2 | `scan_generation` | Generation of current scan; zero before any scan |
-| 45 | 1 | `scan_count` | `0`-`18`; zero until complete |
-| 46 | 1 | `test_generation` | Zero before a test; then `1`-`255`, skipping zero on wrap |
-| 47 | 1 | `staged_state` | Bit 0 empty SSID; bit 1 empty password; bit 2 empty key; bit 3 staging expired; bits 4-7 zero |
-| **Total** | **48** | | **49 bytes including report ID** |
-
-Wi-Fi detail values: `0` no reason supplied; `1` interface/radio initialization unavailable;
-`2` reserved network-not-found; `3` reserved password-rejected; `4` reserved no-DHCP-address;
-`5` timeout or join could not start; `6` tested link lost; `7`-`255` reserved.
-The current Zephyr driver does not supply the 802.11 join reason, so wrong passwords and missing APs may both
-report Failed/detail `0`. A Bluetooth startup failure can appear as detail `1` in saved-network status when
-no Wi-Fi detail takes precedence. This is not a dedicated BLE error field.
-Hosts MUST interpret state and detail together; detail `0` does not make a Failed state successful.
-
-Bits 2-3 of `flags` are zero; no TCP CLI serving indication exists.
-Staged flags expose candidate presence and test validity, never passwords or keys.
-An empty SSID implicitly stages an empty password, setting bits 4 and 5.
-`staged_state` bits 0-2 are meaningful only with the matching staged flags.
-When expired bit 3 is set, staged flags 4-7 are clear.
-Pair-tested bit 7 applies to the exact unexpired Wi-Fi pair, not the Control key.
-Saving without testing remains allowed.
-
-Each admitted test advances its nonzero generation, including an immediate test failure.
-Keep the generation with its status; it is independent of scan generation.
-SSID is not a string terminator-based field: hosts SHOULD display printable UTF-8 and escape invalid bytes/control
-characters, for example `\xNN`, without changing the bytes used for comparison or restaging.
-
-Each admitted scan clears the previous list and advances the nonzero 16-bit generation.
-Completion publishes retained count; failure publishes count zero.
-Use opcode `12` with that generation and an index to reject stale reads.
-Features `2`, `12` and `20` are independent snapshots, not an atomic board-wide observation.
-
-Hosts SHOULD poll Feature `12` every 500 ms during test/scan and every 2 seconds otherwise.
-At three polling intervals (1.5 seconds active, 6 seconds otherwise), hosts MUST mark status stale and MUST NOT
-enable operations based on its old staging flags or scan state.
-
-### Cross-Interface Resource Arbitration
+### Cross-interface resource arbitration
 
 USB and BLE callbacks use the same control dispatcher under one application mutex.
 Credential staging and wireless state are device-wide; result slots are transport-specific.
@@ -751,19 +751,19 @@ These conflicts are rejected, not silently queued for later.
 
 MSC block I/O and media lifecycle work run outside the application mutex and management loop.
 Reboot and settings-save return Busy/detail `1` while storage is busy or USB-owned.
-The optional benchmark runs on the serialized storage worker. There is no CDC filesystem interface or forced-save transaction.
+The optional benchmark runs on the serialized storage worker.
 Downstream filesystem users must participate in storage ownership/locking. See
 [architecture](architecture.md#lifecycle-and-failure-handling) and
 [SD storage](sdcard.md#safety-and-ownership).
 
-## Host Polling and Validation
+## Host polling and validation
 
 Hosts MUST validate report type, ID, normalized length, version, reserved fields, supported enums and cross-field
 constraints. Feature `1` validates identity and memory accounting; Feature `2` validates stored profiles and board
 facts; Input `3` validates sensor/load availability; Input `10` validates initialization/capacity and zeroed
 unsupported fields. Unsupported layouts and failed mandatory reads are explicit errors, not zero-filled fallbacks.
 
-Only Feature `20` is writable. Hosts MUST hide or disable forced-save and TCP CLI controls.
+Only Feature `20` is writable.
 LED controls require capability bit 0 and fresh telemetry with an available driver. Completed acknowledges queued
 transmission, not optical verification. Colour is volatile, starts Off, needs no settings save and is never replayed
 automatically after an uncertain command. LED requests are independent of storage ownership and benchmark activity.
@@ -776,7 +776,7 @@ Features `1`, `2` and `12`.
 Report `10` refreshes receipt time for a worker snapshot, not a synchronous probe.
 Unknown presence MUST NOT be labeled confirmed absence. No report provides a file API or safe-unplug guarantee.
 
-### Input Freshness
+### Input freshness
 
 Hosts MUST timestamp valid Input reports using a monotonic clock, independently by ID.
 Freshness lasts three nominal publication intervals: 750 ms for Report `3`, 1500 ms for Report `10`.
@@ -789,7 +789,7 @@ On disconnect, clear cached connection state. Re-enumeration does not make old v
 repeat mandatory Feature reads and require new valid data before enabling operations.
 Prior values MAY be shown only as explicitly historical/stale.
 
-## Design Validation
+## Compatibility and versioning
 
 Hosts accept report version `1` only. An incompatible field, size, unit, validation rule or lifecycle change
 requires an affected report-version increment and coordinated firmware/host updates.
@@ -799,14 +799,17 @@ The Pico PIO host drives the same native four-bit bus and reports mode `3`.
 SDIO-PIO mode `1` remains reserved. These reports retain version `1`. Current hosts accept either storage image
 or a no-storage image. They reject both transport bits being set and require initialized samples to match identity.
 Older native-only hosts reject SPI identities. Firmware and hosts MUST be updated together.
-There is no wire-level SPI fallback or assumption that version `1` alone guarantees transport compatibility.
-Wire-layout versioning is independent of firmware semantic version and
-[persistent-record migration](settings.md#record-format). There is no legacy wire fallback.
+Hosts use capability bits and report fields to select storage transport; report version `1` alone does not imply
+SPI support. Wire-layout versioning is independent of firmware semantic version and
+[persistent-record migration](settings.md#record-format). Hosts reject unsupported report versions instead of
+falling back to a legacy layout.
+
+## Design validation
 
 Software checks cover report byte layouts, board facts, telemetry/storage flags, request envelopes,
 opcode restrictions, credential staging, save/commit, scans and USB/BLE result isolation.
 Host checks cover codecs, validation, request/result shapes and command lifecycle.
-Test commands are maintained in the [firmware](../development/firmware.md) and
+Test commands are in the [firmware](../development/firmware.md) and
 [host development](../development/host-tools.md) guides.
 
 These checks use portable firmware modules and synthetic host reports. They do not qualify USB enumeration,
@@ -814,7 +817,7 @@ control-transfer stalls, real interrupt delivery, suspend/resume, card hardware 
 See [qualification gaps](../validation/qualification-gaps.md) and the
 [Bluetooth conformance list](bluetooth.md#conformance).
 
-## Implementation and Integration
+## Implementation and integration
 
 The native USB interface uses Zephyr's `udc_dwc2` driver on the ESP32-S3 and `udc_rpi_pico` on the Pico boards.
 Feature GET supports IDs `1`, `2`, `12`, `13`, `20`;
@@ -828,10 +831,9 @@ One transfer is in flight at a time, so intervals are not delivery guarantees.
 USB callbacks run in the stack thread; shared control access holds the application mutex.
 Python (`hidapi`), .NET (`HidSharp`) and Direct (WebHID) implement the same payload contract.
 
-## Specification History
+## Specification history
 
-The initial report design was derived from the
+The initial report design was adapted from the
 [PicoForge USB HID specification](https://github.com/djwinter29-oss/PicoForge/blob/5e615725b22714963c2d16ed56215042e1411553/docs/reference/usb-hid.md)
-at commit `5e615725b227`. This document defines the current project contract; the upstream document is historical
-context, not an additional source of requirements. Existing offsets and reserved IDs are retained without
-claiming support for upstream-only features.
+at commit `5e615725b227`. This document defines the current contract; existing offsets and reserved IDs remain
+unchanged.

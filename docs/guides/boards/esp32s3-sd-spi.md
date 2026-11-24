@@ -3,6 +3,7 @@
 Use the `esp32s3-devkitc-sd-spi` release image only with an ESP32-S3-DevKitC-1 N16R8:
 16 MB flash, 8 MB octal PSRAM, PROCPU. Check the module marking before
 [flashing the release image](../flashing.md#flash-a-release-image).
+Hardware reports cover selected setups only; see [qualification gaps](../../validation/qualification-gaps.md).
 
 ## Connections
 
@@ -34,14 +35,10 @@ The image disables native SDMMC and uses SPI3 with a requested 25 MHz ceiling, n
 frequency or throughput guarantee. Leave flash/PSRAM and boot-strapping pins alone;
 GPIO33-37 serve octal PSRAM. SPI2 remains reserved for the onboard RGB LED.
 
-## Card safety and qualification
+## Card safety
 
 Back up the card and prepare an existing FAT16, FAT32 or exFAT volume on a computer.
 Firmware mounts at `/SD:` without automatic formatting. Never remove the card during I/O.
 USB drive access requires explicit handoff; safely eject before returning ownership to firmware.
-Disconnect card power before changing between native SDMMC and SPI images: a board reset alone
-may leave the card in SPI mode. There is no runtime bus fallback or card power switching.
-
-These are not electrically qualified wiring instructions. Release workflows do not flash hardware;
-software checks do not qualify physical USB, radio or SD behavior. See
-[qualification limits](../../validation/qualification-gaps.md) before use.
+Before changing buses, follow the
+[card power-cycle instruction](../../reference/sdcard.md#safety-and-ownership).

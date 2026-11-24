@@ -1,7 +1,8 @@
 # Architecture
 
-ZephyrForge separates management policy from board integration and slow device work. This page describes those
-boundaries; use [firmware development](../development/firmware.md) for source layout and test commands.
+USB HID and BLE feed the same control dispatcher. Slow radio and storage operations run outside the management
+loop's application lock; settings saves are a synchronous exception. This page explains the service boundaries
+and concurrency rules. For source layout and tests, use [firmware development](../development/firmware.md).
 
 ```mermaid
 flowchart LR
@@ -43,7 +44,7 @@ the MCU's USB bootloader. The ESP32-C6 has no native USB HID or MSC; Direct uses
 when a Control key is saved through [physical commissioning](../guides/boards/esp32c6-commissioning.md).
 Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
 
-## Repository responsibilities
+## Service responsibilities
 
 | Layer | Responsibility |
 | --- | --- |
@@ -78,35 +79,54 @@ defines its lifecycle and durability.
 
 ## Lifecycle and failure handling
 
-Boot loads the [settings record](settings.md), applies the CPU clock profile, initializes detected SD storage, starts Wi-Fi
-(joining the saved network when enabled), starts BLE when enabled with a saved Control key, and then enables USB.
-Report 10 can show initialized storage without a mounted filesystem after a mount failure; the mount error code is
-logged but not included in the report. Settings-load source and elapsed time, and initial SD setup/mount duration,
-are logged to UART; a flash settings write also logs its erase/write/verify duration. Such a mount failure does not
-stop USB or the radios. No card self-test or file write runs.
+### Boot
+
+Startup loads the [settings record](settings.md), applies the CPU clock profile, and initializes detected SD storage.
+It then starts Wi-Fi, joining the saved network when enabled, and BLE when enabled with a saved Control key.
+USB starts last on boards that support it.
+
+A mount failure is logged but does not stop USB or the radios. Report 10 can show an initialized card without a
+mounted filesystem; it does not carry the mount error code. Boot logs include settings-load source and elapsed
+time, and initial SD setup/mount duration. No card self-test or file write runs at boot.
+
+### Threads and locking
 
 USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thread. Both call the same control
-dispatcher, and every access to settings, staging and wireless state holds one application mutex. Settings saves
-synchronously erase, write and verify flash in the callback while holding that mutex; the nominal 20 ms main-loop
-period is not a response-time guarantee. The logged flash duration does not measure lock wait or total callback
-latency, and save responsiveness and contention have not been hardware-qualified. Wi-Fi driver
-events are queued and applied by the main loop, which also starts connects, disconnects and scans outside the lock.
-Reboots are scheduled about one second after the reply so the host can read the result first.
-An accepted reboot or save reserves that reset: new reboot/save and storage-control requests are rejected until
-reset, while diagnostic reads remain available. Failed reset scheduling leaves normal admission available.
-The [SD worker](sdcard.md) handles runtime detection and exclusive firmware/USB ownership outside the application lock;
-native MSC block I/O runs in its own USB class thread. Busy or USB-owned storage blocks reboot/settings-save.
+dispatcher. After boot initialization, every access to settings, staging, and wireless state holds one application
+mutex.
 
-Scan completion and AIROC interface-down are retained independently of the bounded Wi-Fi event queue.
-Uncertain link observations are rechecked rather than treated as proven disconnection. AIROC interface-down
-requires driver cleanup before another join.
+- **Settings saves** erase, write, and verify flash synchronously in the callback while holding the mutex.
+  The nominal 20 ms main-loop period is not a response-time guarantee. The
+  [flash-operation timing log](settings.md#saving) excludes lock wait and full callback latency;
+  save responsiveness and contention have not been hardware-qualified.
+- **Wi-Fi events** are queued and applied by the main loop. Connect, disconnect, and scan requests run outside
+  the lock.
+- **Storage** runs in a worker outside the application lock. Native MSC block I/O runs in its own USB class thread.
 
-Hosts reject reports outside the wire contracts and never retry a command whose outcome is uncertain; they block further
-writes until the user confirms a re-sync. There is no implicit demo fallback.
+### Command completion and recovery
+
+Reboots are scheduled about one second after the reply so the host can read the result. An accepted reboot or save
+blocks further reboot/save and storage-control requests until reset; diagnostic reads remain available.
+Failed reset scheduling leaves normal admission available. Busy or USB-owned storage blocks reboot/settings-save.
+An accepted storage request is not proof that the ownership transition has finished; see
+[SD ownership](sdcard.md#usb-drive-handoff) for completion and recovery rules.
+
+#### Wi-Fi lifecycle
+
+Wi-Fi joins time out after 30 seconds. Saved-network retries start after 5 seconds and double up to 60 seconds.
+Scans time out after 10 seconds on ESP32-S3 and 15 seconds on W boards. A test reports success only after DHCP
+provides an IPv4 address.
+
+After a canceled join, wait for the board to report disconnection before starting another. A scan that times out
+but never completes remains active; reboot before starting another scan. If the driver reports an interface-down
+state, it must finish cleanup before another join can start.
+
+Hosts reject reports outside the wire contracts and never retry a command whose outcome is uncertain. They block
+further writes until the user confirms a re-sync, so the board can be checked first.
 
 ## Downstream development
 
-Fork this source foundation. Add product work in separate services rather than blocking the main loop or holding the
-application lock. Keep GPIO choices in board overlays, keep protocol changes versioned, and update the authoritative
+Add product work in separate services rather than blocking the main loop or holding the application lock.
+Keep GPIO choices in board overlays, keep protocol changes versioned, and update the authoritative
 references and all three host paths together. Platform-dependent work must respect the configured single-core
 application and existing resource ownership.

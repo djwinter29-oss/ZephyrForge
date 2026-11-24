@@ -8,6 +8,8 @@ Basic monitoring needs no SD card. Wireless controls depend on the connected fir
 
 Python and .NET serve the same dashboard. This host connects over USB HID, not the USB-UART bridge or Bluetooth LE.
 For browser-native USB/BLE connections, use [Direct](../direct/README.md).
+Physical test coverage is limited to selected ESP32-S3 setups; see
+[qualification gaps](../../docs/validation/qualification-gaps.md).
 
 ## Install
 
@@ -98,23 +100,17 @@ The checkout wrapper checks HID permissions before starting and defaults to the 
 
 Controls follow the connected firmware's advertised capabilities; the
 [shared HTTP API](../web/README.md#http-api) owns supported and unsupported operations.
-There is no forced save or CDC serial console. The native diagnostic shell is separate from dashboard management
-and is not protected by the BLE Control key.
+Return an exported card to firmware before saving. The native diagnostic shell is separate from dashboard
+management and is not protected by the BLE Control key; dashboard management uses USB HID, not CDC.
 
-Commands can be rejected or remain uncertain after a timeout/disconnect; delivery is not completion.
+Commands can be rejected or remain uncertain after a timeout or disconnect; delivery is not completion.
 Do not replay uncertain writes. Feature availability and safety gates follow the connected firmware.
-Host tests use fakes only; see the [qualification gaps](../../docs/validation/qualification-gaps.md).
-
-## Dashboard HTTP API
-
-Python and .NET implement the [shared dashboard HTTP API](../web/README.md#http-api).
-That contract owns routes, request fields, reserved status values and unsupported operations.
-Use the board ID returned by discovery when selecting a board for API requests.
 
 ## Development
 
-For tests, type checks, package APIs, and asset staging, see
-[host development](../../docs/development/host-tools.md#python-host-design).
+For API routes, request fields, and response semantics, see the
+[shared dashboard HTTP API](../web/README.md#http-api). For tests, type checks, package APIs, and asset staging,
+see [host development](../../docs/development/host-tools.md#python-host-design).
 
 ## License
 

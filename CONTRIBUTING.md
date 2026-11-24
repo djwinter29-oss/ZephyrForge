@@ -18,7 +18,8 @@ See [security reporting](SECURITY.md) for sensitive reports.
 
 Put each contract or procedure in one place and link to it. Keep guides task-oriented, references precise, and
 dated validation results unchanged except for link maintenance. Internal refactors need documentation changes
-only when an interface or operating procedure changes.
+only when an interface or operating procedure changes. Write for the reader's task: explain why a constraint
+matters, state each limitation in its authoritative home, and avoid repeated closing disclaimers.
 
 Run `python3 tools/check_docs.py` and `git diff --check` after moving or editing documents.
 

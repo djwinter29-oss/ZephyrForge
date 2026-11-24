@@ -3,6 +3,7 @@
 This wiring applies to Pico, Pico W, Pico 2 and Pico 2 W images ending in `sd-spi`.
 Choose the release archive for the **exact board**; RP2040 and RP2350 images are not interchangeable.
 Follow [release-image flashing](../flashing.md#flash-a-release-image) for BOOTSEL installation.
+Pico storage images have no hardware test records; see [qualification gaps](../../validation/qualification-gaps.md).
 
 ## Connections
 
@@ -35,14 +36,10 @@ The board's default I2C0 and I2C1 pin assignments are disabled because they over
 For custom wiring, SCK, MOSI and MISO must be functions of the selected SPI controller;
 CS is an ordinary GPIO.
 
-## Card safety and qualification
+## Card safety
 
 Back up the card and prepare an existing FAT16, FAT32 or exFAT volume on a computer.
 Firmware mounts at `/SD:` without automatic formatting. Never remove the card during I/O.
 USB drive access requires explicit handoff; safely eject before returning ownership to firmware.
-Disconnect card power before changing between native SDMMC and SPI images: a board reset alone
-may leave the card in SPI mode. There is no runtime bus fallback or card power switching.
-
-These are not electrically qualified wiring instructions. Release workflows do not flash hardware;
-software checks do not qualify physical USB, radio or SD behavior. See
-[qualification limits](../../validation/qualification-gaps.md) before use.
+Before changing buses, follow the
+[card power-cycle instruction](../../reference/sdcard.md#safety-and-ownership).

@@ -1,44 +1,39 @@
 # Host development
 
-Python and .NET share a dashboard and HTTP API; each host owns the
-board's USB HID interface and decodes the [USB HID reports](../reference/usb-hid.md).
-The [Direct dashboard](../../host/direct/README.md) is independent: see
-[Direct dashboard independence](#direct-dashboard-independence).
+Python and .NET connect to USB HID and serve the same dashboard and HTTP API. Direct is a separate browser
+application using WebHID or Web Bluetooth.
 
-## Run software checks
+## Choose your checks
 
-Install test dependencies in a Python virtual environment. Commands run from the repository root:
+Run the checks for the component you changed:
+
+- [Python host](#python-host-design) - unit tests, strict type checks, and package checks.
+- [.NET host](#net-builds-and-versions) - protocol, monitor, and HTTP API tests.
+- [Shared dashboard](#shared-dashboard) - Node tests, type checks, and browser checks against both hosts.
+- [Direct](#direct-tests-and-type-checks) - Node/server tests and type checks, plus [browser checks](#direct-browser-checks).
+
+Commands below run from the repository root. Use Python 3.10+ in a virtual environment, Node 22 for JavaScript
+checks, and the .NET 10 SDK for .NET and shared-dashboard browser checks.
+
+Tests use simulated devices and loopback HTTP, not real hardware. CI runs them through
+[Host Validation](../../.github/workflows/host-validation.yml); [release checks](releases.md) also exercise extracted
+packages. These are not physical USB, BLE, or firmware tests.
+
+Keep report decoding, field names, and error semantics aligned across all three clients and the
+[USB HID contract](../reference/usb-hid.md). A protocol change needs matching firmware, host, specification, and
+test changes. Keep hosts on loopback, report failures clearly, and never replay an uncertain command.
+
+## Python host design
+
+Install the package and test dependencies, then run unit and type checks:
 
 ```sh
 python3 -m pip install --editable host/python -r host/python/tests/requirements.txt
 python3 -m unittest discover -s host/python/tests -v
 (cd host/python && pyright)
-node host/web/tests/run-tests.mjs
-dotnet test host/dotnet/ZephyrForge.Tests
-python3 tools/check_docs.py
 ```
 
-Python and .NET tests use fake HID devices and loopback HTTP; they do not open real hardware and are not firmware
-or hardware tests. [Host Validation](../../.github/workflows/host-validation.yml) runs Python 3.10 and 3.12 on
-Ubuntu, macOS and Windows. Node 22 and .NET 10 checks run once per OS, alongside Python 3.12. Ceedling and
-documentation links are independent jobs in that reusable workflow.
-On Ubuntu with Python 3.12 it also type-checks the Python package and verifies an installed wheel.
-[Release packages](releases.md) additionally smoke-test the extracted Direct dashboard,
-the installed Python wheel and the self-contained .NET dashboards without connected hardware.
-There is no demo mode: without a board, the hosts show an empty board list and never invent values.
-
-Keep report decoding, field names and error semantics aligned across the three clients. Adding telemetry requires
-updates to the firmware report, all three decoders, the references and tests. Do not expose the hosts beyond
-loopback, retry uncertain commands, or introduce silent timeouts/fallback data.
-
-On Linux, run [hid-permissions-setup.sh](../../tools/host/hid-permissions-setup.sh) once to install the udev rule
-for `CAFE:4021`. [run-python.sh](../../tools/host/run-python.sh) and [run-dotnet.sh](../../tools/host/run-dotnet.sh)
-call [hid-permissions-check.sh](../../tools/host/hid-permissions-check.sh) before starting.
-
-## Python host design
-
-The Python host is an installable package with pinned dependencies and separate test tooling.
-Run `zephyrforge`, `python -m zephyrforge`, or the checkout launch script.
+For running against a board, use the [Python host guide](../../host/python/README.md).
 
 | Layer | Responsibility |
 |---|---|
@@ -74,6 +69,12 @@ After packaging, remove `host/python/src/zephyrforge/web` to resume serving the 
 A source distribution built after staging already contains the assets and needs no external copy when building its wheel.
 
 ## .NET builds and versions
+
+```sh
+dotnet test host/dotnet/ZephyrForge.Tests
+```
+
+For running against a board, use the [.NET host guide](../../host/dotnet/ZephyrForge/README.md).
 
 The .NET host uses MinVer with `vMAJOR.MINOR.PATCH` Git tags, patch increments and `dev` prerelease identifiers.
 Builds need Git history and tags to calculate development versions. The dashboard displays the assembly's
@@ -112,7 +113,7 @@ python3 -m playwright install chromium
 python3 host/web/tests/browser/run.py
 ```
 
-The browser runner also requires the editable Python host and .NET SDK installed above.
+The browser runner also requires the editable Python host installation above and the .NET SDK.
 Chromium needs its system libraries and at least one font; `python3 -m playwright install-deps chromium`
 installs them on Debian and Ubuntu.
 
@@ -177,6 +178,3 @@ incomplete checks, assertion/browser errors, or failed asset loads. Checks cover
 viewports, wireless cancellation, save/reconnect ownership, history navigation, and retained recovery journals.
 Vendored axe-core 4.10.3 checks WCAG 2.1 A/AA and best-practice rules on the dashboard and dialogs; its MPL-2.0 and
 third-party notices are in `host/direct/tests/browser/vendor/`. These checks do not exercise physical USB or BLE.
-
-Host Validation runs both dashboards' Node tests and the Direct server tests on every OS, dashboard
-TypeScript checks on Ubuntu, and both Chromium browser checks in a separate job.

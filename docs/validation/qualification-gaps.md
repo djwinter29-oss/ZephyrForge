@@ -1,35 +1,67 @@
 # Qualification gaps
 
-Functional hardware testing on ESP32-S3-DevKitC-1 N16R8 has been reported with no issues in the listed checks.
-See the [hardware test report](records/2026-11-14-hardware-tests.md) for coverage, provenance and missing configuration
-details. This is functional evidence, not production qualification.
+This page summarizes recorded hardware results and the checks still needed. ESP32-S3 N16R8 has limited functional
+checks and measurements for selected setups. Pico-family and ESP32-C6 images have software checks only; none of
+these targets has production qualification.
 
-| Area | Current boundary |
+## Board coverage
+
+| Target | Hardware evidence |
 | --- | --- |
-| ESP32-S3 target | N16R8 flashing and boot reported working; firmware revision, image hashes and PSRAM memory-test output not recorded |
-| ESP32-C6 target | No-storage and SD-over-SPI images are software builds only; no flashing, boot, BLE, Wi-Fi or card behavior has hardware evidence. [Physical key commissioning](../guides/boards/esp32c6-commissioning.md) is software-tested, not hardware-qualified |
-| Raspberry Pi Pico targets | Pico, Pico W, Pico 2 and Pico 2 W images are software builds only; UF2 flashing, boot, USB HID/MSC, the UART console, the PIO SD host, SPI storage and W Wi-Fi have no hardware evidence; W BLE transport is unsupported |
-| Firmware unit tests | Ceedling covers the portable control dispatcher, report encoding, SD lifecycle, wireless staging/auth, SHA-256, boot-settings record, Pico board facts and the PIO SD host's wire encoding and clock planning with mocked platform hooks and a fake flash; no Zephyr execution or PIO timing |
-| USB HID | Dashboard connection and [sampled reads/handle reopens](records/2026-11-20-firmware-qualification.md) observed; broader timing, host compatibility and physical reconnect behavior remain unqualified |
-| BLE | Monitoring and authenticated control reported working; MTU variation, reconnect stress and radio coexistence remain unqualified |
-| Wi-Fi | Provisioning, connection and [scan stress](records/2026-11-20-firmware-qualification.md) observed; failure recovery, lease renewal, coexistence and long-duration behavior remain unqualified |
-| Boot settings | Save and reboot reported working; interrupted erase/program, endurance and individual CPU-clock profiles not documented in the report |
-| SD card | Native four-bit SDMMC, SPI, detection and replacement reported working; one card's write failures and 10 mA pad-drive fix are [recorded](records/2026-11-20-sd-write-reliability.md); card/wiring matrix, sustained I/O and fault recovery remain unqualified |
-| USB MSC | Handoff and return reported working; no OS/card matrix, repeated-cycle data or interrupted-handoff results recorded; see [SD ownership](../reference/sdcard.md#usb-drive-handoff) |
-| Diagnostic shells | UART and Wi-Fi TCP shells reported working; admission/reconnect stress and concurrent HID/BLE responsiveness remain unqualified |
-| Storage benchmark | Portable safety and host codecs tested; [installed-image checks](records/2026-11-20-firmware-qualification.md) and [flashed 40 MHz image checks](records/2026-11-20-sdmmc-performance.md) recorded on one card; removal/fault cleanup and card matrices remain open. C6 benchmarking is not built because its start command requires USB HID |
-| Onboard RGB LED | LED controls reported working; exact board revision/pin, waveform timing and optical measurements not recorded |
-| Module memory inventory | Live board diagnostics reported working; raw PSRAM/flash inventory values, reservations and memory-accounting checks not supplied |
-| Dashboards | Live USB HID connection and diagnostics reported working; no per-dashboard/OS/browser hardware matrix or raw measurements recorded. C6 has no USB HID dashboard path |
-| Security | BLE Control key authentication without link encryption; unencrypted flash; physical USB/UART control; unauthenticated plaintext diagnostic TCP; loopback hosts |
-| Variants | Only N16R8 is configured for the ESP32-S3; N4/N8/octal-flash modules and other S3 boards are not targets. ESP32-C6 support is limited to the configured DevKitC-1 N8; Pico-compatible boards other than the four listed are not targets |
-| Product readiness | No power-loss, soak, performance, RF, EMC or regulatory qualification |
+| ESP32-S3-DevKitC-1 N16R8 | Flashing and boot reported working in the [2026-11-14 report](records/2026-11-14-hardware-tests.md). That report lacks firmware revision, image hashes, and PSRAM memory-test output. The later [native SDMMC record](records/2026-11-20-sdmmc-performance.md) identifies its flashed image by hash. |
+| ESP32-C6-DevKitC-1 N8 | No recorded flashing, boot, BLE, Wi-Fi, or card checks on hardware. [First-key commissioning](../guides/boards/esp32c6-commissioning.md) has software tests only. |
+| Pico, Pico W, Pico 2, Pico 2 W | No recorded UF2 flashing, boot, USB HID/MSC, UART, PIO SD, SPI storage, or W-board Wi-Fi checks on hardware. |
 
-Further qualification should record firmware/image identity, host/tool versions, board and card details,
-procedures, durations and observed results. Use backups and a dedicated card for destructive or fault-injection tests.
-Historical software-only records remain unchanged; neither they nor one functional report establish compatibility
-with every hardware or workload combination.
+Other board variants are not supported targets: ESP32-S3 N4/N8 and octal-flash modules need different configuration,
+as do other S3 boards, C6 boards other than the configured DevKitC-1 N8, and Pico-compatible boards outside the four
+listed above.
 
-The [firmware qualification procedure](firmware-qualification.md) defines opt-in target checks, matrices,
-acceptance thresholds and safety requirements for closing the SD/MSC and USB/BLE/Wi-Fi lifecycle gaps.
-Having a procedure or software-tested runner does not close those physical gaps.
+## ESP32-S3 checks still needed
+
+"Reported working" below refers to the [functional hardware report](records/2026-11-14-hardware-tests.md), not
+an independently measured stress test. Linked follow-up records identify their own images, equipment, and limits.
+
+| Area | Recorded result | Still to test or record |
+| --- | --- | --- |
+| USB HID | Dashboard connection reported working; [sampled reads and handle reopens](records/2026-11-20-firmware-qualification.md) measured | Broader timing, host compatibility, and physical reconnects |
+| BLE | Monitoring and authenticated control reported working | MTU variation, reconnect stress, and radio coexistence |
+| Wi-Fi | Provisioning and connection reported working; [scan stress](records/2026-11-20-firmware-qualification.md) measured | Failure recovery, lease renewal, coexistence, and long-duration behavior |
+| Boot settings | Save and reboot reported working | Interrupted erase/program, endurance, and individual CPU-clock profiles |
+| SD card | Native SDMMC, SPI, detection, and replacement reported working; [write failures and the 10 mA pad-drive fix](records/2026-11-20-sd-write-reliability.md) recorded on one card | Card/wiring matrix, sustained I/O, and fault recovery |
+| USB MSC | Handoff and return reported working | OS/card matrix, repeated cycles, data integrity, and interrupted handoff |
+| Diagnostic shells | UART and Wi-Fi TCP shells reported working | Admission/reconnect stress and concurrent HID/BLE responsiveness |
+| Storage benchmark | [Installed-image](records/2026-11-20-firmware-qualification.md) and [40 MHz image](records/2026-11-20-sdmmc-performance.md) checks recorded on one card | Removal/fault cleanup and additional cards |
+| Onboard RGB LED | LED controls reported working | Exact board revision/pin, waveform timing, and optical measurements |
+| Module memory inventory | Live diagnostics reported working | Raw PSRAM/flash values, reservations, and memory-accounting checks |
+| Dashboards | Live USB HID connection and diagnostics reported working | Per-dashboard/OS/browser hardware matrix and raw dashboard measurements |
+
+Power-loss, soak, performance, RF, EMC, and regulatory qualification remain open. One functional report or one
+card's benchmark does not establish compatibility with other hardware or workloads.
+SD pin allocations and pad-drive settings are unqualified outside recorded setups; Pico storage, including the PIO
+host, has no hardware records.
+
+## What software checks establish
+
+The [firmware tests](../development/firmware.md) cover portable policy and report handling with fake flash and
+platform hooks, and Wi-Fi lifecycles with controlled Zephyr native interfaces. Portable SD encoding tests do not
+exercise PIO timing. [Host tests](../development/host-tools.md) cover codecs, command recovery, and dashboard behavior
+with fake devices. Benchmark safety checks use simulated media.
+
+These checks help catch software regressions; they do not establish electrical behavior, over-the-air performance,
+or physical reconnect reliability.
+
+## Product and security limits
+
+- Pico W images have no BLE transport. C6 has no native USB HID dashboard path or USB-controlled benchmark.
+- BLE Control keys authenticate commands, but do not encrypt the link. Saved credentials are unencrypted in flash.
+  USB management and UART commissioning rely on physical access, and the diagnostic TCP shell is unauthenticated
+  plaintext. Local hosts stay on loopback. See [wireless security boundaries](../guides/wireless.md#security-boundaries).
+
+## Recording further checks
+
+Use the [firmware qualification procedure](firmware-qualification.md) for safety prerequisites, opt-in target checks,
+matrices, and acceptance thresholds. Record firmware/image identity, host/tool versions, board and card details,
+procedures, durations, and observed results in a new dated record. Use backups and a dedicated expendable card for
+destructive or fault-injection tests.
+
+Add only observed results to dated records; the procedure is a plan, not evidence that a check passed.

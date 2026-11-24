@@ -136,8 +136,8 @@ the [board/storage wiring guides](../reference/sdcard.md#pin-allocation) and qua
 before working offline. Pico ZIPs contain `zephyr.uf2`; ESP32-S3 ZIPs contain `zephyr.bin`.
 Each firmware ZIP is not a relocatable west build directory; the
 [source-build flash wrapper](../guides/flashing.md#from-a-source-build) remains the west-based path.
-Choose the archive matching the board and wiring, and power-cycle the card before switching buses.
-No image has automatic bus fallback.
+Choose the archive matching the board and wiring. Before changing buses, follow the
+[card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
 
 ## Direct Pages, PyPI and retries
 

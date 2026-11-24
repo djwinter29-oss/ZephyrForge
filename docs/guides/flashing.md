@@ -2,6 +2,7 @@
 
 Choose the procedure for a downloaded release or an existing source build. Both replace firmware on the board.
 Check the exact board and memory variant first; images for boards with the same MCU are not necessarily compatible.
+Recorded hardware test coverage is summarized in [qualification gaps](../validation/qualification-gaps.md).
 
 ## Flash a release image
 
@@ -12,8 +13,8 @@ and source commit.
 
 Firmware ZIPs contain an image, build identity, and licenses, not a Zephyr build directory or offline documentation.
 Use the guides linked from the release **at its tag**, and save them before working offline.
-For SD-enabled images, check the matching [wiring guide](../README.md#wire-an-sd-card). Disconnect card power before
-switching between SDMMC and SPI; a board-only reset may leave the card in SPI mode.
+For SD-enabled images, check the matching [wiring guide](../README.md#wire-an-sd-card). Before changing buses,
+follow the [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
 
 ### ESP32-S3 release image
 
@@ -115,6 +116,3 @@ The wrapper does not flash Pico boards. Take `zephyr.uf2` from the selected
   release RESET, release BOOT, and retry. For unreliable uploads, try `--baud 115200` after checking cable and power.
 - Close serial terminals before uploading. Reopen the [console](console.md#uart) afterward at 115200 baud, 8N1.
 - An upload success is not a boot check. Connect a dashboard and confirm fresh board status.
-
-No release or build workflow qualifies physical USB, radio, or SD behavior. Current evidence is listed in
-[qualification gaps](../validation/qualification-gaps.md).

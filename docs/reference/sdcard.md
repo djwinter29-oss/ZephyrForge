@@ -1,40 +1,31 @@
 # SD storage
 
-ESP32-S3 and Raspberry Pi Pico boards have **native four-bit SDMMC** (the default) and **SD-over-SPI** images.
-ESP32-C6 has SD-over-SPI only. The build wrapper also provides a `none` profile that omits all SD and filesystem
-support; see the
-[firmware build guide](../development/firmware-build.md).
-The ESP32-S3-DevKitC-1 N16R8 uses SDMMC slot 0 or SPI3; the ESP32-C6 uses SPI2. The Raspberry Pi Pico boards have no
-SD controller, so their native image runs the bus on a PIO block and their SPI image uses SPI0.
-Select the image that matches the wiring; there is no runtime fallback.
-SD-enabled profiles use Zephyr's SDMMC disk layer and FatFs. USB MSC ownership handoff is available only on boards
-with native USB HID and MSC support.
-This is the SD memory-card bus, not an SDIO peripheral/function API.
-The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage on boards
-that provide that interface.
-Use the board guides below for physical connections, or [hardware setup](../guides/hardware.md#sd-card-wiring)
-for board selection and electrical precautions.
+Storage-enabled images use Zephyr disk access and FatFs to mount an existing volume at `/SD:` (disk name `SD`).
+Firmware owns the card until the user explicitly hands it to USB mass storage on a board that supports it.
+There is no automatic formatting or runtime bus fallback.
+Hardware reports cover selected card and wiring combinations only; see
+[qualification gaps](../validation/qualification-gaps.md).
+
+ESP32-S3 and Pico images offer native four-bit SDMMC or SPI; C6 offers SPI only.
+The [build guide](../development/firmware-build.md) also describes the `none` image, which omits SD and filesystem
+support entirely. This is an SD memory-card interface, not an SDIO peripheral/function API.
+
+For runtime behavior, see [mounting](#boot-and-runtime-mount-lifecycle), [USB handoff](#usb-drive-handoff),
+or the [optional benchmark](#optional-storage-benchmark).
 
 ## Pin allocation
 
 GPIO numbers are MCU signals, not physical header positions. Select the wiring guide matching the board
-and storage variant. There is no runtime bus fallback; disconnect card power before changing buses.
+and storage variant. Read [safety and ownership](#safety-and-ownership) before changing buses.
 
-### ESP32-S3-DevKitC-1 N16R8
+| Board | Native four-bit SDMMC | SD-over-SPI |
+| --- | --- | --- |
+| ESP32-S3-DevKitC-1 N16R8 | [Wiring](../guides/boards/esp32s3-sdmmc.md) | [Wiring](../guides/boards/esp32s3-sd-spi.md) |
+| ESP32-C6-DevKitC-1 N8 | Not supported | [Wiring](../guides/boards/esp32c6-sd-spi.md) |
+| Pico, Pico W, Pico 2, Pico 2 W | [Wiring](../guides/boards/pico-sdmmc.md) | [Wiring](../guides/boards/pico-sd-spi.md) |
 
-- [Native four-bit SDMMC wiring](../guides/boards/esp32s3-sdmmc.md).
-- [SD-over-SPI wiring](../guides/boards/esp32s3-sd-spi.md).
-
-### ESP32-C6-DevKitC-1 N8
-
-- [SD-over-SPI wiring](../guides/boards/esp32c6-sd-spi.md).
-
-### Raspberry Pi Pico boards
-
-These guides cover the shared 40-pin allocation of Pico, Pico W, Pico 2 and Pico 2 W:
-
-- [Native four-bit SDMMC wiring](../guides/boards/pico-sdmmc.md).
-- [SD-over-SPI wiring](../guides/boards/pico-sd-spi.md).
+The Pico guides use the family's shared 40-pin header. For connectors and electrical precautions, see
+[hardware setup](../guides/hardware.md#sd-card-wiring).
 
 ### Reported allocation
 
@@ -63,13 +54,17 @@ the filesystem API and FatFs. SPI images select `CONFIG_SPI_SDHC`.
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
+Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
+covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
+
+### Pico PIO resources
+
 The Pico native host is ported from PicoForge's PIO SDIO engine and implements the standard Zephyr SDHC API, so the
 same SD stack, disk and filesystem layers run above it. It owns PIO1, using two state machines and the instruction
 memory, which it reloads between reads and writes, plus one DMA channel claimed through pico-sdk. It cannot be
 enabled together with Zephyr's RP DMA driver, which does not coordinate channel claims with pico-sdk.
 
-Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
-covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
+### Clock negotiation
 
 Native SDMMC starts with a one-bit bus at the probing clock and negotiates the card's advertised capabilities.
 Cards that accept High Speed mode can use the board's native ceiling; cards without that support remain at the
@@ -141,8 +136,7 @@ The pinned SD stack includes a public-ioctl extension that retains CID during ha
 
 The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
 and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
-Use the UART log for
-diagnosis, and do not label every uninitialized sample "no card".
+Use the UART log for diagnosis, and do not label every uninitialized sample "no card".
 
 Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
 no native USB HID, so Direct BLE can read storage status but cannot start the USB-only benchmark or handoff commands.
@@ -152,13 +146,15 @@ Power-cycle the card as described in the wiring instructions.
 
 The dashboards offer a USB-controlled benchmark when capability bit 5 is advertised. It is disabled by default in
 CMake; the build wrapper enables it for SD-enabled ESP32-S3 and Pico images, not for C6. See
-[build configuration](../development/firmware-build.md#shared-build-behavior).
+[build configuration](../development/firmware-build.md#configuration-and-storage-profiles).
 It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
 
 Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a deterministic
 pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file of that name is
 never overwritten or removed. The volume must already be mounted for firmware; no formatting or repair occurs.
 Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
+
+### Admission, progress, and timing
 
 The command acknowledges **queued admission**, not successful filesystem preflight or a passing benchmark.
 File-existence and free-space checks run asynchronously on the storage worker. Read Report `11` for phases,
@@ -169,6 +165,8 @@ blocked. Management remains responsive while the worker performs storage I/O.
 Write timing includes pattern generation, file allocation, writes and final close/sync. Read timing includes reads,
 verification and final close. Throughput is completed bytes divided by elapsed time, not a bus-frequency estimate.
 A zero elapsed time produces unavailable throughput (`--`), not a fabricated rate.
+
+### Cancellation and cleanup
 
 Cancel requests stop at the next cooperative checkpoint and attempt cleanup. Short/failed I/O is never replayed.
 Observed removal stops further access to that media, including close/unlink; replacement media is not used for cleanup.
@@ -183,16 +181,10 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
 - Bluetooth mirrors storage/configuration reports but cannot change MSC ownership.
 - Physical removal during reads/writes can interrupt I/O and corrupt data. Detection does not prevent unplugging,
   make writes atomic, or provide power-loss recovery. Back up data and safely eject before returning USB ownership.
+- Power-cycle the card before changing between SDMMC and SPI images. A board reset can leave the card in SPI mode;
+  the board has no card power switch.
 - A failed mount returns an error rather than creating a new volume.
 - Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.
 - Downstream filesystem users must participate in ownership serialization, check every return value and close/sync
   files before handoff. Keep blocking storage work out of the management loop and application lock.
 - There is no implemented power-loss recovery or sustained-recording guarantee.
-
-## Validation limits
-
-Hardware results are kept in the [validation records](../validation/records/README.md); they cover individual
-card and wiring combinations. Successful compilation and simulated absent-card UI do not qualify any card, breakout,
-FAT layout or sustained recording workload. The pin allocation and pad drive are not electrically qualified for
-other wiring. The Raspberry Pi Pico images, including the PIO SD host, have no hardware records yet.
-See the [qualification gaps](../validation/qualification-gaps.md).

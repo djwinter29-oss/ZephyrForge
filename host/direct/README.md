@@ -2,6 +2,8 @@
 
 Direct connects to a ZephyrForge board from desktop Chrome or Edge using USB (WebHID) or Bluetooth LE
 (Web Bluetooth). It does not need the Python or .NET host application.
+Physical test coverage is limited to selected ESP32-S3 setups; see
+[qualification gaps](../../docs/validation/qualification-gaps.md).
 
 Controls follow the board's advertised capabilities. Pico boards use USB only; ESP32-C6 uses BLE after
 [physical key commissioning](../../docs/guides/boards/esp32c6-commissioning.md).
@@ -34,8 +36,7 @@ For version rules and development checks, see [host development](../../docs/deve
 3. Select the ZephyrForge device (`0xCAFE:0x4021`) and grant access to its vendor HID interface.
 4. Wait for valid identity, configuration, and fresh status before using controls.
 
-The chooser opens even for previously authorized devices. Cancel leaves Direct disconnected; browser permission
-cannot override another application's HID access.
+Cancel leaves Direct disconnected. Close other applications using the board's HID interface if it is unavailable.
 
 For BLE, first save a Control key through USB on ESP32-S3 or physical commissioning on C6. Choose **Bluetooth**,
 enter the saved key, and select `ZephyrForge-<serial>`. The key authenticates commands; it does not encrypt traffic.
@@ -65,7 +66,7 @@ Controls depend on the board, transport, and fresh reports. Unsupported actions 
 - **Wireless provisioning:** USB only. BLE cannot stage credentials, scan/test Wi-Fi, or change radio switches.
 - **USB drive:** export an initialized card, then safely eject in the OS before confirming return to firmware.
   BLE cannot change ownership. See [SD handoff](../../docs/reference/sdcard.md#usb-drive-handoff).
-- **RGB LED:** the Device information dropdown sends a volatile colour request over USB or authenticated BLE.
+- **RGB LED:** the Device information dropdown sends a volatile color request over USB or authenticated BLE.
   It requires fresh telemetry showing an available driver; it does not save a setting.
 - **Benchmark:** when supported, confirm the size and card-write warning before starting. Cancellation and
   progress are shown in Storage; BLE mirrors progress read-only. A board change invalidates an open confirmation.
@@ -91,7 +92,7 @@ The form shows why Save is blocked. The same eligibility checks run again when c
 and schedules a reboot; Direct rereads configuration after reconnection. BLE saves keep the saved radio switches.
 **Reboot** is a separate confirmed action; Cancel or Escape sends nothing.
 
-There is no forced save. Return an exported card to firmware first. Disconnecting with unsaved edits asks for
+Return an exported card to firmware before saving. Disconnecting with unsaved edits asks for
 confirmation and identifies the board.
 
 ## Wi-Fi shell
@@ -102,16 +103,15 @@ The terminal checks that tab's fresh board identity and address before opening, 
 Replacement, stale status, or a closed dashboard disconnects the terminal.
 
 The relay accepts only private LAN IPv4 targets on port 2323 through same-origin loopback requests. Pages and
-other static servers show plain Wi-Fi status instead of a shell link. TCP connection failures are reported:
-connected Wi-Fi does not prove the listener is ready.
+Other static servers show plain Wi-Fi status instead of a shell link. TCP connection failures are reported because
+connected Wi-Fi does not guarantee that the listener is ready.
 
-The relay capability endpoint is `GET /api/console/capabilities`, returning `{"available":true}`.
-Direct opens a session with `POST /api/console` and exactly `{"ipv4":"REPORTED_ADDRESS"}`. Session headers, packet
-limits, expiry, and no-replay rules match the [shared API](../web/README.md#browser-shell).
-The release ZIP includes the relay and needs no Python host installation.
+Keep the originating dashboard tab open while using the terminal. The relay checks the current board and Wi-Fi
+status and disconnects when either changes. The release ZIP includes the relay and needs no Python host installation.
+The [shared HTTP API](../web/README.md#browser-shell) documents the relay contract.
 
 The terminal discards unfinished input from the previous client and requests `shell echo on` once for that
-session. It supports plain-text output and native editing, not full VT100 or colour emulation. Tab stays in the
+session. It supports plain-text output and native editing, not full VT100 or color emulation. Tab stays in the
 terminal; Shift+Tab leaves it. Multiline paste needs confirmation. Close the tab to disconnect; abandoned sessions
 expire after 15 idle seconds.
 
@@ -121,16 +121,13 @@ and never enter secrets or replay uncertain input.
 ## Page lifecycle
 
 Navigating away releases the board. Returning through browser history reloads into a disconnected state with
-drafts cleared; reconnect explicitly. Commands are never replayed.
+drafts cleared; reconnect to continue.
 
-Pending-operation journals stay in the current tab's `sessionStorage`. They contain transaction/profile/commit-mask
-or generation facts, never SSIDs, passwords, or Control keys. Missing, inaccessible, or invalid journal storage
-blocks writes. Keep the tab open until an uncertain operation is resolved; recovery does not survive the end of
-that tab's session.
+After a timeout or disconnect, use **Re-sync** before sending another command. Keep the tab open until the result is
+resolved; pending recovery does not carry over to a new tab.
 
-If recovery remains uncertain, **Abandon unresolved recovery…** clears only the local journal after confirmation.
-Use it only after independently checking the board. It neither undoes nor verifies an operation.
-Old asynchronous completions cannot clear drafts created after reconnecting.
+If the board's state cannot be confirmed, leave recovery unresolved. **Abandon unresolved recovery…** clears only
+the local recovery record after confirmation; it does not change the board.
 
 ## Protocol and connection
 
@@ -139,5 +136,4 @@ Direct validates the [USB HID](../../docs/reference/usb-hid.md) and
 and matched by transaction ID and opcode. Reconnect verifies the same board UID and reads outstanding results
 without replaying a write.
 
-Stale or invalid reports do not authorize commands. Protocol references define polling and freshness limits;
-[qualification gaps](../../docs/validation/qualification-gaps.md) describe what remains untested on hardware.
+Direct disables controls when reports are stale or invalid. Protocol references define polling and freshness limits.
