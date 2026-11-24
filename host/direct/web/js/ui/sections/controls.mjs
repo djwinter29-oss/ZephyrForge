@@ -22,8 +22,8 @@ const element = id => queryElement(`#${id}`);
  * @return {{signature: string, choices: Array<[number, string, boolean?]>}} `signature` changes with the choices.
  */
 export function deriveClockOptions(mcu, savedClock) {
-  /** @type {Array<[number, string, boolean?]>} */
   const maxClock = mcu === "ESP32-C6" ? 160 : mcu === "ESP32-S3" ? 240 : 0;
+  /** @type {Array<[number, string, boolean?]>} */
   const choices = maxClock
     ? CLOCKS_MHZ.filter(mhz => mhz <= maxClock)
       .map(mhz => [mhz, mhz ? `${mhz} MHz` : `Default (${maxClock} MHz)`]) : [[0, "Default"]];
