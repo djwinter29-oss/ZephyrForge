@@ -13,7 +13,7 @@ Board-scoped routes take `?board=ID` from `/api/boards`.
 `hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when the firmware advertises
 [memory inventory](../../docs/reference/usb-hid.md#report-id-13-module-memory-inventory).
 Unsupported or unavailable values are `null` or absent and display `--`. RAM reservation is linked accounting,
-including heap pools, not live usage; flash capacity is not free space. No capacity is inferred from N16R8.
+including heap pools, not live usage; flash capacity is not free space.
 
 | Route | Purpose |
 | --- | --- |
@@ -37,10 +37,10 @@ including heap pools, not live usage; flash capacity is not free space. No capac
 
 ### Settings and wireless
 
-Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts;
-there is no forced-save workflow. Successful settings saves return the confirmed values as
+Settings requests with `confirm_data_loss:true` are refused with HTTP 409 and the same error body on both hosts.
+Successful settings saves return the confirmed values as
 `{"settings":{"system_clock_mhz":240,"sdcard_profile":0,"radios":0}}` on both hosts.
-Wireless requests may omit `tcp_cli_enabled` or supply `false`, never `true`. Omitted credentials are not
+Wireless requests may omit `tcp_cli_enabled` or supply `false`; `true` is rejected. Omitted credentials are not
 restaged. Opaque SSIDs use `ssid_hex` alongside an escaped display label; test/save requests may use the hex
 form to preserve network bytes.
 
@@ -53,8 +53,6 @@ failure is HTTP 503 and may leave an uncertain outcome. HTTP 200 acknowledges ad
 both hosts return `{"accepted":true}`. Poll `/api/status` for `memory.msc.transition_pending`, `enabled` and
 `request_rejected`; do not automatically replay. See the
 [SD handoff contract](../../docs/reference/sdcard.md#usb-drive-handoff) for OS eject, reconnect and safety limitations.
-
-Unsupported routes are not served: `/api/msc/force-return` and `/api/self-test`. The UI never requests them.
 
 ### Storage benchmark
 
@@ -71,7 +69,6 @@ Never automatically replay a start/cancel request.
 
 ### Status and recovery
 
-`wireless.tcp_cli_enabled` remains false; it does not describe native diagnostic-shell readiness.
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
 still produce a warning. Unknown card presence is not treated as a confirmed missing card.

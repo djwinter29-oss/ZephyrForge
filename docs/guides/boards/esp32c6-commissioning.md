@@ -4,9 +4,8 @@ Use this procedure once to commission an ESP32-C6-DevKitC-1 N8 for Direct BLE ma
 advertise until a Control key is saved. The C6 has no native USB HID, so this procedure writes the first key through
 its UART flashing port.
 
-This is not Wi-Fi provisioning, key rotation, or a settings-reset procedure. It requires authorized physical access
-to an unencrypted board and exclusive use of its flashing port. The procedure has software checks, not hardware
-qualification.
+This procedure writes settings to an unencrypted board through its flashing port. Use it only with physical access
+to the board and no other application using that port. The procedure has software checks, not hardware qualification.
 
 ## Prepare the board and build
 
@@ -15,7 +14,7 @@ qualification.
    [flash it](../flashing.md#from-a-source-build).
 2. Retain the matching build directory, including compiled configuration and devicetree. The utility derives the
    settings address from that build; it does not prove the matching image is installed.
-3. Close all other programs using the port and obtain explicit authorization to write settings.
+3. Close all other programs using the port. The write replaces the first settings sector.
 
 ## Validate without writing
 
@@ -50,12 +49,13 @@ same key. Device operations leave the board in download mode rather than automat
 
 ## If the operation fails
 
-After a failure, timeout, or interruption, inspect and reconcile the board with read-only operations before any
-separately authorized recovery. Do not blindly rerun provisioning, erase existing settings, or infer success.
+After a failure, timeout, or interruption, do not rerun provisioning or erase settings. If you cannot confirm that
+the first settings sector is still erased, leave the board unchanged and resolve its state before attempting another
+write.
 The utility never requests a full-chip erase or retries an uncertain write.
 
-It uses private temporary files and removes them on normal success or failure. Abrupt process termination can leave
-private files requiring authorized cleanup.
+The utility removes its private temporary files on normal success or failure. Abrupt process termination can leave
+private files to clean up manually.
 
 Keys and settings remain unencrypted in flash; Control-key authentication does not encrypt BLE traffic.
 See [boot settings](../../reference/settings.md) for the record format and power-loss limits, and
