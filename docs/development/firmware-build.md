@@ -39,8 +39,8 @@ Board hardware lives under `firmware/boards/`, one folder per board family:
 | `esp32c6/` | `board.overlay` (8 MB flash); `storage/sd_spi.overlay` |
 | `rpi_pico/` | `board.overlay` (HID/temp); `soc/` flash; `storage/` SD wiring; `wireless/` W boards |
 
-Apply the board overlay first, then the SoC overlay and exactly one storage wiring overlay. The Pico 2 SDMMC clock
-refinement follows its storage overlay; W boards also add the wireless overlay.
+Apply the board overlay first, then the SoC overlay. Storage-enabled builds add exactly one storage wiring overlay;
+W boards also add the wireless overlay.
 
 `--board` selects a board family target. `--storage` selects a storage profile; it does not select wiring.
 The ESP32-S3 is the default board, and SDMMC is the default storage profile. ESP32-C6 defaults to `none`.
@@ -221,7 +221,10 @@ Storage-enabled builds must keep both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_F
 A successful software build does not qualify SD
 wiring, card detection, mount behavior or USB ownership on physical hardware.
 
-The reusable CI build resolves and archives the west manifest, binaries, configuration, dependency licenses and
-software-only flashing instructions. PRs and tagged releases use that path. `ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH`
-sets the release firmware version; invalid values fail configuration. See
-[release automation](../deployment/release.md).
+CI builds the supported targets and packages each image with build identity and dependency license notices. Firmware
+packages do not include the west manifest, generated configuration or flashing instructions; see the
+[release package contents](../deployment/release.md#publish-a-stable-tag) and the linked flashing guides.
+`ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version. Each component must be from 0 to 255 to
+fit the firmware identity report. The wrapper passes the version as a CMake cache value so reusing a build directory
+with a different version rebuilds the image and its build-time identity snapshot. Invalid values fail configuration.
+See [release automation](../deployment/release.md).

@@ -77,10 +77,48 @@ if [[ -f "$cache" ]]; then
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
 	fi
 fi
+source_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$root/firmware/src/app/zephyrforge.h")"
+[[ -n "$source_version" ]] || {
+	printf 'Error: source firmware version is missing from zephyrforge.h.\n' >&2
+	exit 1
+}
+firmware_version="${ZEPHYRFORGE_VERSION:-$source_version}"
+source_commit="$(git -C "$root" rev-parse HEAD)"
+if [[ -z "$(git -C "$root" status --porcelain)" ]]; then
+	source_dirty=false
+else
+	source_dirty=true
+fi
+radio_firmware_hash=""
+radio_clm_hash=""
+if [[ "$board" == *_w ]]; then
+	radio_firmware_hash="$(sha256sum "$workspace/modules/hal/infineon/zephyr/blobs/img/whd/resources/firmware/COMPONENT_43439/43439A0.bin" |
+		awk '{print $1}')"
+	radio_clm_hash="$(sha256sum "$workspace/modules/hal/infineon/zephyr/blobs/img/whd/resources/clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0.clm_blob" |
+		awk '{print $1}')"
+fi
+build_dir="$root/build/$build"
+build_identity="$build_dir/zephyrforge-build-info.txt"
+image_file=zephyr.bin
+[[ "$board" != pico* ]] || image_file=zephyr.uf2
+mkdir -p "$build_dir"
+rm -f "$build_identity" "$build_identity.tmp"
 # Select configuration explicitly because Zephyr does not discover nested board folders.
 python -m west build --pristine auto -b "$target" "$root/firmware" \
   -d "$root/build/$build" -- \
   -DCONF_FILE="$conf" \
   -DDTC_OVERLAY_FILE="$overlay" \
+  -DZEPHYR_SDK_INSTALL_DIR="$ZEPHYR_SDK_INSTALL_DIR" \
+  -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
+  -DZEPHYRFORGE_VERSION="$firmware_version" \
   -DZF_ENABLE_STORAGE="$storage_enabled" \
   -DZF_ENABLE_STORAGE_BENCHMARK="$benchmark"
+image_hash="$(sha256sum "$build_dir/zephyr/$image_file" | awk '{print $1}')"
+{
+	printf 'FIRMWARE_VERSION=%s\nSOURCE_COMMIT=%s\nSOURCE_DIRTY=%s\nBOARD=%s\nTARGET=%s\nSTORAGE=%s\nIMAGE_SHA256=%s\n' \
+		"$firmware_version" "$source_commit" "$source_dirty" "$board" "$target" "$storage" "$image_hash"
+	if [[ -n "$radio_firmware_hash" ]]; then
+		printf 'RADIO_FIRMWARE_SHA256=%s\nRADIO_CLM_SHA256=%s\n' "$radio_firmware_hash" "$radio_clm_hash"
+	fi
+} > "$build_identity.tmp"
+mv "$build_identity.tmp" "$build_identity"

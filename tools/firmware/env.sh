@@ -44,6 +44,42 @@ while [[ ! -f "$workspace/.west/config" ]]; do
 	fi
 	workspace="$(dirname "$workspace")"
 done
+west_config="${WEST_CONFIG_LOCAL:-$workspace/.west/config}"
+[[ "$west_config" == /* ]] || west_config="$workspace/$west_config"
+
+west_manifest_setting() {
+	awk -v key="$1" '
+		/^\[manifest\]$/ { in_manifest=1; next }
+		/^\[/ { in_manifest=0 }
+		in_manifest && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+			sub(/^[^=]*=[[:space:]]*/, "")
+			sub(/[[:space:]]+$/, "")
+			print
+			exit
+		}' "$2"
+}
+
+if [[ -f "$west_config" ]]; then
+configured_manifest="$(west_manifest_setting path "$west_config")"
+configured_file="$(west_manifest_setting file "$west_config")"
+	[[ -n "$configured_file" ]] || configured_file=west.yml
+	manifest_root="$configured_manifest"
+	[[ "$manifest_root" == /* ]] || manifest_root="$workspace/$manifest_root"
+	if [[ -d "$manifest_root" ]]; then
+		if [[ "$(realpath "$manifest_root")" != "$(realpath "$root")" ]]; then
+			printf 'Error: west workspace manifest must point to this checkout (%s), not %s.\n' \
+				"$root" "$configured_manifest" >&2
+			exit 1
+		fi
+		manifest_file="$configured_file"
+		[[ "$manifest_file" == /* ]] || manifest_file="$manifest_root/$manifest_file"
+		if [[ ! -f "$manifest_file" || "$(realpath "$manifest_file")" != "$(realpath "$root/west.yml")" ]]; then
+			printf "Error: west workspace must select this checkout's west.yml, not %s.\n" \
+				"$configured_file" >&2
+			exit 1
+		fi
+	fi
+fi
 
 venv="${VENV_DIR:-$workspace/.venv}"
 [[ "$venv" == /* ]] || venv="$PWD/$venv"
@@ -79,9 +115,25 @@ if [[ ! -e "$workspace/$manifest_path" &&
 			checkout="${root#"$workspace"/}"
 			printf 'Updating moved manifest checkout from %s to %s.\n' "$manifest_path" "$checkout"
 			python -m west config --local manifest.path "$checkout"
+			manifest_path="$checkout"
 			break
 		fi
 	done
+fi
+manifest_root="$manifest_path"
+[[ "$manifest_root" == /* ]] || manifest_root="$workspace/$manifest_root"
+if [[ ! -d "$manifest_root" || "$(realpath "$manifest_root")" != "$(realpath "$root")" ]]; then
+	printf 'Error: west workspace manifest must point to this checkout (%s), not %s.\n' \
+		"$root" "$manifest_path" >&2
+	exit 1
+fi
+manifest_file="$(west_manifest_setting file "$west_config")"
+[[ -n "$manifest_file" ]] || manifest_file=west.yml
+[[ "$manifest_file" == /* ]] || manifest_file="$manifest_root/$manifest_file"
+if [[ ! -f "$manifest_file" || "$(realpath "$manifest_file")" != "$(realpath "$root/west.yml")" ]]; then
+	printf "Error: west workspace must select this checkout's west.yml, not %s.\n" \
+		"$manifest_file" >&2
+	exit 1
 fi
 # Keep dependencies aligned with the pinned manifest; west preserves local working-tree changes.
 python -m west update --narrow -o=--depth=1
@@ -115,5 +167,22 @@ done
 if [[ -n "$sdk" ]]; then
 	export ZEPHYR_SDK_INSTALL_DIR="$sdk"
 else
-	python -m west sdk install --version 0.17.4 --toolchains "$toolchain"
+	unset ZEPHYR_SDK_INSTALL_DIR
+	sdk_args=(--version 0.17.4 --toolchains "$toolchain")
+	[[ -z "${GH_TOKEN:-}" ]] || sdk_args+=(--personal-access-token "$GH_TOKEN")
+	python -m west sdk install "${sdk_args[@]}"
+	sdk="$(python -m west sdk list | awk '
+		$0 == "0.17.4:" { selected=1; next }
+		selected && /^[^[:space:]]/ { exit }
+		selected && /^[[:space:]]+path:/ {
+			sub(/^[[:space:]]*path:[[:space:]]*/, "")
+			print
+			exit
+		}')"
+	if [[ ! -f "$sdk/sdk_version" || "$(<"$sdk/sdk_version")" != 0.17.4 ||
+		! -x "$sdk/$toolchain/bin/$toolchain-gcc" ]]; then
+		printf 'Error: west did not register Zephyr SDK 0.17.4 with %s at a usable path.\n' "$toolchain" >&2
+		exit 1
+	fi
+	export ZEPHYR_SDK_INSTALL_DIR="$sdk"
 fi

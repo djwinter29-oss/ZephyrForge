@@ -41,9 +41,18 @@ case "$*" in
     "-m west list hal_espressif "*)
         printf '%s/modules/hal/espressif\n' "$PWD" ;;
     "-m west blobs fetch "*)
+        if [[ "$*" == *"hal_infineon"* ]]; then
+            resources=modules/hal/infineon/zephyr/blobs/img/whd/resources
+            mkdir -p "$resources/firmware/COMPONENT_43439" \
+                "$resources/clm/COMPONENT_43439/COMPONENT_MURATA-1YN"
+            printf 'mock firmware\n' > "$resources/firmware/COMPONENT_43439/43439A0.bin"
+            printf 'mock clm\n' > "$resources/clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0.clm_blob"
+        fi
         exit "${MOCK_BLOB_STATUS:-0}" ;;
+    "-m west sdk list")
+        printf '0.17.4:\n  path: %s\n' "${MOCK_SDK_PATH:-$HOME/zephyr-sdk-0.17.4}" ;;
     "-m west sdk install "*)
-        sdk="$HOME/zephyr-sdk-0.17.4"
+        sdk="${MOCK_SDK_PATH:-$HOME/zephyr-sdk-0.17.4}"
         toolchain=arm-zephyr-eabi
         while (($#)); do
             if [[ "$1" == --toolchains ]]; then toolchain="$2"; shift; fi
@@ -55,6 +64,7 @@ case "$*" in
         chmod +x "$sdk/$toolchain/bin/$toolchain-gcc" ;;
     "-m west build "*)
         [[ "${MOCK_BUILD_STATUS:-0}" == 0 ]] || exit "$MOCK_BUILD_STATUS"
+        printf 'ZEPHYR_SDK_INSTALL_DIR=%s\n' "${ZEPHYR_SDK_INSTALL_DIR:-}" >> "$MOCK_LOG"
         build="$MOCK_ROOT/build/firmware"
         driver=SDHC_ESP32
         target=esp32s3_devkitc/esp32s3/procpu
@@ -77,10 +87,12 @@ case "$*" in
         for file in zephyr.elf runners.yaml; do
             printf 'artifact\n' > "$build/zephyr/$file"
         done
+        image=zephyr.bin
+        [[ "$target" != rpi* ]] || image=zephyr.uf2
         if [[ "${MOCK_INVALID_IMAGE:-0}" == 1 ]]; then
-            printf 'incomplete\n' > "$build/zephyr/zephyr.bin"
+            printf 'incomplete\n' > "$build/zephyr/$image"
         else
-            printf '\xe9image\n' > "$build/zephyr/zephyr.bin"
+            printf '\xe9image\n' > "$build/zephyr/$image"
         fi
         printf 'CONFIG_BOARD_TARGET="%s"\n' "$target" > "$build/zephyr/.config"
         if [[ "$build" == *-no-storage ]]; then
@@ -111,6 +123,9 @@ class WrapperTests(unittest.TestCase):
         shutil.copytree(TOOLS, self.root / "tools/firmware")
         shutil.copytree(TOOLS.parents[1] / "patches", self.root / "patches")
         shutil.copy(TOOLS.parents[1] / "west.yml", self.root / "west.yml")
+        (self.root / "firmware/src/app").mkdir(parents=True)
+        (self.root / "firmware/src/app/zephyrforge.h").write_text(
+            '#define ZEPHYRFORGE_VERSION "0.1.0"\n')
         self.bin = self.workspace / "mock-bin"
         self.bin.mkdir()
         python = self.bin / "python3"
@@ -139,7 +154,9 @@ fi
         self.log = self.workspace / "commands.log"
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", PYTHON=str(python),
                         HOME=str(self.workspace), MOCK_ROOT=str(self.root), MOCK_LOG=str(self.log))
-        for key in ("VENV_DIR", "VIRTUAL_ENV", "ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR",
+        for key in ("VENV_DIR", "VIRTUAL_ENV", "ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR", "GH_TOKEN",
+                    "ZEPHYR_TOOLCHAIN_VARIANT", "CROSS_COMPILE", "WEST_CONFIG_LOCAL",
+                    "WEST_CONFIG_GLOBAL", "WEST_CONFIG_SYSTEM", "MOCK_SDK_PATH",
                     "MOCK_BUILD_STATUS", "MOCK_BLOB_STATUS", "MOCK_PIP_STATUS", "MOCK_FLASH_STATUS",
                     "MOCK_PYTHON_STATUS", "MOCK_INVALID_IMAGE"):
             self.env.pop(key, None)
@@ -242,7 +259,7 @@ esac
                 self.assertNotIn("-m west flash ", calls)
                 cache.write_text(current)
 
-    def test_existing_checkout_and_unrelated_missing_manifests_are_not_redirected(self):
+    def test_existing_unrelated_manifest_is_refused_without_redirecting_it(self):
         self.assertEqual(self.run_script("build.sh").returncode, 0)
         previous = self.workspace / "previous-checkout"
         previous.mkdir()
@@ -250,16 +267,87 @@ esac
         cache = self.root / "build/firmware/CMakeCache.txt"
         cache.write_text(cache.read_text().replace(str(self.root / "firmware"), str(previous / "firmware")))
         config = self.workspace / ".west/config"
-        for manifest, expected in (("previous-checkout", 0), ("another-project", 17)):
+        for manifest in ("previous-checkout", "another-project"):
             with self.subTest(manifest=manifest):
                 content = f"[manifest]\npath = {manifest}\nfile = west.yml\n"
                 config.write_text(content)
                 self.log.write_text("")
                 result = self.run_script("flash.sh", "--port", "/dev/mock", "--dry-run")
-                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("west workspace manifest must point to this checkout", result.stderr)
                 self.assertEqual(config.read_text(), content)
                 self.assertNotIn(f"-m west config --local manifest.path {self.root.name}", self.commands())
+                self.assertNotIn("-m west update ", self.commands())
                 self.assertNotIn("-m west flash ", self.commands())
+
+    def test_build_refuses_to_update_an_unrelated_workspace_manifest(self):
+        foreign = self.workspace / "another-app"
+        foreign.mkdir()
+        (foreign / "west.yml").write_text("manifest:\n  projects: []\n")
+        (self.workspace / ".west/config").write_text(
+            "[manifest]\npath = another-app\nfile = west.yml\n")
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("west workspace manifest must point to this checkout", result.stderr)
+        self.assertNotIn("-m pip install --disable-pip-version-check --no-input west", self.commands())
+        self.assertNotIn("-m west update ", self.commands())
+
+    def test_build_refuses_an_alternate_manifest_file_before_updating(self):
+        (self.root / "alternate.yml").write_text("manifest:\n  projects: []\n")
+        (self.workspace / ".west/config").write_text(
+            "[manifest]\npath = ZephyrForge\nfile = alternate.yml\n")
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must select this checkout's west.yml", result.stderr)
+        self.assertNotIn("-m pip install --disable-pip-version-check --no-input west", self.commands())
+        self.assertNotIn("-m west update ", self.commands())
+
+    def test_build_refuses_manifest_selected_by_west_config_override(self):
+        override = self.workspace / "west-override.conf"
+        override.write_text("[manifest]\npath = ZephyrForge\nfile = alternate.yml\n")
+        (self.root / "alternate.yml").write_text("manifest:\n  projects: []\n")
+        self.env["WEST_CONFIG_LOCAL"] = str(override)
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must select this checkout's west.yml", result.stderr)
+        self.assertNotIn("-m pip install --disable-pip-version-check --no-input west", self.commands())
+        self.assertNotIn("-m west update ", self.commands())
+
+    def test_invalid_sdk_environment_uses_the_pinned_sdk_for_the_build(self):
+        wrong_sdk = self.workspace / "zephyr-sdk-0.18.0"
+        wrong_sdk.mkdir()
+        (wrong_sdk / "sdk_version").write_text("0.18.0\n")
+        self.env["ZEPHYR_SDK_INSTALL_DIR"] = str(wrong_sdk)
+        self.env["GH_TOKEN"] = "mock-token"
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        pinned_sdk = self.workspace / "zephyr-sdk-0.17.4"
+        self.assertIn("-m west sdk install --version 0.17.4 --toolchains arm-zephyr-eabi "
+                      "--personal-access-token mock-token", commands)
+        self.assertIn(f"ZEPHYR_SDK_INSTALL_DIR={pinned_sdk}", commands)
+        self.assertIn(f"-DZEPHYR_SDK_INSTALL_DIR={pinned_sdk}", commands)
+        self.assertNotIn(f"ZEPHYR_SDK_INSTALL_DIR={wrong_sdk}", commands)
+
+    def test_build_overrides_an_inherited_external_toolchain_variant(self):
+        self.env["ZEPHYR_TOOLCHAIN_VARIANT"] = "cross-compile"
+        self.env["CROSS_COMPILE"] = "/missing/review-toolchain-"
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-DZEPHYR_TOOLCHAIN_VARIANT=zephyr", self.commands())
+
+    def test_sdk_registered_outside_home_is_selected_after_install(self):
+        wrong_sdk = self.workspace / "zephyr-sdk-0.18.0"
+        wrong_sdk.mkdir()
+        (wrong_sdk / "sdk_version").write_text("0.18.0\n")
+        registered_sdk = self.workspace / "registered" / "zephyr-sdk-0.17.4"
+        self.env["ZEPHYR_SDK_INSTALL_DIR"] = str(wrong_sdk)
+        self.env["MOCK_SDK_PATH"] = str(registered_sdk)
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn(f"ZEPHYR_SDK_INSTALL_DIR={registered_sdk}", commands)
+        self.assertIn(f"-DZEPHYR_SDK_INSTALL_DIR={registered_sdk}", commands)
 
     def test_flash_rebuilds_moved_source_cache_without_flashing_in_dry_run(self):
         self.assertEqual(self.run_script("build.sh").returncode, 0)
@@ -570,6 +658,20 @@ esac
         self.assertEqual(result.returncode, 29)
         self.assertNotIn("-m venv ", self.commands())
         self.assertNotIn("-m west flash ", self.commands())
+
+    def test_release_version_components_fit_firmware_identity_fields(self):
+        helper = self.root / "tools/firmware/release-version.sh"
+        for tag, expected_status, expected_output in (
+            ("v255.255.255", 0, "255.255.255"),
+            ("v0.1.0", 0, "0.1.0"),
+            ("v256.0.0", 1, ""),
+            ("v0.256.0", 1, ""),
+            ("v0.0.256", 1, ""),
+        ):
+            with self.subTest(tag=tag):
+                result = subprocess.run(["bash", str(helper), tag], capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected_status, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected_output)
 
 
 if __name__ == "__main__":

@@ -19,9 +19,8 @@ Actions are pinned to commit SHAs. CI has read-only repository access; only the 
 can publish release assets, and only Pages and PyPI deployment get OIDC write permissions.
 SDK release discovery uses the workflow's read-only GitHub token to avoid anonymous API rate limits.
 PR checks cancel superseded runs; release/publication runs are not cancelled mid-flight.
-Host Validation checks firmware package contents and release archives with synthetic inputs on Linux;
-release builds require these checks to pass. No workflow flashes hardware, tests an SD card or runs
-a dedicated manual-tool test suite.
+Host Validation runs the firmware tooling suite, including mocked workspace, build-wrapper, packaging and archive
+checks on Linux. Release builds require these checks to pass. No workflow flashes hardware or tests an SD card.
 
 ## Package and publication helpers
 
@@ -36,7 +35,7 @@ The workflows retain triggers, permissions, tool installation, build commands, a
 | [check-wheel.sh](../../tools/release/check-wheel.sh) | `VERSION`; wheel in `dist/`. Installs into `build/wheel-check` and runs the installed-wheel check. |
 | [package-direct.py](../../tools/release/package-direct.py) | `VERSION`, `SOURCE_SHA`; Git checkout. Builds and checks the extracted Direct ZIP. |
 | [package-dotnet.py](../../tools/release/package-dotnet.py) | `VERSION`, `RID`; self-contained publish in `build/host-release` and restored packages in `build/nuget`. |
-| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build. `BOARD` selects `esp32s3` (default), `esp32c6`, `pico`, `pico_w`, `pico2` or `pico2_w`. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
+| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed build and its identity snapshot. `BOARD` selects `esp32s3` (default), `esp32c6`, `pico`, `pico_w`, `pico2` or `pico2_w`. |
 | [archive.sh](../../tools/release/archive.sh) | `VERSION`; downloaded firmware artifacts in `build/firmware-packages` and host packages in `build/packages`. |
 | [download-direct.sh](../../tools/release/download-direct.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`, `GH_REPO`; fetches and verifies the released site for Pages. |
 | [download-wheel.sh](../../tools/release/download-wheel.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`; fetches and verifies the released wheel for PyPI. |
@@ -91,7 +90,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Only exact `vMAJOR.MINOR.PATCH` tags with no leading zeros are accepted by the shared
+Only exact `vMAJOR.MINOR.PATCH` tags with components from 0 to 255 and no leading zeros are accepted by the shared
 [version helper](../../tools/firmware/release-version.sh). Prerelease tags are not published.
 Tagged builds inject the validated firmware version through `ZEPHYRFORGE_VERSION`; ordinary
 builds keep the source default. .NET package versions and the Python wheel version match the release tag.
@@ -102,10 +101,12 @@ The release publishes:
 | --- | --- |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot BIN image, build identity and project/dependency licenses |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
+| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-none.zip` | ESP32-S3 BIN image without SD or filesystem support |
 | `zephyrforge-firmware-vVERSION-esp32c6-devkitc-sd-spi.zip` | ESP32-C6 BIN image with SD-over-SPI and no USB HID/MSC |
 | `zephyrforge-firmware-vVERSION-esp32c6-devkitc-none.zip` | ESP32-C6 BIN image without SD or filesystem support |
 | `zephyrforge-firmware-vVERSION-BOARD-sdmmc.zip` | Raspberry Pi Pico native four-bit SDMMC UF2 image for `BOARD` `pico`, `pico_w`, `pico2` or `pico2_w`, with the same package contents |
 | `zephyrforge-firmware-vVERSION-BOARD-sd-spi.zip` | Raspberry Pi Pico SD-over-SPI UF2 image for the same four boards |
+| `zephyrforge-firmware-vVERSION-BOARD-none.zip` | No-storage UF2 for the same four Pico boards |
 | `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
 | `zephyrforge-VERSION-py3-none-any.whl` | Python host package with the `zephyrforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
 | `zephyrforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
@@ -115,7 +116,8 @@ The release publishes:
 
 Firmware packages contain only the flashable image, `BUILD-INFO.txt`, `LICENSE` and `licenses/`.
 They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree and runner/dependency YAML files.
-`BUILD-INFO.txt` identifies the firmware version, source commit, target board and storage variant.
+`BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board and storage
+variant. W-board radio hashes are captured with the build rather than read from the later packaging workspace.
 W firmware packages include Infineon HAL and blob license notices;
 `BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
 These images provide Wi-Fi only; a release build does not qualify the radio hardware.
