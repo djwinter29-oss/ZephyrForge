@@ -32,10 +32,12 @@ void test_identity_layout(void)
 						    3, 1, 1, 0x97, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[ZF_IDENTITY_SIZE];
 
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if !ZF_ENABLE_STORAGE
+	expected[17] = 0x87;
+#elif ZF_ENABLE_STORAGE_BENCHMARK
 	expected[17] = 0xB7;
 #endif
-#if ZF_STORAGE_SPI
+#if ZF_ENABLE_STORAGE && ZF_STORAGE_SPI
 	expected[17] = (expected[17] & ~ZF_CAP_SDMMC) | ZF_CAP_SPI;
 #endif
 	zf_report_identity(&identity, out);
@@ -61,8 +63,9 @@ void test_memory_inventory_layout_and_unavailable_components(void)
 
 void test_config_layout_reflects_saved_radios(void)
 {
-	zf_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03,
-			      .reset_cause = 3, .storage_gpios = {12, 11, 13, 14, 15, 10}};
+	zf_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03, .monitor_uart_tx_gpio = 43,
+			      .monitor_uart_rx_gpio = 44, .reset_cause = 3,
+			      .storage_gpios = {12, 11, 13, 14, 15, 10}};
 	const uint8_t expected[ZF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1C, 3, 255, 255};
 	uint8_t out[ZF_CONFIG_SIZE];
 
@@ -71,6 +74,13 @@ void test_config_layout_reflects_saved_radios(void)
 	config.stored_radios = 0x02;
 	zf_report_config(&config, out);
 	TEST_ASSERT_EQUAL_HEX8(0x14, out[13]);
+	/* The monitor UART bytes are the devicetree-sampled struct fields, not compile-time literals. */
+	config.monitor_uart_tx_gpio = 4;
+	config.monitor_uart_rx_gpio = 5;
+	zf_report_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(4, out[5]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[6]);
 }
 
 void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
@@ -81,6 +91,21 @@ void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
 
 	zf_report_config(&config, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out + 7, sizeof(expected));
+}
+
+void test_config_without_storage_marks_card_pins_unassigned(void)
+{
+#if !ZF_ENABLE_STORAGE
+	const zf_config_t config = {
+		.storage_gpios = {255, 255, 255, 255, 255, 255},
+	};
+	uint8_t out[ZF_CONFIG_SIZE];
+	const uint8_t unassigned[] = {255, 255, 255, 255, 255, 255};
+
+	zf_report_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unassigned, out + 7, sizeof(unassigned));
+	TEST_ASSERT_EQUAL_UINT8(255, out[16]);
+#endif
 }
 
 void test_telemetry_layout(void)
@@ -234,6 +259,36 @@ void test_wireless_layout_clears_reserved_flags(void)
 	TEST_ASSERT_EQUAL_UINT8(5, out[45]);
 	TEST_ASSERT_EQUAL_UINT8(6, out[46]);
 	TEST_ASSERT_EQUAL_UINT8(8, out[47]);
+}
+
+void test_wireless_report_clamps_oversized_ssid_length(void)
+{
+	zf_wireless_t wireless = {
+		.ssid_length = 255, .scan_state = 2, .scan_generation = 0x0102,
+		.scan_count = 5, .test_generation = 6, .staged_state = 8,
+	};
+	uint8_t out[ZF_WIRELESS_SIZE];
+
+	memset(wireless.ssid, 'x', sizeof(wireless.ssid));
+	zf_report_wireless(&wireless, out);
+	TEST_ASSERT_EQUAL_UINT8(ZF_SSID_MAX_BYTES, out[9]);
+	TEST_ASSERT_EACH_EQUAL_UINT8('x', out + 10, ZF_SSID_MAX_BYTES);
+	/* The trailing fields keep their own bytes: no SSID write reaches them. */
+	TEST_ASSERT_EQUAL_UINT8(2, out[42]);
+	TEST_ASSERT_EQUAL_HEX8(0x02, out[43]);
+	TEST_ASSERT_EQUAL_HEX8(0x01, out[44]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[45]);
+	TEST_ASSERT_EQUAL_UINT8(6, out[46]);
+	TEST_ASSERT_EQUAL_UINT8(8, out[47]);
+}
+
+void test_storage_report_clamps_unknown_filesystem_format(void)
+{
+	zf_storage_t storage = {.configured = true, .sample_valid = true, .filesystem_format = 7};
+	uint8_t out[ZF_STORAGE_SIZE];
+
+	zf_report_storage(&storage, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[30]);
 }
 
 void test_helpers(void)

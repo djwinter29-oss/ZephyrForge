@@ -5,7 +5,7 @@
 #ifndef ZEPHYRFORGE_STORAGE_H
 #define ZEPHYRFORGE_STORAGE_H
 
-#include "app/usb/hid_reports.h"
+#include "app/storage/storage_types.h"
 
 /** Presence debounce period; a raw absence already prevents USB disk I/O. */
 #define ZF_STORAGE_DEBOUNCE_MS 100

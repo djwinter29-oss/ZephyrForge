@@ -1,4 +1,4 @@
-# Shared bridge dashboard layout - 2026-11-07
+# Shared bridge dashboard layout
 
 ## Scope
 
@@ -26,4 +26,4 @@ ZIP ships only `host/web/src/`. Direct remains independent.
 ## Evidence limits
 
 All checks used the simulated demo host or synthetic UART peers. No ESP32-S3 hardware was connected,
-so they say nothing about firmware behaviour, Wi-Fi or SD card.
+so they say nothing about firmware behavior, Wi-Fi or SD card.

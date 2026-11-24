@@ -252,6 +252,8 @@ test("diagnostic rendering distinguishes missing facts, explicit false and repor
     assert.equal(el("#board-model").textContent, "Unknown (9)");
     assert.equal(el("#board-mcu").textContent, "ESP32-S3");
     assert.equal(el("#board-reset-cause").textContent, "Unknown");
+    renderServerStatus({ ...snapshot(), hardware: { ...snapshot().hardware, board_model: 5, mcu: "RP2350" } });
+    assert.equal(el("#board-model").textContent, "Raspberry Pi Pico 2 W");
     renderServerStatus({ ...snapshot(), board_configuration: { ...snapshot().settings, reset_cause: 1 } });
     assert.equal(el("#board-model").textContent, "ESP32-S3-DevKitC-1");
     assert.equal(el("#board-mcu").textContent, "ESP32-S3");

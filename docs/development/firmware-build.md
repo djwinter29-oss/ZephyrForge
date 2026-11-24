@@ -1,0 +1,307 @@
+# Firmware builds
+
+Use the build wrapper unless you need to customize the Zephyr workspace or toolchain. Wrapper commands run from
+the repository root. Manual `west` commands run from the workspace root with the checkout named `zephyrforge`.
+Nothing on this page flashes hardware; uploading is a separate step in the [flashing guide](../guides/flashing.md).
+
+- [Build wrapper](#build-with-the-wrapper) and [storage profiles](#configuration-and-storage-profiles)
+- [ESP32-S3](#esp32-s3-family), [ESP32-C6](#esp32-c6-family), [Pico family](#raspberry-pi-pico-family)
+- [Manual workspace setup](#manual-workspace-setup)
+- [Build verification](#build-verification)
+
+For application changes and portable tests, see [firmware development](firmware.md).
+
+## Build with the wrapper
+
+The wrapper creates or reuses the Zephyr workspace and Python virtual environment, installs the pinned west
+dependencies and SDK 0.17.4 toolchain, applies the tracked Zephyr patches and builds the selected target.
+First use requires network access and several GB of free space. On Debian/Ubuntu-compatible Linux, missing host
+packages are installed through `apt-get`; other systems should install the reported prerequisites with their package
+manager.
+
+For the default ESP32-S3 SDMMC image:
+
+```sh
+bash tools/firmware/build.sh
+```
+
+For another board or storage bus, use the examples in its board section below. The manifest in `west.yml` selects
+Zephyr 4.3.2 and imported module commits. You do not need to perform manual setup before running the wrapper.
+
+### Configuration and storage profiles
+
+`--board` selects the board target. `--storage` selects its storage profile and matching board overlay; it cannot
+adapt to arbitrary wiring.
+The ESP32-S3 is the default board, and SDMMC is the default storage profile. ESP32-C6 defaults to `none`.
+
+| Storage profile | Build behavior | Benchmark |
+| --- | --- | --- |
+| `sdmmc` | Native SDMMC; available on ESP32-S3 and Pico families | Included where USB control is available |
+| `sd-spi` | SD over SPI; available on ESP32-S3, ESP32-C6 and Pico families | Included except ESP32-C6 |
+| `none` | No SD, disk-access, FAT or USB MSC support | Omitted |
+
+Both storage-enabled profiles retain no-auto-format behavior. They do not automatically expose or modify the card over
+USB; the host must request an ownership handoff. A no-storage image advertises no storage transport capability, and
+its storage report remains present but unconfigured. Storage control operations are unsupported. See the
+[USB HID specification](../reference/usb-hid.md) for capability and report behavior.
+
+`ZF_ENABLE_STORAGE_BENCHMARK` is a CMake option defaulting to `OFF`. The wrapper enables it for storage-enabled
+ESP32-S3 and Pico images, not for `none` or ESP32-C6; the C6 has no USB HID path for its USB-only start command.
+Benchmarking requires storage.
+Read the [benchmark contract](../reference/sdcard.md#optional-storage-benchmark) before running a benchmark on a
+real card.
+
+### Custom configuration and existing workspaces
+
+The wrapper builds a standalone Zephyr application. It rejects `build.cmake-args` settings that override its
+selected board, firmware profile, version, Zephyr base, SDK, or toolchain. Use a manual west build for those changes.
+
+`PYTHON` selects the interpreter used to create the workspace venv (for example `PYTHON=python3.12`).
+`VENV_DIR` selects another venv; relative paths are resolved from the current directory. The scripts do not
+automatically select an unrelated active venv. To run manual west commands, activate the workspace venv yourself.
+
+For a moved checkout, the wrappers update `manifest.path` only if its old directory no longer exists and a local
+firmware build cache identifies it as the previous application source. They do not redirect another manifest
+checkout. A relocated build cache is cleaned only in the selected build directory, never at its old cached path.
+West's automatic pristine handling covers a moved application source.
+
+## Manual workspace setup
+
+Use this instead of automatic setup when you need to manage dependencies yourself. The Linux example uses
+Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4. Install Zephyr's
+[host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html), including CMake,
+Ninja, the device-tree compiler, compiler utilities, and Python venv support.
+
+From outside this repository:
+
+```sh
+mkdir zephyrforge-workspace
+cd zephyrforge-workspace
+git clone https://github.com/djwinter29-oss/ZephyrForge zephyrforge
+python3.12 -m venv .venv
+. .venv/bin/activate
+python -m pip install west
+west init -l zephyrforge
+west update --narrow -o=--depth=1
+python -m pip install -r zephyr/scripts/requirements-base.txt
+```
+
+For ESP32-S3, install the Espressif requirements, radio blobs, and Xtensa toolchain:
+
+```sh
+python -m pip install -r modules/hal/espressif/zephyr/requirements.txt
+west blobs fetch hal_espressif
+west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+```
+
+ESP32-C6 uses the same Espressif requirements and blobs, but the `riscv64-zephyr-elf` SDK toolchain.
+Pico boards use `arm-zephyr-eabi` and do not need Espressif requirements or blobs; W boards need the
+[Infineon blobs](#raspberry-pi-pico-family). Radio blobs have their own licenses.
+If SDK discovery fails, set `ZEPHYR_SDK_INSTALL_DIR` to the installed SDK directory.
+
+Apply the project's patches before a manual target build:
+
+```sh
+bash zephyrforge/tools/firmware/apply-zephyr-patches.sh "$(west list zephyr -f '{abspath}')"
+```
+
+For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` or use a Linux symlink, then run
+`west init -l zephyrforge` in the new workspace. Do not nest a second workspace inside an existing one.
+The manifest pins Zephyr and imports only the required modules; do not substitute an unrelated Zephyr checkout.
+
+### Feature fragments and overlays
+
+`firmware/prj.conf` holds settings common to every image. Optional feature fragments live in `firmware/profiles/`:
+`usb.conf` (native USB HID; ESP32-S3 and Pico), `wifi.conf` (ESP32 and Pico W), `bluetooth.conf` (ESP32),
+`tcp-shell.conf` (Wi-Fi diagnostic shell; ESP32-S3 only), `storage.conf` (SD disk access and FAT/exFAT) and
+`usb-msc.conf` (USB mass storage; only with both `usb.conf` and `storage.conf`). A no-storage image omits
+`storage.conf`, `usb-msc.conf` and the storage overlay.
+
+Board hardware lives under `firmware/boards/`:
+
+| Folder | Contents |
+| --- | --- |
+| `esp32s3/` | `board.conf` (N16R8), `board.overlay` (memory/HID/LED); SDMMC and SPI storage overlays |
+| `esp32c6/` | `board.overlay` (8 MB flash); `storage/sd_spi.overlay` |
+| `rpi_pico/` | `board.overlay` (HID/temp); `soc/` flash; `storage/` SD wiring; `wireless/` W boards |
+
+Apply the board overlay first, then the SoC overlay. Storage-enabled builds add exactly one storage wiring overlay;
+W boards also add the wireless overlay. The manual commands below show the combinations.
+
+## ESP32-S3 family
+
+The supported target is ESP32-S3-DevKitC-1 N16R8, configured as one PROCPU application with 16 MB flash and 8 MB
+octal PSRAM. All three storage profiles are available:
+
+```sh
+bash tools/firmware/build.sh --board esp32s3 --storage sdmmc
+bash tools/firmware/build.sh --board esp32s3 --storage sd-spi
+bash tools/firmware/build.sh --board esp32s3 --storage none
+```
+
+The default image is equivalent to the first command. Output directories and primary images:
+
+| Profile | Output |
+| --- | --- |
+| `sdmmc` | `build/firmware/zephyr/zephyr.bin` |
+| `sd-spi` | `build/firmware-sd-spi/zephyr/zephyr.bin` |
+| `none` | `build/firmware-no-storage/zephyr/zephyr.bin` |
+
+ESP32-S3 builds use the Xtensa toolchain and fetch the Espressif radio blobs. The no-storage build keeps the N16R8
+board configuration and USB HID device overlay but omits the SD bus overlay.
+
+### Manual ESP32-S3 build
+
+First complete [manual workspace setup](#manual-workspace-setup). Add the storage overlay, `profiles/storage.conf` and
+`profiles/usb-msc.conf` only for storage-enabled images:
+
+```sh
+# Native SDMMC
+west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
+  -d zephyrforge/build/firmware -- \
+  -DCONF_FILE="prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;boards/esp32s3/board.conf;profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf" \
+  -DDTC_OVERLAY_FILE="boards/esp32s3/board.overlay;boards/esp32s3/storage/sdmmc.overlay"
+
+# No storage
+west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
+  -d zephyrforge/build/firmware-no-storage -- \
+  -DCONF_FILE="prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;boards/esp32s3/board.conf;profiles/usb.conf" \
+  -DDTC_OVERLAY_FILE="boards/esp32s3/board.overlay" \
+  -DZF_ENABLE_STORAGE=OFF -DZF_ENABLE_STORAGE_BENCHMARK=OFF
+```
+
+For SPI, replace `sdmmc.overlay` with the standalone `sd_spi.overlay` and use a separate build directory.
+The ESP32-S3 N16R8 board configuration supplies only module memory, heap and LED settings. Wi-Fi, Bluetooth and
+TCP shell profiles are selected for all ESP32-S3 storage profiles.
+
+## ESP32-C6 family
+
+The supported software target is ESP32-C6-DevKitC-1 N8, using Zephyr's
+`esp32c6_devkitc/esp32c6/hpcore` target. It has 8 MB module flash, no PSRAM, and no native USB HID device.
+LED control is not included. `--board esp32c6` defaults to `none`; use `--storage sd-spi` for the SPI2 card overlay.
+Native SDMMC is rejected. Builds use the RISC-V toolchain and fetch the pinned Espressif radio blobs.
+
+```sh
+bash tools/firmware/build.sh --board esp32c6
+bash tools/firmware/build.sh --board esp32c6 --storage sd-spi
+```
+
+The output directories are `build/firmware-esp32c6-no-storage` and
+`build/firmware-esp32c6-sd-spi`; both produce `zephyr/zephyr.bin`. The no-storage profile is the default.
+See the [C6 SPI wiring guide](../guides/boards/esp32c6-sd-spi.md) for pins and the I2C0 conflict before connecting
+a card. The pin allocation has not been physically qualified.
+
+The C6 has no native USB HID peripheral, so it cannot use the USB-only Python or .NET dashboards. Direct can use its
+authenticated BLE service only after a Control key is saved through
+[initial physical commissioning](../guides/boards/esp32c6-commissioning.md). BLE remains off on a fresh
+image until then; there is no unauthenticated bypass. Wi-Fi credential provisioning and the storage benchmark
+remain unavailable without USB HID. Neither compilation nor software commissioning checks qualify the board.
+
+### Manual ESP32-C6 build
+
+First complete [manual workspace setup](#manual-workspace-setup). Shared profiles and Zephyr's board defaults
+cover the C6; it needs no board configuration file. For no storage:
+
+```sh
+west build -p always -b esp32c6_devkitc/esp32c6/hpcore zephyrforge/firmware \
+  -d zephyrforge/build/firmware-esp32c6-no-storage -- \
+  -DCONF_FILE="prj.conf;profiles/wifi.conf;profiles/bluetooth.conf" \
+  -DDTC_OVERLAY_FILE="boards/esp32c6/board.overlay" \
+  -DZF_ENABLE_STORAGE=OFF -DZF_ENABLE_STORAGE_BENCHMARK=OFF
+```
+
+For SD-over-SPI, set `-DZF_ENABLE_STORAGE=ON`, replace the output directory with `firmware-esp32c6-sd-spi`, and append
+`boards/esp32c6/storage/sd_spi.overlay` to `DTC_OVERLAY_FILE` and `profiles/storage.conf` to `CONF_FILE`. Omit the
+USB-only `profiles/usb-msc.conf`; keep the benchmark option `OFF`.
+
+## Raspberry Pi Pico family
+
+The wrapper supports the following Zephyr targets:
+
+| `--board` | Zephyr target | Radio |
+| --- | --- | --- |
+| `pico` | `rpi_pico/rp2040` | None |
+| `pico_w` | `rpi_pico/rp2040/w` | Wi-Fi |
+| `pico2` | `rpi_pico2/rp2350a/m33` | None |
+| `pico2_w` | `rpi_pico2/rp2350a/m33/w` | Wi-Fi |
+
+Each board supports `sdmmc`, `sd-spi` and `none`. Examples:
+
+```sh
+bash tools/firmware/build.sh --board pico
+bash tools/firmware/build.sh --board pico2_w --storage sd-spi
+bash tools/firmware/build.sh --board pico2 --storage none
+```
+
+Pico images are UF2 files. Example output directories:
+
+| Board/profile | Output |
+| --- | --- |
+| `pico` / `sdmmc` | `build/firmware-pico/zephyr/zephyr.uf2` |
+| `pico_w` / `sd-spi` | `build/firmware-pico_w-sd-spi/zephyr/zephyr.uf2` |
+| `pico2` / `none` | `build/firmware-pico2-no-storage/zephyr/zephyr.uf2` |
+
+Pico builds use the Arm toolchain. Non-W builds do not fetch radio blobs. W builds enable Wi-Fi and fetch the
+CYW43439 firmware and Murata-1YN CLM blob from the pinned Infineon HAL. Pico storage profiles use the project's
+PIO SD host for native four-bit SDMMC or SPI0 for SD-over-SPI. The `none` profile omits SD drivers and device-tree
+nodes.
+
+The W-board release images use `WHD_COUNTRY_AUSTRALIA`. For a custom build, select the country that matches the
+board's regulatory region. Create a Kconfig fragment with the selected value, for example:
+
+```text
+CONFIG_WHD_WIFI_COUNTRY="WHD_COUNTRY_UNITED_STATES"
+```
+
+In the matching manual W-board `west build` command below, add
+`-DEXTRA_CONF_FILE=/absolute/path/to/pico-country.conf` after `--`. Keep the existing `CONF_FILE` entries and
+overlays. The build wrapper does not accept this customization. Use a release or wrapper-built image only where
+its Australia country setting is appropriate.
+
+The wrapper does not flash Pico boards. Copy the UF2 image to the board's BOOTSEL drive using the
+[Pico flashing procedure](../guides/flashing.md#raspberry-pi-pico-release-image).
+
+### Manual Pico build
+
+After [manual workspace setup](#manual-workspace-setup), select the board overlay and the SoC overlay.
+Add the storage overlay for storage-enabled builds. W boards also need the radio overlay, config, and blobs.
+Fetch the blobs before building a W image:
+
+```sh
+west blobs fetch hal_infineon --allow-regex 'img/whd/resources/(firmware/COMPONENT_43439/43439A0\.bin|clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0\.clm_blob)$'
+```
+
+Choose the command for your board and profile:
+
+```sh
+# Pico W, native SDMMC
+west build -p always -b rpi_pico/rp2040/w zephyrforge/firmware \
+  -d zephyrforge/build/firmware-pico_w -- \
+  -DCONF_FILE="prj.conf;profiles/wifi.conf;boards/rpi_pico/wireless/w.conf;profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf" \
+  -DDTC_OVERLAY_FILE="boards/rpi_pico/board.overlay;boards/rpi_pico/soc/rp2040.overlay;boards/rpi_pico/storage/sdmmc.overlay;boards/rpi_pico/wireless/w.overlay"
+
+# Pico 2, no storage
+west build -p always -b rpi_pico2/rp2350a/m33 zephyrforge/firmware \
+  -d zephyrforge/build/firmware-pico2-no-storage -- \
+  -DCONF_FILE="prj.conf;profiles/usb.conf" \
+  -DDTC_OVERLAY_FILE="boards/rpi_pico/board.overlay;boards/rpi_pico/soc/rp2350.overlay" \
+  -DZF_ENABLE_STORAGE=OFF -DZF_ENABLE_STORAGE_BENCHMARK=OFF
+```
+
+The `sd_spi.overlay` is standalone; select it instead of `storage/sdmmc.overlay`. Omit `profiles/wifi.conf`, `w.conf`
+and `w.overlay` on non-W boards; they do not need radio blobs.
+
+## Build verification
+
+For configuration changes, use a pristine build and inspect the generated `.config` and `zephyr.dts`.
+No-storage builds must have `CONFIG_USBD_MSC_CLASS`, `CONFIG_DISK_ACCESS` and `CONFIG_FILE_SYSTEM` unset.
+Storage-enabled builds must keep both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` disabled.
+A successful build checks software only, not physical wiring, card detection, mounting, or USB ownership.
+
+CI builds the supported targets and packages each image with build identity and dependency license notices. Firmware
+packages do not include the west manifest, generated configuration or flashing instructions; see the
+[release package contents](releases.md#publish-a-stable-tag) and the linked flashing guides.
+`ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version. Each component must be from 0 to 255 to
+fit the firmware identity report. The wrapper passes the version as a CMake cache value so reusing a build directory
+with a different version rebuilds the image and its build-time identity snapshot. Invalid values fail configuration.
+See [release automation](releases.md).

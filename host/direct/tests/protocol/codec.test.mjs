@@ -67,11 +67,11 @@ test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3
     assert.throws(() => decodeIdentityReport(bytes));
   }
   for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
-    [17, 0x86], [14, 1]]) {
+    [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
-  assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
+  assert.equal(decodeIdentityReport(identity(2 | 128)).capabilities, 0x82, "capabilities may be a subset");
   assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ZephyrForge", "identity reserved byte is ignored");
@@ -83,6 +83,43 @@ test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3
     view.setUint32(18, total, true); view.setUint32(22, used, true);
     assert.throws(() => decodeIdentityReport(bad));
   }
+});
+
+test("Pico identities require their board MCU and limit GPIOs to the package", () => {
+  for (const [mcu, board, name] of [[1, 2, "Raspberry Pi Pico"], [1, 3, "Raspberry Pi Pico W"],
+    [2, 4, "Raspberry Pi Pico 2"], [2, 5, "Raspberry Pi Pico 2 W"]]) {
+    const report = identity(0x32); report[14] = mcu; report[15] = board;
+    const id = decodeIdentityReport(report);
+    assert.deepEqual([id.mcu, id.board_name], [mcu === 1 ? "RP2040" : "RP2350", name]);
+    const pins = Uint8Array.from([1, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 4 | 1, 1, 255, 8]);
+    assert.equal(decodeConfigReport(pins, id).card_detect_gpio, 8);
+    pins[16] = 30;
+    assert.throws(() => decodeConfigReport(pins, id));
+    for (const other of [1, 2, 3].filter(value => value !== mcu)) {
+      report[14] = other;
+      assert.throws(() => decodeIdentityReport(report), `${board}: ${other}`);
+    }
+  }
+  const rp2350b = identity(0x12); rp2350b[14] = 2; rp2350b[15] = 0;
+  const unspecified = decodeIdentityReport(rp2350b);
+  const pins = config(); pins[7] = 47;
+  assert.equal(decodeConfigReport(pins, unspecified).storage_gpios[0], 47);
+  pins[7] = 48;
+  assert.throws(() => decodeConfigReport(pins, unspecified));
+});
+
+test("ESP32-C6 identity allows no storage, uses its GPIO range and rejects 240 MHz", () => {
+  const report = identity(0x86); report[14] = 4; report[15] = 6;
+  const id = decodeIdentityReport(report);
+  assert.deepEqual([id.mcu, id.board_name, id.transport], ["ESP32-C6", "ESP32-C6-DevKitC-1", null]);
+  const pins = config(); pins[1] = 160;
+  pins.set([16, 17], 5); pins.fill(255, 7, 13);
+  const decoded = decodeConfigReport(pins, id);
+  assert.deepEqual(decoded.storage_gpios, [255, 255, 255, 255, 255, 255]);
+  pins[1] = 240;
+  assert.throws(() => decodeConfigReport(pins, id));
+  pins[1] = 160; pins[5] = 31;
+  assert.throws(() => decodeConfigReport(pins, id));
 });
 
 test("SPI identity selects four pins and matching storage samples", () => {
@@ -327,10 +364,12 @@ test("staging, scan index/generation and proof requests use64argument bytes with
 test("strict result validation enforces details, scan padding, commit masks and opcode status rules", () => {
   for (const [op, state, error, detail] of [[6, 3, 3, 16], [7, 3, 3, 17], [8, 3, 3, 18],
     [9, 3, 3, 19], [5, 3, 3, 20], [9, 3, 3, 21], [12, 3, 3, 22], [12, 3, 3, 23],
-    [8, 5, 5, 25], [11, 5, 5, 26], [5, 3, 3, 27], [5, 5, 5, 28]]) {
+    [8, 5, 5, 25], [11, 5, 5, 26], [5, 3, 3, 27], [5, 5, 5, 28],
+    [2, 5, 5, 29], [3, 5, 5, 29], [4, 5, 5, 29], [5, 5, 5, 29]]) {
     const bytes = result(1, op, state, error); bytes[5] = detail;
     assert.equal(decodeControlResult(bytes, { ble: detail === 28 }).detail, detail);
     if (detail === 28) assert.throws(() => decodeControlResult(bytes));
+    if (detail === 29 && [2, 5].includes(op)) assert.equal(decodeControlResult(bytes, { ble: true }).detail, 29);
     bytes[6] = 1; assert.throws(() => decodeControlResult(bytes));
     bytes[6] = 0; bytes[2] = 1; assert.throws(() => decodeControlResult(bytes));
   }

@@ -58,7 +58,9 @@
 #define ZF_DETAIL_SCAN_ACTIVE 26u /**< A Wi-Fi scan is active. */
 #define ZF_DETAIL_COMMIT_FLAG 27u /**< Staged values exist but the save commit flag is clear. */
 #define ZF_DETAIL_USB_STAGED 28u /**< Unexpired USB staging blocks a BLE save or reboot. */
+#define ZF_DETAIL_REBOOT_PENDING 29u /**< A scheduled reset blocks reboot, save and storage commands. */
 
+/** Initialize result slots, staging and reboot reservation before transports start. */
 void zf_control_init(void);
 
 /** Handle a USB Feature 20 SET payload (report ID removed). Returns false for a rejected envelope. */

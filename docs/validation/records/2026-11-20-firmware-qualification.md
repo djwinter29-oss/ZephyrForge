@@ -11,7 +11,8 @@ The pre-existing Python dashboard test adjustment was not part of the firmware b
 Host: Linux aarch64, GCC 14.2.0, Python 3.13, Ruby 3.3.13, Bundler 2.6.9 and Ceedling 1.1.10.
 Ruby runtime/development packages were restored under ignored build storage without installing system packages.
 The existing west 1.5.0 workspace venv was reused. Zephyr was 4.3.2 at
-`28af05ca658cbacf745fd5b099566311c58ccb1d`, with both tracked patches applied; SDK 0.17.4 supplied the ESP32-S3 toolchain.
+`28af05ca658cbacf745fd5b099566311c58ccb1d`, with both tracked patches applied; SDK 0.17.4 supplied the ESP32-S3
+toolchain.
 The dependency lockfile was preserved. The resolved west manifest was frozen separately with `west manifest --freeze`.
 
 | Check | Actual result |

@@ -90,10 +90,13 @@ class LedStartupTests(unittest.TestCase):
     def test_startup_clears_first_transfer_colour_and_reports_failures(self):
         with tempfile.TemporaryDirectory(prefix="zephyrforge-led-") as directory:
             temp = Path(directory)
-            for name in ("device.h", "drivers/led_strip.h", "kernel.h", "logging/log.h"):
+            for name in ("device.h", "devicetree.h", "drivers/led_strip.h", "kernel.h", "logging/log.h"):
                 header = temp / "zephyr" / name
                 header.parent.mkdir(parents=True, exist_ok=True)
-                header.touch()
+                if name == "devicetree.h":
+                    header.write_text("#define DT_NODELABEL(node) 0\n#define DT_NODE_EXISTS(node) 1\n")
+                else:
+                    header.touch()
             source = temp / "test_led.c"
             source.write_text(STUBS + '\n#include "platform/led.c"\n' + CHECKS)
             executable = temp / "test_led"

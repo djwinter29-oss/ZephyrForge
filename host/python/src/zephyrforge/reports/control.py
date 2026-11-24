@@ -122,7 +122,8 @@ def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
             allowed.add(ControlDetail.NONE)
         if opcode in (ControlOpcode.REBOOT, ControlOpcode.MSC, ControlOpcode.SELF_TEST,
                       ControlOpcode.SAVE_SETTINGS):
-            allowed |= {ControlDetail.CONFLICTING_WORK, ControlDetail.USB_MSC_OWNS_STORAGE}
+            allowed |= {ControlDetail.CONFLICTING_WORK, ControlDetail.USB_MSC_OWNS_STORAGE,
+                        ControlDetail.REBOOT_PENDING}
         if opcode in (ControlOpcode.SAVE_SETTINGS, ControlOpcode.STAGE_SSID, ControlOpcode.STAGE_PASSWORD,
                       ControlOpcode.STAGE_KEY, ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_SCAN):
             allowed.add(ControlDetail.WIFI_TEST_ACTIVE)

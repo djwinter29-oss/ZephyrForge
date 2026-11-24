@@ -1,0 +1,6 @@
+tests:
+  zephyrforge.wifi.blocking_driver:
+    platform_allow:
+      - native_sim/native/64
+    tags:
+      - wifi

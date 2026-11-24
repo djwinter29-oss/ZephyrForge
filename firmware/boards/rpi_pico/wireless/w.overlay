@@ -1,0 +1,11 @@
+/* Pico W and Pico 2 W: CYW43439 Wi-Fi uses PIO0; the native SD host uses PIO1. */
+&pio0 {
+	status = "okay";
+};
+
+&pio0_spi0 {
+	status = "okay";
+	airoc-wifi@0 {
+		status = "okay";
+	};
+};

@@ -3,9 +3,11 @@
 ## Project boundaries
 
 - ZephyrForge is a Zephyr foundation for a range of MCUs, not a Pico SDK/TinyUSB firmware port. ESP32-S3 is the
-  first and only supported target; add multi-target abstractions only when a second target needs them.
+  first target; the Raspberry Pi Pico, Pico W, Pico 2 and Pico 2 W are also supported, with USB-only management.
+  Add multi-target abstractions only when a target needs them.
 - Preserve the ESP32-S3-DevKitC-1 N16R8 target: 16 MB flash, 8 MB octal PSRAM and a single PROCPU application.
-- Management uses native USB HID and authenticated Bluetooth LE. UART is for flashing and console logs.
+- Management uses native USB HID and, on the ESP32-S3, authenticated Bluetooth LE. UART is for console logs and,
+  on the ESP32-S3, flashing; the Pico boards flash UF2 images over USB.
 - Preserve native four-bit SDMMC, boot-time FAT mounting and no automatic formatting.
 - Do not introduce LED control, CDC/MSC interfaces, storage benchmarks, TCP CLI or file transfer unless requested.
 - Keep board pin choices in hardware configuration and reported board facts consistent. Avoid flash/PSRAM,
@@ -33,7 +35,11 @@
 - When behavior changes, update its authoritative document and affected links rather than propagating duplicate copies.
 - Use [README.md](../README.md) as the landing page and [documentation index](../docs/README.md) for ownership.
 - Keep USB HID and Bluetooth LE specifications authoritative; the implementation reference is not a separate protocol.
-- Distinguish software checks from physical qualification. Never rewrite historical results to imply new hardware evidence.
+- Distinguish software checks from physical qualification. Never rewrite historical results to imply new hardware
+  evidence.
+- State each limitation in its authoritative home. Do not add disclaimers for hypothetical misreadings or repeat
+  qualification boilerplate at the end of every page. Explain safety rules where they are used and link to their
+  full rationale instead of copying it.
 
 ### Low-coupling documentation
 
@@ -41,7 +47,8 @@
   An internal refactor should not require documentation edits unless a public contract or operating procedure changes.
 - API descriptions may name public types, functions, parameters and return values; avoid tracing their implementation.
 - Make each guide usable without reading source code or following a long chain of other documents.
-- Cross-link only for authoritative details or necessary prerequisites; avoid circular references and repeated link lists.
+- Cross-link only for authoritative details or necessary prerequisites; avoid circular references and repeated link
+  lists.
 - Keep code and tests independent of prose wording, document titles and section anchors. Test behavior and contracts,
   not exact documentation text; dedicated documentation checks may validate links and examples.
 - Preserve exact details needed for safety, interoperability and reproducible commands; reducing coupling must not

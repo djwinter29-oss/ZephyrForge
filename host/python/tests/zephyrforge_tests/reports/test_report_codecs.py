@@ -128,6 +128,8 @@ class ProtocolTests(unittest.TestCase):
         macros = dict(re.findall(r"^#define (ZF_\w+) (0x[0-9A-Fa-f]+|\d+)u?\b", FIRMWARE_HEADER.read_text(),
                                  re.MULTILINE))
         expected = {"ZF_PRODUCT_ID": 3, "ZF_MCU_ESP32S3": 3, "ZF_BOARD_DEVKITC": 1, "ZF_IDENTITY_SIZE": 26,
+                    "ZF_MCU_RP2040": 1, "ZF_MCU_RP2350": 2, "ZF_BOARD_PICO": 2, "ZF_BOARD_PICO_W": 3,
+                    "ZF_BOARD_PICO2": 4, "ZF_BOARD_PICO2_W": 5,
                     "ZF_CONFIG_SIZE": 17, "ZF_TELEMETRY_SIZE": 22, "ZF_STORAGE_SIZE": 34,
                     "ZF_WIRELESS_SIZE": 48, "ZF_CONTROL_SIZE": 68}
         self.assertEqual({name: int(macros[name], 0) for name in expected if name in macros},
@@ -161,6 +163,21 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_identity_report(raw + bytes(3) + b"\x01")
 
+    def test_esp32c6_identity_accepts_no_storage_and_caps_the_clock(self):
+        identity = parse_identity_report(identity_report(0x86, mcu=4, board=6))
+        self.assertEqual((identity["mcu"], identity["board_model"]), ("ESP32-C6", "ESP32-C6-DevKitC-1"))
+        self.assertIsNone(identity["storage_transport"])
+        config = bytearray(configuration_report(clock=160, flags=0x04))
+        config[5:8] = bytes([0, 16, 17])
+        config[8:14] = bytes([255]) * 6
+        decoded = parse_configuration_report(config, identity)
+        self.assertEqual(decoded["storage_gpios"], (255,) * 6)
+        self.assertIsNone(decoded["storage_transport"])
+        invalid_clock = bytearray(config)
+        invalid_clock[2:4] = struct.pack("<H", 240)
+        with self.assertRaisesRegex(ValueError, "profile"):
+            parse_configuration_report(invalid_clock, identity)
+
     def test_identity_accepts_only_the_zephyrforge_product_and_profile(self):
         for product, name in ((2, "PicoForge"), (1, "PicoUart"), (0x1234, "Unknown product (0x1234)")):
             with self.subTest(product=product):
@@ -175,6 +192,34 @@ class ProtocolTests(unittest.TestCase):
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
         self.assertEqual(unknown_mcu["mcu"], "unknown (9)")
         self.assertEqual(unknown_mcu["board_model"], "Unknown / unspecified")
+
+    def test_pico_boards_match_their_mcu_and_gpio_range(self):
+        native = bytearray(configuration_report(clock=0, flags=0x05))
+        native[5:14] = bytes([0, 0, 1, 2, 3, 4, 5, 6, 7])
+        native[17] = 8
+        for mcu, board, name in ((1, 2, "Raspberry Pi Pico"), (1, 3, "Raspberry Pi Pico W"),
+                                 (2, 4, "Raspberry Pi Pico 2"), (2, 5, "Raspberry Pi Pico 2 W")):
+            with self.subTest(board=board):
+                identity = parse_identity_report(identity_report(0x32, mcu, board))
+                self.assertEqual((identity["mcu"], identity["board_model"]), (("RP2040", "RP2350")[mcu - 1], name))
+                self.assertFalse(identity["led_available"] or identity["settings_supported"]
+                                 or identity["wireless_supported"])
+                self.assertEqual(parse_configuration_report(native, identity)["card_detect_gpio"], 8)
+                high = native.copy()
+                high[17] = 30
+                with self.assertRaisesRegex(ValueError, "GPIO"):
+                    parse_configuration_report(high, identity)
+                for other in {1, 2, 3} - {mcu}:
+                    with self.assertRaisesRegex(ValueError, "disagree"):
+                        parse_identity_report(identity_report(0x32, other, board))
+        self.assertEqual(parse_identity_report(identity_report(0x0A, 2, 5))["storage_transport"], "spi")
+        rp2350b = parse_identity_report(identity_report(0x12, 2, 0))
+        high = native.copy()
+        high[17] = 47
+        self.assertEqual(parse_configuration_report(high, rp2350b)["card_detect_gpio"], 47)
+        high[17] = 48
+        with self.assertRaisesRegex(ValueError, "GPIO"):
+            parse_configuration_report(high, rp2350b)
 
     def test_configuration_rejects_values_outside_the_profile(self):
         for clock in (150, 200, 250, 1):

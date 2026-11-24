@@ -1,14 +1,16 @@
-# Bluetooth LE Specification
+# Bluetooth LE specification
 
-## Scope and Conventions
+For client implementation, start with [GATT layout](#gatt-layout), then [session unlock](#session-unlock),
+[command proofs](#command-proofs), and [control characteristic](#control-characteristic).
+For connecting a dashboard, use [wireless setup](../guides/wireless.md#bluetooth-le).
 
-This document is the project's Bluetooth LE specification for firmware and clients. It defines startup gating,
-advertising, the GATT
-layout, session unlock, per-command proofs, the 9-byte control form, and ATT error codes. Breaking wire changes use a
+## Scope and conventions
+
+This specification defines startup gating, advertising, GATT, session unlock, per-command proofs, the 9-byte
+control form, and ATT error codes. Breaking wire changes use a
 new service UUID; compatible additions MAY retain this UUID. Byte 0 of each report and control payload remains its
 payload version. Payload layouts reused from USB and cross-transport command semantics are defined once in the [USB HID
 reference](usb-hid.md). Credential persistence is defined in [boot settings](settings.md).
-For provisioning and dashboard setup, see the [wireless guide](../guides/wireless.md).
 
 The Direct dashboard implements BLE through Web Bluetooth. Python and .NET dashboards use USB HID only.
 
@@ -27,7 +29,8 @@ Software tests do not establish hardware qualification; see [Conformance](#confo
 
 ## Availability
 
-BLE is present only when Report `1` capability bit 7 is set. At boot the firmware loads the saved Control key and
+ESP32-S3 and ESP32-C6 provide BLE; Pico-family images do not. Report `1` capability bit 7 denotes wireless support,
+not BLE specifically. At boot the firmware loads the saved Control key and
 then starts the controller only when the Report `2` Bluetooth switch is on **and** a key is saved. Enabling the
 switch without a key logs a warning and leaves the controller off. Saving or clearing the key takes effect at the
 next boot. The separate [diagnostic TCP shell](../guides/console.md) is not protected by the BLE Control key.
@@ -50,31 +53,37 @@ is not an exact reason code, and no separate Starting state is published.
 | Item | Value |
 | --- | --- |
 | Advertising type | Connectable undirected (`ADV_IND`) on all three advertising channels. |
-| Interval | 96 units (60 ms) for 30 seconds after startup/disconnect, then 800 units (500 ms). |
+| Interval | 96 units (60 ms) for 30 seconds after a successful start; 800 units (500 ms) afterward or on retry. |
 | Address | Selected by the controller stack; the current server does not configure rotating-address privacy. |
 | Advertising data | Flags `0x06` (LE General Discoverable, BR/EDR not supported); complete list of 128-bit service UUIDs containing the ZephyrForge service. |
-| Scan response | Complete Local Name `ZephyrForge-<USB serial>`: 16 uppercase hexadecimal digits of the board unique ID, 25 bytes in total. |
+| Scan response | Complete Local Name `ZephyrForge-<serial>`: 16 uppercase hexadecimal digits of the board unique ID, 28 bytes in total. |
 
 The GAP Device Name characteristic returns the same name without unlocking. Advertising starts when the controller
-reaches the working state and restarts after every disconnect. Fast discovery is temporary; the slower interval
+reaches the working state and restarts after every disconnect. If a restart is rejected transiently, the server remains
+Off and retries advertising rather than claiming it is discoverable. Fast discovery is temporary; the slower interval
 reduces idle radio use. The firmware does not re-advertise while connected, so it serves one central at a time.
 The scan-response name includes the full stable board UID for dashboard selection. Anyone scanning can correlate
 observations using that name, regardless of address behavior; this is an accepted
 privacy tradeoff for a local development tool.
 
-## Pairing and Bonding
+## Pairing and bonding
 
 Pairing is not required: [session unlock](#session-unlock) and [command proofs](#command-proofs) authorize
 application access. The default firmware does not enable a pairing or bonding workflow, request link encryption,
-or persist peer keys. Pairing is not an alternative to the Control key. Bluetooth never writes flash:
-the Control key is provisioned through USB and loaded from boot settings.
+or persist peer keys. Pairing is not an alternative to the Control key. BLE cannot provision credentials, but its
+settings-save command can write the settings record. On USB-HID boards the Control key is provisioned through USB
+and loaded from boot settings. The ESP32-C6 has no native USB HID,
+so use [initial physical commissioning](../guides/boards/esp32c6-commissioning.md).
+A fresh C6 image leaves Bluetooth off until a Control key is saved; this requirement is not bypassed with
+unauthenticated access.
 
-## GATT Layout
+## GATT layout
 
 Service UUID: `ef5c0000-7c91-4d70-8b32-6e856443f502`.
 Characteristic UUIDs use `ef5cXXXX-7c91-4d70-8b32-6e856443f502`, where `XXXX` is the suffix below.
-Breaking wire changes require a new service UUID. Report characteristics use the hexadecimal USB report ID and return that
-report's payload **without** the report ID byte. Suffixes `0001`–`00ff` are reserved for report mirrors; `0100`
+Breaking wire changes require a new service UUID. Report characteristics use the hexadecimal USB report ID and
+return that report's payload **without** the report ID byte. Suffixes `0001`–`00ff` are reserved for report mirrors;
+`0100` and above are BLE-specific.
 and above are BLE-specific. Clients MUST reject an unsupported payload version for a known report or control
 characteristic. Clients MAY ignore unknown characteristics unless they are required for an operation they use.
 
@@ -84,30 +93,19 @@ project's management service.
 Cache invalidation behavior is described below. The GAP Appearance is Unknown; Device Information exposes
 manufacturer `ZephyrForge` and the firmware revision.
 
-### Service Changed and Caching
-
-The Bluetooth Core Specification v5.4 (Vol 3, Part G, §2.5.2) limits an unbonded client's attribute cache to the
-current connection. The server uses the standard Generic Attribute service and does **not** send a forced
-full-range Service Changed indication on every subscription.
-Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse cached handles across
-connections. This avoids persisting per-peer cache state.
-
-The Direct client subscribes before ZephyrForge service discovery when Generic Attribute and Service Changed are
-available, then continues without waiting for an indication.
-If lookup or subscription fails with `NotAllowedError`, `NotFoundError`, `NotSupportedError` or `SecurityError`, it
-warns and continues with the platform's own cache behavior; other errors abort setup.
+### Characteristics
 
 The UUID table's **Access while locked** column lists permitted operations before session unlock; `Denied` entries
 return ATT error `0x80`.
 
 | UUID suffix | Properties | Access while locked | Size | Value |
 | --- | --- | --- | ---: | --- |
-| GAP `0x2A00` | Read | Read | 25 | Device name, as in the scan response. |
+| GAP `0x2A00` | Read | Read | 28 | Device name, as in the scan response. |
 | GAP `0x2A01` | Read | Read | 2 | Appearance `0` (Unknown). |
 | GATT `0x2A05` | Indicate | N/A | 4 | Standard Service Changed; no forced per-subscription indication. |
 | GATT `0x2902` | Read, Write | Read/write | 2 | Service Changed CCCD; `0` disables, `2` enables indications. |
 | GATT `0x2B2A` | Read | Read | 16 | Standard GATT Database Hash. |
-| Device Information `0x2A29` | Read | Read | 8 | Manufacturer name `ZephyrForge`. |
+| Device Information `0x2A29` | Read | Read | 11 | Manufacturer name `ZephyrForge`. |
 | Device Information `0x2A26` | Read | Read | Variable | Firmware revision, ASCII without NUL. |
 | `0001` | Read | Read | 26 | [Report `1`](usb-hid.md#report-id-1-device-identity--capabilities) identity; carries the UID that proofs bind. |
 | `0002` | Read | Denied (`0x80`) | 17 | [Report `2`](usb-hid.md#report-id-2-board-configuration) board configuration. |
@@ -128,13 +126,26 @@ while storage is busy or USB-owned; see [USB storage arbitration](usb-hid.md#cro
 are rejected by the stack before the application callback, and Write Without Response has no ATT response for a
 client to inspect. The Control key is exactly 32 raw bytes (64 hexadecimal digits in the dashboard). Report `1`
 UID bytes are at payload offset 3, length 8, in report order. Clients MUST validate the ZephyrForge identity
-(`product_id = 0x0003`, MCU `3`) as described in the
-[USB identity contract](usb-hid.md#report-id-1-device-identity--capabilities).
-The `0101` proof write is 16 bytes and the `0014`
-request is 9 bytes; both fit in the default ATT MTU of 23. Clients MUST use Write Requests, not Write Without
-Response or Prepare/Execute (long) writes.
+(`product_id = 0x0003`) and MCU/board-model consistency as described in the
+[USB identity contract](usb-hid.md#report-id-1-device-identity--capabilities). Current BLE targets report MCU `3`
+for ESP32-S3 or `4` for ESP32-C6.
+The `0101` proof write is 16 bytes and the `0014` request is 9 bytes; both fit in the default ATT MTU of 23.
+Clients MUST use Write Requests, not Write Without Response or Prepare/Execute (long) writes.
 
-### Read Snapshots
+### Service Changed and caching
+
+The Bluetooth Core Specification v5.4 (Vol 3, Part G, §2.5.2) limits an unbonded client's attribute cache to the
+current connection. The server uses the standard Generic Attribute service and does **not** send a forced
+full-range Service Changed indication on every subscription.
+Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse
+cached handles across connections. This avoids persisting per-peer cache state.
+
+The Direct client subscribes before ZephyrForge service discovery when Generic Attribute and Service Changed are
+available, then continues without waiting for an indication.
+If lookup or subscription fails with `NotAllowedError`, `NotFoundError`, `NotSupportedError` or `SecurityError`, it
+warns and continues with the platform's own cache behavior; other errors abort setup.
+
+### Read snapshots
 
 A read at offset `0` builds a new snapshot of the characteristic; ATT Read Blob requests at later offsets return
 bytes from that same snapshot, so long reads are consistent without a larger MTU. A blob read whose handle differs
@@ -145,7 +156,7 @@ identity and 48-byte wireless reports require Read Blob requests at that MTU. Th
 server and central. Clients that control MTU negotiation SHOULD
 request at least 51; Web Bluetooth does not expose a manual MTU request.
 
-## Session Unlock
+## Session unlock
 
 Each connection starts locked. Only the GAP name, Appearance, Service Changed CCCD, Database Hash, Device
 Information, `0001`, `0100` and `0101` are accessible; other reads and every `0014` write return ATT error `0x80`.
@@ -159,13 +170,13 @@ To unlock:
    `HMAC-SHA256(key, nonce[16] || UID[8] || "PFBLECTL1" || "SESSION01")`.
 
 An accepted proof unlocks the connection until it disconnects. Disconnect clears the unlock, nonce, proof and any
-frozen read snapshot. For the `0101` validation order and failure behavior, see [Proof Rules](#proof-rules).
+frozen read snapshot. For the `0101` validation order and failure behavior, see [proof rules](#proof-rules).
 
 The server MUST obtain the 16-byte challenge from a cryptographically secure random source. The protocol relies
 on fresh, unpredictable challenges and does not detect repeated values. Random-source failure produces an empty
 challenge read, not a usable nonce; clients MUST validate its length before signing.
 
-## Command Proofs
+## Command proofs
 
 Opcode `1` has a per-command proof exemption on an unlocked link. It leaves any pending nonce, proof and rate limit
 untouched; the session still requires Control-key authentication.
@@ -180,13 +191,13 @@ proof:
 4. A successful ATT Write Response means the command was admitted and its BLE result is already terminal. Clients
    MUST read `0014` and match `transaction_id` and `opcode`.
 
-Proof consumption and retry-delay behavior are defined in [Proof Rules](#proof-rules). The Direct dashboard
+Proof consumption and retry-delay behavior are defined in [proof rules](#proof-rules). The Direct dashboard
 disconnects after a rejected session proof.
 
 The board does not enforce transaction-ID uniqueness; clients MUST advance the nonzero ID for every command and
 serialize writes. The result is synchronous: `Pending` is not a BLE command outcome.
 
-## Proof Rules
+## Proof rules
 
 Every successful offset-`0` read of `0100` creates a fresh challenge and invalidates any earlier proof.
 Blob reads reuse the snapshot; an empty read after random-source failure supplies no new challenge.
@@ -198,7 +209,7 @@ operation:
   against the session request. Otherwise it is checked against the next valid non-LED `0014` request. The
   missing-key check is defensive: BLE starts only after the control key is loaded, and the key is not cleared while
   BLE is running.
-- For a non-LED `0014` write, after the locked-link and envelope checks in [Validation Order](#validation-order),
+- For a non-LED `0014` write, after the locked-link and envelope checks in [validation order](#validation-order),
   authentication checks retry delay (`0x82`), key/challenge availability (`0x83`), proof presence (`0x80`), and
   then the MAC (`0x80`), in that order. Once the retry-delay check passes, if no nonce was read the missing
   challenge returns `0x83`; if a fresh nonce exists but no proof was written, the missing proof returns `0x80`
@@ -208,7 +219,7 @@ A bad MAC returns `0x80`, consumes the challenge and proof, and starts a two-sec
 disconnects; a bad session MAC leaves the link locked. The delay applies globally to BLE proof attempts, not just
 to one connection. MAC comparison does not exit early. The ASCII domain and request strings have no terminator.
 
-## Worked Proof Vector
+## Worked proof vector
 
 These bytes are a public conformance vector, not a production key:
 
@@ -225,7 +236,7 @@ These bytes are a public conformance vector, not a production key:
 Proofs are the first 16 bytes of HMAC-SHA256 as defined above. Firmware authentication and Direct transport
 tests verify this vector.
 
-## Exchange Sequence
+## Exchange sequence
 
 ```mermaid
 sequenceDiagram
@@ -251,7 +262,7 @@ sequenceDiagram
     C->>P: Read 0014 - match transaction ID and opcode
 ```
 
-## Control Characteristic
+## Control characteristic
 
 Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Status, error and detail values match
 [Feature `20`](usb-hid.md#report-id-20-control-command--result).
@@ -262,8 +273,8 @@ Writes to `0014` use a 9-byte form, not a truncated USB Feature `20` report. Sta
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | `1`. |
 | 1 | 1 | `transaction_id` | Nonzero; independent of the USB sequence. |
-| 2 | 1 | `opcode` | `1` RGB LED colour, `2` confirmed reboot or `5` save settings and reboot. |
-| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcodes `1` and `5` require zero (no forced save or wireless commit). |
+| 2 | 1 | `opcode` | `1` RGB LED color, `2` confirmed reboot or `5` save settings and reboot. |
+| 3 | 1 | `flags` | Opcode `2` requires confirmation bit 0; opcodes `1` and `5` require zero. |
 | 4 | 5 | `arguments` | Opcode arguments; unused bytes zero. |
 
 Opcode `1` uses argument byte 0 as an RGB mask `0`-`7`, with flags and other arguments zero, as specified in
@@ -274,7 +285,7 @@ or `240`. Byte 6 MUST be `0` (Standard SD-card profile), byte 7 is the switch ma
 and byte 8 MUST be zero. All opcode `5` flags MUST be zero.
 
 A BLE save MUST preserve the saved radio mask. A different mask, an unsupported clock, a nonzero SD-card profile,
-or switch bit 2 (TCP CLI) returns Invalid/error `3` with detail `0`. BLE cannot stage or commit credentials.
+or reserved switch bit 2 returns Invalid/error `3` with detail `0`. BLE cannot stage or commit credentials.
 
 ### Result
 
@@ -293,12 +304,12 @@ does. It has no client attribution and transaction IDs are not globally unique, 
 only if the board has not reset and no later admitted BLE command has replaced it; a matching ID and opcode do not
 prove which connection produced it.
 
-### Validation Order
+### Validation order
 
 1. Locked link: ATT error `0x80`. The envelope is not checked.
 2. Invalid envelope (length other than 9, version other than `1`, or transaction ID `0`): ATT error `0x81`. The
    result slot, nonce and proof are unchanged.
-3. Non-LED requests follow the proof lifecycle and failure mapping in [Proof Rules](#proof-rules). LED requests
+3. Non-LED requests follow the proof lifecycle and failure mapping in [proof rules](#proof-rules). LED requests
    skip authentication.
 4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
@@ -307,13 +318,12 @@ prove which connection produced it.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
    detail `28` in that case, after validating its arguments and confirmation flag.
-   There is no forced USB save implementation.
 
 USB and BLE keep separate result slots and transaction sequences; a request on one never replaces the other's result,
-and BLE authentication state is separate from USB staging. ZephyrForge has no TCP CLI proofs.
+and BLE authentication state is separate from USB staging.
 See [Feature `20` result semantics](usb-hid.md#get-result).
 
-### Uncertain Outcomes
+### Uncertain outcomes
 
 Clients MUST serialize control requests. A timeout before the `0014` Write Response leaves admission uncertain; a
 disconnect after a successful response but before the result read can hide the terminal result. Clients MUST
@@ -324,8 +334,10 @@ Clients MUST abandon the transaction and reconnect after an ATT transaction time
 Accepted reboot and save-and-reboot commands are followed by a reset after a 1000 ms
 grace period, intended to allow the result read. This is not a guarantee that a slow
 connection can finish reading before reset.
+During that period, further reboot/save requests on either transport and USB MSC/benchmark commands return
+Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling does not reserve the reset.
 
-## ATT Errors
+## ATT errors
 
 | Code | Name | Cause |
 | --- | --- | --- |
@@ -340,27 +352,27 @@ connection can finish reading before reset.
 | `0x0D` | Invalid Attribute Value Length | `0101` write that is not 16 bytes. |
 
 These ATT errors apply to requests that receive an ATT response. Standard GAP/GATT attributes, including CCCD
-validation and caching, are handled by the Bluetooth stack and can return stack-defined ATT errors. The server's application
-authorization callbacks use `0x80`, not Insufficient Authentication (`0x05`), so a rejected Control-key proof is
-not an instruction to pair through the operating system.
+validation and caching, are handled by the Bluetooth stack and can return stack-defined ATT errors. The server's
+application authorization callbacks use `0x80`, not Insufficient Authentication (`0x05`). A rejected Control-key
+proof is not an instruction to pair through the operating system.
 
-## Security Properties
+## Security properties
 
 | Threat | Existing controls | Residual risk |
 | --- | --- | --- |
 | Passive traffic observation | The Control key never crosses the link. | The default link is not encrypted; observers within radio range can read unlocked status (including SSID and IPv4 address) and command traffic. |
 | Cross-session result disclosure | Session unlock is required to read `0014`. The result slot is shared across connections and survives disconnects. | A later authorized central can read the previous central's last admitted command result. Successful opcode `5` results include the saved clock, SD-card profile and switch mask; transaction IDs do not identify the originating connection. |
-| Proof replay or alteration | One-use challenges, a cryptographically secure random source and HMAC request binding prevent reuse of a proof for a different request. | Repeated or compromised nonces weaken replay protection; the application does not detect repeats. See [Session Unlock](#session-unlock). |
-| Cross-board or cross-protocol proof reuse | The proof binds the board UID and uses the fixed `PFBLECTL1` domain. | There is no board-authentication proof; the client SHOULD verify the selected UID before trusting status. The domain is not a unique project identity; another protocol using the same key, UID and proof inputs is not isolated by it. |
+| Proof replay or alteration | One-use challenges, a cryptographically secure random source and HMAC request binding prevent reuse of a proof for a different request. | Repeated or compromised nonces weaken replay protection; the application does not detect repeats. See [session unlock](#session-unlock). |
+| Cross-board or cross-protocol proof reuse | The proof binds the board UID and uses the fixed `PFBLECTL1` domain. | The proof does not authenticate the board; the client SHOULD verify the selected UID before trusting status. The domain is not a unique project identity; another protocol using the same key, UID and proof inputs is not isolated by it. |
 | Active attacker on a live link | A command proof is bound to one exact request and is accepted once. | An attacker able to inject traffic into an unlocked connection can race an observed proof and its exact bound command, or control/proxy the live link. Proofs do not provide link security. |
-| Session left unattended | Authorization is cleared on disconnect. | There is no idle relock; clients SHOULD disconnect when finished. |
+| Session left unattended | Authorization is cleared on disconnect. | An unlocked session stays authorized until disconnect; clients SHOULD disconnect when finished. |
 | Device tracking | None. | The stable advertised name permits tracking; rotating-address privacy is not configured by the application. |
 | Denial of service | One central is served at a time; disconnecting frees the slot. | A central can hold that connection, and radio jamming can prevent communication. |
 | Online brute force | A global two-second retry delay applies after a rejected MAC and persists across reconnects. | At continuous uptime, this permits about 43,200 failed guesses per day. If the key is uniformly random and each guess is independent against an ideal 128-bit HMAC tag, the success probability is about 1.3×10^-34 per day. The firmware accepts any 32-byte key; key quality is the user's responsibility. A reboot resets the volatile delay. |
 
 These security properties and residual risks are accepted tradeoffs for a local development tool.
 
-## Operational Notes
+## Operational notes
 
 Connection interval and supervision timeout are managed by the server and central stacks; this specification does not
 promise a disconnect-detection deadline. Application notifications are intentionally omitted. The Direct dashboard
@@ -377,8 +389,8 @@ Invalid reports do not refresh receipt times. Wireless status expires after thre
 Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
 and used only for cache invalidation. The browser chooses MTU negotiation for Web Bluetooth clients.
 
-BLE cannot stage credentials, test or scan Wi-Fi, produce TCP CLI proofs, run benchmarks, change radio switches,
-force a save, or change USB storage ownership.
+BLE cannot stage credentials, test or scan Wi-Fi, run benchmarks, change radio switches, or change USB storage
+ownership.
 
 ## Conformance
 
@@ -390,15 +402,14 @@ force a save, or change USB storage ownership.
 | BT-004 | BLE opcode restrictions, save validation, result isolation and USB staging conflicts. | Firmware control tests |
 
 These tests use portable modules and simulated browser transports. They do not qualify the Zephyr GATT callbacks,
-controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 hardware.
-See the [qualification gaps](../validation/qualification-gaps.md). Test commands are maintained in the
-[firmware](../development/firmware.md) and [host development](../development/host-tools.md) guides.
+controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 or
+ESP32-C6 hardware. See the [qualification gaps](../validation/qualification-gaps.md).
 
 ## Implementation
 
-The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 controller.
+The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 or ESP32-C6 controller.
 `CONFIG_BT_GATT_SERVICE_CHANGED` and `CONFIG_BT_GATT_CACHING` enable the standard caching attributes.
-Challenges use the ESP32-S3 entropy source through Zephyr's cryptographically secure random API.
+Challenges use the SoC entropy source through Zephyr's cryptographically secure random API.
 Accepted reboot commands use a 1000 ms grace period.
 
 Bluetooth callbacks run in the Zephyr Bluetooth thread. They hold the application mutex while accessing
@@ -407,9 +418,9 @@ connectable advertising restarts when the disconnected connection object is recy
 Python and .NET hosts do not use BLE. See [architecture](architecture.md#lifecycle-and-failure-handling)
 for cross-transport locking and lifecycle rules.
 
-## Specification History
+## Specification history
 
-The initial wire design was derived from the
+The initial wire design was adapted from the
 [PicoForge Bluetooth LE specification](https://github.com/djwinter29-oss/PicoForge/blob/5e615725b22714963c2d16ed56215042e1411553/docs/reference/bluetooth.md)
-at commit `5e615725b227`. This document defines the current project contract; the upstream document is historical
-context, not an additional source of requirements. The `PFBLECTL1` proof domain remains unchanged on the wire.
+at commit `5e615725b227`. This document defines the current contract. The `PFBLECTL1` proof domain remains
+unchanged on the wire.

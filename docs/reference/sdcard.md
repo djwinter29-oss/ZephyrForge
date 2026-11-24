@@ -1,103 +1,76 @@
-# SD Storage Reference
+# SD storage
 
-ZephyrForge provides two firmware images for the ESP32-S3-DevKitC-1 N16R8: **native four-bit SDMMC, slot 0**
-(the default), and **SD-over-SPI** on SPI3. Select the image that matches the wiring; there is no runtime fallback.
-Both use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
-This is the SD memory-card bus, not an SDIO peripheral/function API or a PIO-emulated bus.
-The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage.
-This reference owns the SD pin allocation,
-mount lifecycle, status reporting and data-safety contract. See the
-[hardware guide](../guides/hardware.md#sd-card-sdmmc-wiring) for board selection and electrical precautions.
+Storage-enabled images use Zephyr disk access and FatFs to mount an existing volume at `/SD:` (disk name `SD`).
+Firmware owns the card until the user explicitly hands it to USB mass storage on a board that supports it.
+There is no automatic formatting or runtime bus fallback.
+Hardware reports cover selected card and wiring combinations only; see
+[qualification gaps](../validation/qualification-gaps.md).
+
+ESP32-S3 and Pico images offer native four-bit SDMMC or SPI; C6 offers SPI only.
+The [build guide](../development/firmware-build.md) also describes the `none` image, which omits SD and filesystem
+support entirely. This is an SD memory-card interface, not an SDIO peripheral/function API.
+
+For runtime behavior, see [mounting](#boot-and-runtime-mount-lifecycle), [USB handoff](#usb-drive-handoff),
+or the [optional benchmark](#optional-storage-benchmark).
 
 ## Pin allocation
 
-GPIO numbers are ESP32-S3 signals, not physical header positions. Verify the labels and schematic of your
-exact board and breakout before connecting them.
+GPIO numbers are MCU signals, not physical header positions. Use the wiring guide for the exact board and storage
+variant from [Wire an SD card](../README.md#wire-an-sd-card). Read
+[safety and ownership](#safety-and-ownership) before changing buses.
 
-| SDMMC function | ESP32-S3 pin | Breakout/card signal | Direction relative to ESP32-S3 |
-| --- | --- | --- | --- |
-| Clock | GPIO12 | CLK | Output |
-| Command | GPIO11 | CMD | Bidirectional |
-| Data bit 0 | GPIO13 | DAT0 | Bidirectional |
-| Data bit 1 | GPIO14 | DAT1 | Bidirectional |
-| Data bit 2 | GPIO15 | DAT2 | Bidirectional |
-| Data bit 3 | GPIO10 | DAT3 | Bidirectional |
-| Card detect | GPIO8 | Inserted-low detection switch to GND | Input with internal pull-up |
-| Supply | 3V3 | 3.3 V supply input | Power |
-| Ground | GND | GND | Common ground |
+### Reported allocation
 
-Use a 3.3 V socket/breakout exposing CLK, CMD and **all four data lines**. SPI-only modules exposing just
-MOSI/MISO/CS/CLK are not suitable without access to DAT1 and DAT2. Directional SPI level shifters can also
-prevent bidirectional native operation. Do not connect 5 V logic.
-CMD and DAT0-DAT3 require suitable **external pull-ups to 3.3 V** (typically 10 kOhm; verify the socket/module
-requirements and existing resistors). Do not add a pull-up to CLK. Pinctrl also requests internal command/data
-pull-ups, but these do not replace electrical qualification. Keep all six signal wires short.
-The native image sets CLK, CMD and DAT0-DAT3 pad drive to about 10 mA. The ESP32-S3 reset default of about 20 mA
-caused data-CRC write failures on tested hand wiring while reads and mounting still worked. Wiring changes can need a
-different `drive-strength` value in the board overlay (5, 10, 20 or 40 mA); requalify writes after changing it.
+Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order for native SDMMC, and in SCK, MOSI,
+MISO, CS, unassigned, unassigned order for SPI.
 
-GPIO8 is **active-low**: low means inserted, 3.3 V means absent. Connect the socket's insertion switch between
-GPIO8 and GND, closing when a card is inserted; the internal pull-up holds an open input high. A socket whose
-detect contact instead drives 3.3 V on insertion needs polarity adaptation, not direct connection with this
-configuration. Never apply 5 V. An unwired GPIO8 reads absent; a GPIO8 shorted to GND reads inserted even
-without a card, so firmware retries initialization until a card responds. There is no power-control GPIO.
-In the native image, GPIO10 is DAT3, **not a chip-select output**.
-When changing between native SDMMC and SPI images, disconnect card power before restarting:
-a board reset alone does not necessarily reset the card's selected bus mode.
-
-### SD-over-SPI image
-
-| SPI function | ESP32-S3 pin | SD-card signal |
-| --- | --- | --- |
-| SCK | GPIO12 | CLK |
-| MOSI | GPIO11 | CMD / DI |
-| MISO | GPIO13 | DAT0 / DO |
-| CS, active-low | GPIO10 | DAT3 / CS |
-| Card detect | GPIO8 | Inserted-low detection switch to GND |
-
-Supply, ground and the active-low detect switch use the same wiring and precautions as above.
-GPIO14 and GPIO15 are unused by the SPI image; DAT1/DAT2 do not carry SPI data.
-Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including CS; internal data pull-ups do not
-replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.
-
-The native image enables SDMMC slot 0 with a four-bit bus; the SPI image disables that slot and enables SPI3.
-Native SDMMC requests a 40 MHz maximum frequency; SPI requests 25 MHz.
-SPI2 remains dedicated to the RGB LED in both images.
-GPIO33-37 are occupied by octal PSRAM on N16R8.
-
-Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order as
-`12, 11, 13, 14, 15, 10` for native SDMMC. The SPI image uses SCK, MOSI, MISO, CS, unassigned, unassigned order:
-`12, 11, 13, 10, 255, 255`. The card-detect GPIO is `8` in both.
+Unassigned GPIOs are encoded as `255`; card detect is reported separately.
+The reported values must match the corresponding [wiring guide](#pin-allocation).
 If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
 validate the new allocation before use.
 
 ## Driver and filesystem configuration
 
-| Layer | Configuration |
-| --- | --- |
-| Native image controller/slot | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus |
-| SPI image controller/slot | SPI3, compatible `zephyr,sdhc-spi-slot` |
-| Disk layer | `zephyr,sdmmc-disk`, disk name `SD` |
-| Filesystem | FatFs, mount point `/SD:` |
-| Requested bus ceiling | Native 40 MHz; SPI 25 MHz; not a measured runtime clock or throughput |
-| Native image pad drive | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 |
+| Layer | ESP32-S3-DevKitC-1 N16R8 | ESP32-C6-DevKitC-1 N8 | Raspberry Pi Pico boards |
+| --- | --- | --- | --- |
+| Native image controller | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus | Not supported | ZephyrForge PIO SD host on PIO1, compatible `zephyrforge,rpi-pico-pio-sdhc`, four-bit bus |
+| SPI image controller | SPI3, compatible `zephyr,sdhc-spi-slot` | SPI2, compatible `zephyr,sdhc-spi-slot` | SPI0, compatible `zephyr,sdhc-spi-slot` |
+| Native Kconfig driver | `CONFIG_SDHC_ESP32` | Not supported | `CONFIG_ZF_SDHC_RPI_PICO_PIO` |
+| Requested native ceiling | 40 MHz | Not supported | 50 MHz; the PIO divider limits actual clock to one quarter of the SoC clock (31.25 MHz RP2040, 37.5 MHz RP2350) |
+| Requested SPI ceiling | 25 MHz | 25 MHz | 25 MHz |
+| Native image pads | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 | Not supported | Default drive; Schmitt-trigger inputs |
 
-Both images enable GPIO/pinctrl, disk access, the SDMMC disk driver, the filesystem API and FatFs.
-The native image selects `CONFIG_SDHC_ESP32`; the SPI image selects `CONFIG_SPI_SDHC`.
+Requested ceilings are not measured runtime clocks or throughput. Every image uses the `zephyr,sdmmc-disk` disk
+layer with disk name `SD` and FatFs mounted at `/SD:`, and enables GPIO/pinctrl, disk access, the SDMMC disk driver,
+the filesystem API and FatFs. SPI images select `CONFIG_SPI_SDHC`.
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
 
 Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
 covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
 
-Native SDMMC starts at the probing clock and negotiates the card's advertised capabilities.
-Cards that accept High Speed mode can use the 40 MHz ceiling; cards without that support remain at the legacy
-clock, at most 25 MHz requested. The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
+### Pico PIO resources
+
+The Pico native host is ported from PicoForge's PIO SDIO engine and implements the standard Zephyr SDHC API, so the
+same SD stack, disk and filesystem layers run above it. It owns PIO1, using two state machines and the instruction
+memory, which it reloads between reads and writes, plus one DMA channel claimed through pico-sdk. It cannot be
+enabled together with Zephyr's RP DMA driver, which does not coordinate channel claims with pico-sdk.
+
+### Clock negotiation
+
+Native SDMMC starts with a one-bit bus at the probing clock and negotiates the card's advertised capabilities.
+Cards that accept High Speed mode can use the board's native ceiling; cards without that support remain at the
+legacy clock, at most 25 MHz requested. Zephyr's SD stack widens the bus to four bits only after a card accepts
+High Speed, so a card without High Speed transfers data on DAT0 alone.
+The ESP32 driver divides a 160 MHz source: a 25 MHz request produces about
 22.9 MHz, while 40 MHz is exact. Requesting 50 MHz would still select 40 MHz with this driver.
+The Pico host divides the system clock: High Speed runs at one quarter of it, and a 25 MHz legacy request produces
+about 20.8 MHz on RP2040 and 25 MHz on RP2350. The Pico images do not change the system clock.
 There is no UHS/1.8 V mode or automatic clock reduction after CRC errors.
 A card's write-speed class does not determine its negotiated bus clock.
-Keep the 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
-restore `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
+Keep the ESP32-S3 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
+set `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
+On the Pico boards that setting withdraws High Speed, leaving cards on the one-bit legacy bus.
 
 ## Boot and runtime mount lifecycle
 
@@ -111,7 +84,7 @@ nonzero sector count and 512-byte sectors; failed geometry validation releases t
 usable storage.
 Hardware metadata is collected before mounting. A failed mount leaves the initialized card's CID, capacity and
 configured bus facts available, with filesystem format unknown. Retries clean up the previous filesystem registration
-and disk references before reinitializing; they do not format, repair or automatically export the card.
+and disk references before reinitializing.
 
 An observed removal, even shorter than the debounce period, invalidates current card facts and revokes USB ownership.
 Absence is confirmed after 100 ms stability; raw absence already rejects USB I/O before the worker handles it.
@@ -145,32 +118,34 @@ command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact 
 
 Report `10` carries live detection/ownership snapshots, hardware identity, filesystem type and available capacity
 over USB HID and BLE.
-The [USB HID specification](usb-hid.md#report-id-10-storage-status) owns field values, flags and validation.
+The [USB HID specification](usb-hid.md#report-id-10-storage-status) defines field values, flags, and validation.
 Detection distinguishes confirmed absence from an inserted card whose mount failed.
 During media work or USB ownership, the firmware SD sample is invalid and current SD fields are cleared.
 Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
 ceiling, not a runtime measurement. CID reports manufacturer/product/revision, serial and manufacturing date even
 when no filesystem is mounted. Negotiated bus state is not reported.
+The pinned SD stack includes a public-ioctl extension that retains CID during hardware initialization.
 
-The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence,
-and hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
-Use the UART log for
-diagnosis, and do not label every uninitialized sample "no card".
+The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence and
+hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
+Use the UART log for diagnosis, and do not label every uninitialized sample "no card".
 
-Current hosts accept exactly one advertised storage transport and validate its pin layout and bus-mode reports.
-Older native-only hosts reject the SPI image; update the host when selecting it.
-Power-cycle the card as described in the wiring instructions.
+Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
+no native USB HID, so Direct BLE can read storage status but cannot start the USB-only benchmark or handoff commands.
 
 ## Optional storage benchmark
 
 The dashboards offer a USB-controlled benchmark when capability bit 5 is advertised. It is disabled by default in
-CMake; the firmware build wrapper currently enables it. See [build configuration](../development/firmware.md#zephyr-target-build).
+CMake; the build wrapper enables it for SD-enabled ESP32-S3 and Pico images, not for C6. See
+[build configuration](../development/firmware-build.md#configuration-and-storage-profiles).
 It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
 
-Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a deterministic
-pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file of that name is
-never overwritten or removed. The volume must already be mounted for firmware; no formatting or repair occurs.
+Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a
+deterministic pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file
+of that name is never overwritten or removed. The volume must already be mounted for firmware.
 Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
+
+### Admission, progress and timing
 
 The command acknowledges **queued admission**, not successful filesystem preflight or a passing benchmark.
 File-existence and free-space checks run asynchronously on the storage worker. Read Report `11` for phases,
@@ -182,11 +157,14 @@ Write timing includes pattern generation, file allocation, writes and final clos
 verification and final close. Throughput is completed bytes divided by elapsed time, not a bus-frequency estimate.
 A zero elapsed time produces unavailable throughput (`--`), not a fabricated rate.
 
+### Cancellation and cleanup
+
 Cancel requests stop at the next cooperative checkpoint and attempt cleanup. Short/failed I/O is never replayed.
 Observed removal stops further access to that media, including close/unlink; replacement media is not used for cleanup.
 A failed close or cleanup can leave `EFTEST.BIN` behind. Inspect it on a computer after safely releasing ownership;
 remove it manually before starting another run. Unplugging or power loss during writes can still corrupt the volume.
-The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload qualification.
+The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload
+qualification.
 
 ## Safety and ownership
 
@@ -195,15 +173,9 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
 - Bluetooth mirrors storage/configuration reports but cannot change MSC ownership.
 - Physical removal during reads/writes can interrupt I/O and corrupt data. Detection does not prevent unplugging,
   make writes atomic, or provide power-loss recovery. Back up data and safely eject before returning USB ownership.
-- A failed mount returns an error rather than creating a new volume.
+- Power-cycle the card before changing between SDMMC and SPI images. A board reset can leave the card in SPI mode;
+  the board has no card power switch.
 - Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.
 - Downstream filesystem users must participate in ownership serialization, check every return value and close/sync
   files before handoff. Keep blocking storage work out of the management loop and application lock.
 - There is no implemented power-loss recovery or sustained-recording guarantee.
-
-## Validation limits
-
-Hardware results are kept in the [validation records](../validation/records/README.md); they cover individual
-card and wiring combinations. Successful compilation and simulated absent-card UI do not qualify any card, breakout,
-FAT layout or sustained recording workload. The pin allocation and pad drive are not electrically qualified for
-other wiring. See the [qualification gaps](../validation/qualification-gaps.md).

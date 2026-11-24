@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+toolchain="${toolchain:-xtensa-espressif_esp32s3_zephyr-elf}"
 base="${PYTHON:-python3}"
 packages=()
 for pair in python3:python3 git:git cmake:cmake ninja:ninja-build gperf:gperf dtc:device-tree-compiler \
@@ -43,6 +44,44 @@ while [[ ! -f "$workspace/.west/config" ]]; do
 	fi
 	workspace="$(dirname "$workspace")"
 done
+west_config="${WEST_CONFIG_LOCAL:-$workspace/.west/config}"
+[[ "$west_config" == /* ]] || west_config="$workspace/$west_config"
+
+west_manifest_setting() {
+	"$base" -c '
+import configparser
+import sys
+
+parser = configparser.ConfigParser(allow_no_value=True)
+try:
+    parser.read(sys.argv[2], encoding="utf-8")
+    print(parser.get("manifest", sys.argv[1], fallback=""))
+except configparser.Error as exc:
+    raise SystemExit(f"Error: malformed west configuration {sys.argv[2]}: {exc}")
+' "$1" "$2"
+}
+
+if [[ -f "$west_config" ]]; then
+configured_manifest="$(west_manifest_setting path "$west_config")"
+configured_file="$(west_manifest_setting file "$west_config")"
+	[[ -n "$configured_file" ]] || configured_file=west.yml
+	manifest_root="$configured_manifest"
+	[[ "$manifest_root" == /* ]] || manifest_root="$workspace/$manifest_root"
+	if [[ -d "$manifest_root" ]]; then
+		if [[ "$(realpath "$manifest_root")" != "$(realpath "$root")" ]]; then
+			printf 'Error: west workspace manifest must point to this checkout (%s), not %s.\n' \
+				"$root" "$configured_manifest" >&2
+			exit 1
+		fi
+		manifest_file="$configured_file"
+		[[ "$manifest_file" == /* ]] || manifest_file="$manifest_root/$manifest_file"
+		if [[ ! -f "$manifest_file" || "$(realpath "$manifest_file")" != "$(realpath "$root/west.yml")" ]]; then
+			printf "Error: west workspace must select this checkout's west.yml, not %s.\n" \
+				"$configured_file" >&2
+			exit 1
+		fi
+	fi
+fi
 
 venv="${VENV_DIR:-$workspace/.venv}"
 [[ "$venv" == /* ]] || venv="$PWD/$venv"
@@ -72,15 +111,34 @@ fi
 manifest_path="$(python -m west config --local manifest.path)"
 if [[ ! -e "$workspace/$manifest_path" &&
 	"$root" == "$workspace/"* && -f "$root/west.yml" ]]; then
-	for cache in "$root/build/firmware/CMakeCache.txt" "$root/build/firmware-sd-spi/CMakeCache.txt"; do
+	for cache in "$root"/build/firmware*/CMakeCache.txt; do
 		if [[ -f "$cache" ]] &&
 			grep -Fxq "APPLICATION_SOURCE_DIR:PATH=$workspace/$manifest_path/firmware" "$cache"; then
 			checkout="${root#"$workspace"/}"
 			printf 'Updating moved manifest checkout from %s to %s.\n' "$manifest_path" "$checkout"
 			python -m west config --local manifest.path "$checkout"
+			manifest_path="$checkout"
 			break
 		fi
 	done
+fi
+manifest_root="$manifest_path"
+[[ "$manifest_root" == /* ]] || manifest_root="$workspace/$manifest_root"
+if [[ ! -d "$manifest_root" || "$(realpath "$manifest_root")" != "$(realpath "$root")" ]]; then
+	printf 'Error: west workspace manifest must point to this checkout (%s), not %s.\n' \
+		"$root" "$manifest_path" >&2
+	exit 1
+fi
+manifest_file="$(west_manifest_setting file "$west_config")"
+[[ -n "$manifest_file" ]] || manifest_file=west.yml
+[[ "$manifest_file" == /* ]] || manifest_file="$manifest_root/$manifest_file"
+if [[ ! -f "$manifest_file" || "$(realpath "$manifest_file")" != "$(realpath "$root/west.yml")" ]]; then
+	printf "Error: west workspace must select this checkout's west.yml, not %s.\n" \
+		"$manifest_file" >&2
+	exit 1
+fi
+if [[ "${ZEPHYRFORGE_VALIDATE_BUILD_CONFIG:-}" == 1 ]]; then
+	python "$root/tools/firmware/check-build-cmake-args.py" "$workspace"
 fi
 # Keep dependencies aligned with the pinned manifest; west preserves local working-tree changes.
 python -m west update --narrow -o=--depth=1
@@ -96,12 +154,17 @@ python -m pip install --disable-pip-version-check --no-input \
 	-r "$zephyr/scripts/requirements-base.txt" -r "$espressif/zephyr/requirements.txt"
 export ZEPHYR_BASE="$zephyr"
 bash "$root/tools/firmware/apply-zephyr-patches.sh" "$zephyr"
-python -m west blobs fetch hal_espressif
+if [[ "$toolchain" == xtensa-* || "${board:-}" == esp32c6 ]]; then
+	python -m west blobs fetch hal_espressif
+elif [[ "${board:-}" == *_w ]]; then
+	python -m west blobs fetch hal_infineon \
+		--allow-regex 'img/whd/resources/(firmware/COMPONENT_43439/43439A0\.bin|clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0\.clm_blob)$'
+fi
 
 sdk=""
 for candidate in "${ZEPHYR_SDK_INSTALL_DIR:-}" "$HOME/zephyr-sdk-0.17.4" /opt/zephyr-sdk-0.17.4; do
 	if [[ -f "$candidate/sdk_version" ]] && [[ "$(<"$candidate/sdk_version")" == 0.17.4 ]] &&
-		[[ -x "$candidate/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gcc" ]]; then
+		[[ -x "$candidate/$toolchain/bin/$toolchain-gcc" ]]; then
 		sdk="$candidate"
 		break
 	fi
@@ -109,5 +172,23 @@ done
 if [[ -n "$sdk" ]]; then
 	export ZEPHYR_SDK_INSTALL_DIR="$sdk"
 else
-	python -m west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
+	unset ZEPHYR_SDK_INSTALL_DIR
+	sdk_args=(--version 0.17.4 --toolchains "$toolchain")
+	[[ -z "${GH_TOKEN:-}" ]] || sdk_args+=(--personal-access-token "$GH_TOKEN")
+	python -m west sdk install "${sdk_args[@]}"
+	# Read all output: exiting awk early breaks the pipe and pipefail reports west's BrokenPipeError.
+	sdk="$(python -m west sdk list | awk '
+		$0 == "0.17.4:" { selected=1; next }
+		selected && /^[^[:space:]]/ { selected=0 }
+		selected && /^[[:space:]]+path:/ {
+			sub(/^[[:space:]]*path:[[:space:]]*/, "")
+			print
+			selected=0
+		}')"
+	if [[ ! -f "$sdk/sdk_version" || "$(<"$sdk/sdk_version")" != 0.17.4 ||
+		! -x "$sdk/$toolchain/bin/$toolchain-gcc" ]]; then
+		printf 'Error: west did not register Zephyr SDK 0.17.4 with %s at a usable path.\n' "$toolchain" >&2
+		exit 1
+	fi
+	export ZEPHYR_SDK_INSTALL_DIR="$sdk"
 fi

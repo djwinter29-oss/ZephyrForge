@@ -1,47 +1,53 @@
 # Documentation
 
-Start with operating guides; distinguish project contracts from validation evidence.
-Guides and references describe behavior, configuration and APIs rather than internal source-file walkthroughs.
-Development guides keep the source-layout and command details needed to build, test and extend the project.
+For a first installation, follow [getting started](guides/getting-started.md). For an existing setup or a code
+change, choose the relevant guide below.
 
-## Start with your task
+## Set up and use a board
 
-- **Connect a board:** [Getting started](guides/getting-started.md).
-- **Use a dashboard:** [Direct](../host/direct/README.md), [Python](../host/python/README.md) or
-  [.NET](../host/dotnet/ZephyrForge/README.md).
-- **Check a contract or maintain the project:** choose its owner below. No sequential reading is required.
+- [Hardware](guides/hardware.md) - identify your board, connectors, and electrical limits.
+- [Flashing](guides/flashing.md) - install a release image or upload a source build.
+- [Wireless](guides/wireless.md) - scan/test Wi-Fi, save credentials, and connect over BLE.
+- [C6 commissioning](guides/boards/esp32c6-commissioning.md) - set the first BLE Control key through the flashing port.
+- [Diagnostic shells](guides/console.md) - read logs and use the diagnostic terminal.
 
-## Authoritative ownership
+Dashboard installation and use: [Direct](../host/direct/README.md),
+[Python](../host/python/README.md), or [.NET](../host/dotnet/ZephyrForge/README.md).
 
-Keep each topic in one document; other documents link rather than duplicate its contract.
+### Wire an SD card
 
-| Topic | Owner |
-| --- | --- |
-| Target, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
-| Workspace creation, build, flash, first dashboard | [Getting started](guides/getting-started.md) |
-| Wi-Fi network requirements, provisioning and radio troubleshooting | [Wireless](guides/wireless.md) |
-| UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |
-| Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
-| Project overview and entry points | [Repository README](../README.md) |
-| Platform integration and measurement limits | [ZephyrForge implementation](reference/zephyrforge-implementation.md) |
-| Shared report layouts, identity values, capabilities, USB control and validation | [USB HID](reference/usb-hid.md) |
-| ZephyrForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
-| Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
-| SD pin allocation, driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
-| Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |
-| Toolchains and software validation | [Firmware](development/firmware.md), [host tools](development/host-tools.md) |
-| Firmware target checks and SD/USB/BLE/Wi-Fi qualification procedure | [Firmware qualification](validation/firmware-qualification.md) |
-| Packaging and publication | [Release](deployment/release.md) |
-| Unqualified behavior and observed results | [Gaps](validation/qualification-gaps.md), [records](validation/records/README.md) |
+Choose the guide for both your board and the image's storage bus. GPIO numbers are not interchangeable across boards.
 
-`guides/` is for use, `reference/` for contracts, `development/` for maintenance,
-`deployment/` for publishing, and `validation/` for evidence and limitations.
+| Board | Native four-bit SDMMC | SD-over-SPI |
+| --- | --- | --- |
+| ESP32-S3 N16R8 | [Wiring](guides/boards/esp32s3-sdmmc.md) | [Wiring](guides/boards/esp32s3-sd-spi.md) |
+| ESP32-C6 N8 | Not supported | [Wiring](guides/boards/esp32c6-sd-spi.md) |
+| Pico family | [Wiring](guides/boards/pico-sdmmc.md) | [Wiring](guides/boards/pico-sd-spi.md) |
 
-## Maintenance principles
+## Build and develop
 
-- Change the owner of a contract, not every overview that mentions the feature.
-- Keep navigation in this index and the repository README; avoid repeating full reading lists in each document.
-- Use links only for prerequisites or detailed contracts. A guide should remain usable without a source walkthrough.
-- Keep exact safety and interoperability details where needed; do not replace them with vague summaries.
-- Internal refactors do not require prose changes unless behavior, a public API or an operating command changes.
-- Keep dated evidence unchanged. A software test result does not establish physical qualification.
+- [Architecture](reference/architecture.md) - service boundaries, startup, and locking.
+- [Firmware builds](development/firmware-build.md) - workspace setup, board/storage selection, and image outputs.
+- [Firmware development](development/firmware.md) - where to add application code and how to test it.
+- [Host development](development/host-tools.md) - dashboards, codecs, packaging, and software checks.
+- [Releases](development/releases.md) - package and publish a release.
+- [Contributing](../CONTRIBUTING.md) - prepare a change for review.
+
+## Look up a contract
+
+Use these when implementing firmware or a client. They define the exact fields, behavior, and error handling.
+
+- [USB HID](reference/usb-hid.md) - discovery, report layouts, control commands, and host validation.
+- [Bluetooth LE](reference/bluetooth.md) - advertising, GATT, authentication, and BLE control.
+- [Boot settings](reference/settings.md) - record format, defaults, load/save lifecycle, API, and flash safety.
+- [SD storage](reference/sdcard.md) - driver configuration, mounting, ownership, reporting, and benchmarks.
+- [Shared dashboard HTTP API](../host/web/README.md) - Python/.NET routes, JSON fields, and request/error semantics.
+
+## Check what has been tested
+
+- [Qualification gaps](validation/qualification-gaps.md) - what remains unverified.
+- [Firmware qualification](validation/firmware-qualification.md) - target-test procedures and acceptance criteria.
+- [Validation records](validation/records/README.md) - dated software and hardware observations.
+
+Builds and simulated tests are not hardware qualification. Records apply to the revision, board, and configuration
+they describe; they are not installation instructions for the current release.

@@ -1,133 +1,82 @@
 # Getting started
 
-These instructions use a source checkout. [GitHub release automation](../deployment/release.md)
-is configured for tagged packages; configuring a workflow does not mean a release is already published.
-You can build and preview all three dashboards before connecting hardware.
+Follow these four steps to install firmware and read live board status. ESP32-S3 and Pico release images need no
+Zephyr workspace. A fresh ESP32-C6 also needs a matching source build for first-key commissioning.
 
-## 1. Prepare a Zephyr workspace
+## 1. Choose your board and image
 
-Build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
-Check the module marking against the [hardware guide](hardware.md) before flashing.
-Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
-For automatic setup on Debian/Ubuntu-compatible Linux or Raspberry Pi OS, run from your existing checkout:
+Check the module marking and connectors in the [hardware guide](hardware.md).
 
-```sh
-tools/firmware/build.sh
-```
+| Board | Management connection | Storage choices |
+| --- | --- | --- |
+| ESP32-S3-DevKitC-1 N16R8 | Native **USB** connector; BLE after key setup | SDMMC, SPI, or none |
+| ESP32-C6-DevKitC-1 N8 | BLE after [physical key commissioning](boards/esp32c6-commissioning.md) | SPI or none |
+| Pico, Pico W, Pico 2, Pico 2 W | Micro-USB | SDMMC, SPI, or none |
 
-The script installs missing host packages (requesting `sudo` when needed), creates/reuses a Python venv,
-initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and radio blobs,
-and installs the ESP32-S3 SDK toolchain before building. First use requires network access and several GB of disk space.
-See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
-For a moved checkout, the wrappers update `manifest.path` only when its directory no longer exists and a local
-firmware build cache identifies that directory as the previous application source. Other manifest checkouts
-are not redirected.
-Rebuilding cleans a relocated build cache in the selected build directory, never at its old cached path,
-and uses West's automatic pristine handling for a moved application source directory.
-The following procedure is an alternative for manual setup.
+You do not need an SD card to use management. Choose `none` to leave out storage support altogether. For an
+SD-enabled image, use the matching [wiring guide](../README.md#wire-an-sd-card). Before changing storage buses,
+follow the [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
 
-Install Zephyr's [host prerequisites](https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html)
-(CMake, Ninja, device-tree compiler, compiler utilities and Python venv support).
+## 2. Install firmware
 
-From a directory **outside** this repository, create a workspace containing the source checkout:
+- **Use a release:** download the archive for your exact board and storage choice, verify its checksum, and follow
+  [flashing instructions](flashing.md).
+- **Build from source:** follow [firmware builds](../development/firmware-build.md) to prepare the workspace and
+  compile an image, then [upload that build](flashing.md#from-a-source-build).
 
-```sh
-mkdir zephyrforge-workspace
-cd zephyrforge-workspace
-git clone https://github.com/djwinter29-oss/ZephyrForge zephyrforge
-python3.12 -m venv .venv
-. .venv/bin/activate
-python -m pip install west
-west init -l zephyrforge
-west update --narrow -o=--depth=1
-python -m pip install -r zephyr/scripts/requirements-base.txt -r modules/hal/espressif/zephyr/requirements.txt
-west blobs fetch hal_espressif
-west sdk install --version 0.17.4 --toolchains xtensa-espressif_esp32s3_zephyr-elf
-```
+For a fresh **ESP32-C6**, complete [first-key commissioning](boards/esp32c6-commissioning.md) before connecting
+over BLE. The utility needs a matching initialized build directory; a release binary alone is not enough because
+the C6 has no USB HID management interface.
 
-The repository's `west.yml` pins Zephyr and imports only its Espressif, FatFs and mbedTLS dependencies.
-Espressif radio blobs are required and have their own licenses. If SDK discovery fails, set
-`ZEPHYR_SDK_INSTALL_DIR` to the installed SDK directory.
+Flashing replaces existing firmware. A successful upload does not prove that the application booted or that
+USB, radios, or storage work; check the running board next.
 
-For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` (or use a Linux symlink),
-then run `west init -l zephyrforge` in a new, otherwise uninitialized workspace. Do not initialize
-a second workspace inside an existing Zephyr workspace.
+## 3. Open a dashboard
 
-## 2. Build now; flash later
+Choose one:
 
-Run from the workspace created above; missing build prerequisites are prepared automatically:
+- **Direct:** [open the hosted dashboard](https://djwinter29-oss.github.io/ZephyrForge/) in desktop Chrome or Edge.
+  It connects through WebHID or Web Bluetooth without a host application. For local or offline use, follow the
+  [Direct guide](../../host/direct/README.md#choose-how-to-run-it).
+- **Python:** [install the host](../../host/python/README.md#install) with Python 3.10 or newer.
+- **.NET:** [run a packaged host](../../host/dotnet/ZephyrForge/README.md#run-the-host); it includes the runtime.
 
-```sh
-bash zephyrforge/tools/firmware/build.sh
-```
+Python and .NET connect over USB HID only, so they cannot manage C6. Direct needs a browser/OS that supports the
+chosen device API, with the page served over HTTPS or localhost.
 
-Outputs are in `zephyrforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
-Both radios and native four-bit SDMMC support are enabled in the default build; no card is needed to compile.
-For the alternate SD-over-SPI image, add `--storage sd-spi` to both build and flash commands.
-See [image selection](../development/firmware.md#zephyr-target-build)
-and use its matching [SD wiring](../reference/sdcard.md#pin-allocation).
-The build uses PROCPU only, not a dual-core application.
+### From a source checkout
 
-When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:
-
-```sh
-# Preview an upload command; the likely USB-UART port is detected automatically
-bash zephyrforge/tools/firmware/flash.sh --dry-run
-
-# Upload the existing build and reset the board
-bash zephyrforge/tools/firmware/flash.sh
-```
-
-The [flash script](../../tools/firmware/flash.sh) detects a likely USB-UART port when `--port`
-is omitted, preferring Silicon Labs CP210x devices. If equally likely ports are present, pass
-`--port PORT` to choose one. It checks the build artifacts and board target, and uses Zephyr's
-ESP32 runner to select the correct image offset and flash parameters. If required artifacts
-are missing or empty, it builds first, including during `--dry-run`.
-A complete existing build is reused; run the build script again after changing firmware.
-It does not request a full-chip erase, but image sectors are
-erased/replaced during flashing. Saved [boot settings](../reference/settings.md#flash-reservation) survive normal
-uploads. No SD-card access is performed.
-
-Replace the port with the real device, for example `COM4` on Windows with a Bash-capable
-Zephyr environment. From a native Windows shell, use the equivalent
-`west flash -d zephyrforge/build/firmware --skip-rebuild -r esp32 --esp-device COM4 --esp-baud-rate 460800 --no-erase`.
-Use a data-capable USB cable and confirm your board is the matching N16R8 variant.
-On Linux, identify the bridge using `python -m serial.tools.list_ports` from the Zephyr venv (pyserial is installed
-with Zephyr's requirements); check serial permissions rather than running the flasher as root.
-
-If automatic reset fails,
-hold BOOT, press/release RESET, release BOOT, and retry. Flash only a matching module configuration;
-flashing replaces its existing firmware. If uploading is unreliable, retry with
-`--baud 115200` after checking the cable and power. This firmware is not a UF2 image.
-After flashing, connect the **USB** connector as well and check live status in a dashboard; uploader success alone
-is not proof that application boot or radios work. The UART connector keeps showing the Zephyr console log, for
-example with `python -m serial.tools.miniterm /dev/ttyUSB0 115200`.
-
-## 3. Choose a dashboard
-
-Run from the repository root (`cd zephyrforge`):
+These commands run from the repository root. Local Direct uses Python's standard library; Python host launches
+need Python 3.10+; .NET source launches need the .NET 10 SDK.
 
 | Dashboard | Launch | Open |
 | --- | --- | --- |
 | Direct | `bash tools/host/run-direct.sh --port 8000` | `http://127.0.0.1:8000/` |
-| Python | `bash tools/host/run-python.sh web`, or `zephyrforge web` after `pip install zephyrforge` | `http://127.0.0.1:8001/` |
+| Python | `bash tools/host/run-python.sh web` | `http://127.0.0.1:8001/` |
 | .NET | `bash tools/host/run-dotnet.sh` | `http://127.0.0.1:8002/` |
 
-Direct needs supported desktop Chrome/Edge for WebHID or Web Bluetooth.
-Its static server uses Python only as a convenience; HTTPS static hosting needs nothing installed.
-Python uses Python 3.10+ with Flask and `hidapi`; .NET uses the .NET 10 SDK/runtime with HidSharp.
-Python and .NET select the first ZephyrForge board, or the one given by `--serial SERIAL` (the 16 hex-digit UID) or
-`--device-path HID_PATH`. On Linux, run `bash tools/host/hid-permissions-setup.sh` once, then reconnect the board;
-do not run the dashboards as root. Without a board the hosts show an empty board list; there is no simulated mode.
+### Linux USB permissions
 
-## 4. First connection
+Run the [HID permission helper](../../tools/host/hid-permissions-setup.sh) once, then reconnect the board.
+From a checkout, use `bash tools/host/hid-permissions-setup.sh`. Without a checkout, download it as
+`hid-permissions-setup.sh`, make it executable, and run it. It may prompt for sudo to install the device rule;
+do not run the dashboard itself as root.
 
-Connect the board's **USB** connector. In Direct, click **USB** and choose the ZephyrForge HID device; in Python or
-.NET, select the board in the list. Confirm product `ZephyrForge`, the board, firmware version and serial number.
-An SD mount failure is expected without a card and does not prevent dashboard operation.
-Test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using [wireless setup](wireless.md).
-Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is
-never retried; confirm the
-re-sync prompt after checking the board.
+## 4. Check the connection
 
-Hardware acceptance and all SD-card tests are deferred; see [qualification gaps](../validation/qualification-gaps.md).
+Use one management client per board. On ESP32-S3, connect the **USB** connector, not just the **UART** connector.
+Pico boards use the same micro-USB cable for flashing and management. In Direct, choose **USB** and select the board;
+in Python or .NET, select it from the board list. For a commissioned C6, choose **Bluetooth** in Direct and enter
+the saved Control key.
+
+Python and .NET initially select the first discovered board. Use the board selector, or launch with
+`--serial SERIAL` or `--device-path HID_PATH`, to choose another. Without hardware, the board list is empty.
+
+Confirm the product name, board model, firmware version, and serial number. Wait for fresh telemetry before
+using controls. An SD-enabled image can report a missing card or mount failure without preventing management.
+
+For Wi-Fi tests and BLE key setup, continue with [wireless setup](wireless.md). Pico W credentials are temporary;
+those boards cannot save settings. For boot failures or connection problems, read the [UART log](console.md#uart).
+
+If a command times out or the connection drops, check the board and use **Re-sync**. Do not resend a command whose
+outcome is unknown. See [qualification gaps](../validation/qualification-gaps.md) for the limits of current testing.

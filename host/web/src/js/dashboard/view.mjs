@@ -86,7 +86,8 @@ export function renderStatus(snapshot, operations = operationState(snapshot, {
     ? `${hardware.product_name}${(hardware.capabilities ?? 0) & CAPABILITY_SDMMC ? " (SDMMC)"
       : (hardware.capabilities ?? 0) & CAPABILITY_SPI ? " (SPI)" : ""}` : "--";
   const boardModel = typeof hardware?.board_model === "string" ? hardware.board_model
-    : ({ 1: "ESP32-S3-DevKitC-1" })[hardware?.board_model ?? 0]
+    : ({ 1: "ESP32-S3-DevKitC-1", 2: "Raspberry Pi Pico", 3: "Raspberry Pi Pico W", 4: "Raspberry Pi Pico 2",
+      5: "Raspberry Pi Pico 2 W" })[hardware?.board_model ?? 0]
       ?? (hardware?.board_model !== undefined ? `Unknown (${hardware.board_model})` : "--");
   element("#board-model").textContent = boardModel;
   element("#board-mcu").textContent = hardware?.mcu ?? "--";

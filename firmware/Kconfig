@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Ji Dong
+
+config ZF_SDHC_RPI_PICO_PIO
+	bool "Native four-bit SD host on an RP2040/RP2350 PIO block"
+	default y
+	depends on DT_HAS_ZEPHYRFORGE_RPI_PICO_PIO_SDHC_ENABLED
+	depends on SDHC
+	depends on PIO_RPI_PICO
+	# The host claims a DMA channel through pico-sdk, which Zephyr's DMA driver does not coordinate with.
+	depends on !DMA_RPI_PICO
+	select SDHC_SUPPORTS_NATIVE_MODE
+	select PINCTRL
+	select PICOSDK_USE_PIO
+	select PICOSDK_USE_DMA
+	select PICOSDK_USE_CLAIM
+	select PICOSDK_USE_GPIO
+	help
+	  SD host for the zephyrforge,rpi-pico-pio-sdhc devicetree node. It runs the SD bus with PIO programs and
+	  one DMA channel, so cards work in native four-bit mode on MCUs without an SDIO controller.
+
+config ZF_PICO_NETWORK_RANDOM
+	bool
+	default y
+	depends on SOC_FAMILY_RPI_PICO && WIFI
+	select PICOSDK_USE_TIMER
+	help
+	  Use the Pico SDK PRNG for noncryptographic network identifiers. This does not provide a CSPRNG.
+
+source "Kconfig.zephyr"

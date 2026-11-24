@@ -1,0 +1,57 @@
+/*
+ * Raspberry Pi Pico family, native four-bit SD on PIO1 (PIO0 stays with the W radio's board wiring).
+ * GP2 CLK, GP3 CMD, GP4-GP7 DAT0-DAT3, GP8 card detect (active high, biased by the breakout, no MCU pull).
+ * The PIO host samples CLK and needs CLK two GPIOs below DAT0.
+ */
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	aliases {
+		zephyrforge-sd = &zephyrforge_sd;
+	};
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/* The board's default I2C0 (GP4/GP5) and I2C1 (GP6/GP7) pins carry SD data. */
+&i2c0 {
+	status = "disabled";
+};
+
+&i2c1 {
+	status = "disabled";
+};
+
+&pinctrl {
+	zephyrforge_sd_default: zephyrforge_sd_default {
+		clock {
+			pinmux = <PIO1_P2>;
+			input-enable;
+			input-schmitt-enable;
+		};
+		command_data {
+			pinmux = <PIO1_P3>, <PIO1_P4>, <PIO1_P5>, <PIO1_P6>, <PIO1_P7>;
+			input-enable;
+			input-schmitt-enable;
+			bias-pull-up;
+		};
+	};
+};
+
+&pio1 {
+	status = "okay";
+	zephyrforge_sd: sdhc {
+		compatible = "zephyrforge,rpi-pico-pio-sdhc";
+		pinctrl-0 = <&zephyrforge_sd_default>;
+		pinctrl-names = "default";
+		/* PIO divider limits the bus to one quarter of the SoC clock. */
+		max-bus-freq = <50000000>;
+		status = "okay";
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
+};

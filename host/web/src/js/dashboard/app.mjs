@@ -134,6 +134,7 @@ const wirelessTransport = createWirelessTransport({
 });
 const wirelessForm = bindWirelessForm({
   supported: () => Boolean((currentSnapshot?.hardware?.capabilities ?? 0) & CAPABILITY_WIRELESS),
+  settingsSupported: () => currentSnapshot?.settings_supported !== false,
   cleanupRequired: () => Boolean(currentSnapshot?.wireless_cleanup_required),
   ready: wirelessReady,
   scan: wirelessTransport.scan,

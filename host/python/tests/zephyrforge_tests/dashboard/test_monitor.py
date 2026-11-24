@@ -342,6 +342,20 @@ class MonitorReconnectTests(unittest.TestCase):
         self.assertTrue(snapshot["telemetry_stale"] and snapshot["storage_stale"] and snapshot["self_test_stale"])
         self.assertEqual(set(snapshot), set(empty_snapshot()))
 
+    def test_boot_configuration_is_published_without_the_save_capability(self):
+        monitor = make_monitor(fresh=False)
+        client = Mock()
+        client.read_info.return_value = {
+            "supported": True, "settings_supported": False, "wireless_supported": False,
+        }
+        client.read_configuration.return_value = {"system_clock_mhz": 0, "sdcard_profile": 0, "radios": 0}
+        client.read_input_report.side_effect = lambda timeout_ms: monitor._stop.set()
+        monitor._client_factory = lambda: client
+        monitor._snapshot = {}
+        monitor._run()
+        self.assertTrue(monitor.snapshot()["settings_supported"],
+                        "Save eligibility comes from the capability bit, not from hiding readable settings")
+
     def test_storage_reports_publish_state_and_freshness_without_self_test(self):
         monitor = make_monitor(fresh=False)
         storage = {

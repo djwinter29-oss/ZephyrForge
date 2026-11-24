@@ -1,4 +1,4 @@
-# Direct dashboard independence - 2026-11-07
+# Direct dashboard independence
 
 ## Scope
 

@@ -2,6 +2,9 @@
  * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
+
+#if CONFIG_USB_DEVICE_STACK_NEXT
 #include "app/control/control.h"
 #include "app/storage/storage.h"
 
@@ -47,7 +50,11 @@ USBD_DEVICE_DEFINE(zephyrforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), Z
 USBD_DESC_LANG_DEFINE(zephyrforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(zephyrforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(zephyrforge_product, "ZephyrForge");
+#if ZF_ENABLE_STORAGE
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID + SD storage");
+#else
+USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID management");
+#endif
 USBD_CONFIGURATION_DEFINE(zephyrforge_config, 0, 100, &zephyrforge_config_name);
 
 /* The serial is Report 1's 8-byte UID; Zephyr's hwinfo serial would carry only the 6-byte MAC. */
@@ -146,15 +153,24 @@ static int set_report(const struct device *dev, const uint8_t type, const uint8_
 		      const uint8_t *const buf)
 {
 	bool accepted;
+	int64_t lock_started;
+	int64_t lock_acquired;
 
 	ARG_UNUSED(dev);
 	if (type != HID_REPORT_TYPE_FEATURE || id != ZF_REPORT_CONTROL || len != ZF_CONTROL_SIZE + 1 ||
 	    buf[0] != ZF_REPORT_CONTROL) {
 		return -ENOTSUP;
 	}
+	lock_started = k_uptime_get();
 	zf_lock();
+	lock_acquired = k_uptime_get();
 	accepted = zf_control_usb_set(buf + 1, ZF_CONTROL_SIZE, k_uptime_get());
 	zf_unlock();
+	if (accepted && buf[3] == ZF_OP_SAVE) {
+		LOG_INF("USB settings request lock wait %lld ms, hold %lld ms",
+			(long long)(lock_acquired - lock_started),
+			(long long)(k_uptime_get() - lock_acquired));
+	}
 	/* A rejected envelope stalls the status stage and leaves the previous result readable. */
 	return accepted ? 0 : -EINVAL;
 }
@@ -219,6 +235,7 @@ bool zf_usb_configured(void)
 	return atomic_get(&ready) != 0;
 }
 
+#if ZF_ENABLE_STORAGE
 int zf_storage_usb_refresh(void)
 {
 	int err = usbd_disable(&zephyrforge_usbd);
@@ -232,6 +249,7 @@ int zf_storage_usb_refresh(void)
 	}
 	return err;
 }
+#endif
 
 int zf_usb_init(void)
 {
@@ -265,3 +283,21 @@ int zf_usb_init(void)
 	}
 	return err;
 }
+#else
+#if ZF_ENABLE_STORAGE
+#include "app/storage/storage.h"
+
+#include <errno.h>
+#endif
+
+bool zf_usb_configured(void)
+{
+	return false;
+}
+#if ZF_ENABLE_STORAGE
+int zf_storage_usb_refresh(void)
+{
+	return -ENOTSUP;
+}
+#endif
+#endif

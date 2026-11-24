@@ -1,13 +1,13 @@
-# Boot Settings Specification
+# Boot settings specification
 
-## Scope and Conventions
+For an application change, read [RAM copy lifecycle](#ram-copy-lifecycle) and [Using the API](#using-the-api).
+For tooling or image compatibility, use [record format](#record-format) and [flash reservation](#flash-reservation).
 
-This document is the project's boot-settings specification. It defines the persistent record, defaults,
-validation, load/stage/save lifecycle, next-boot application and flash-safety limits.
+## Scope and conventions
+
 The device keeps a small set of **next-boot settings** in one flash record: the CPU clock profile, the Wi-Fi and BLE
 switches, and the private wireless credentials. They are changed at runtime, saved as one verified record, and take
-effect only at the next boot. This document owns the record format, the load/stage/save lifecycle, flash safety and
-how each setting is applied. The wire encoding is HID Feature report `2` and Feature report `20` opcode `5` in the
+effect only at the next boot. The wire encoding is HID Feature report `2` and Feature report `20` opcode `5` in the
 [USB HID specification](usb-hid.md) and the [Bluetooth LE specification](bluetooth.md).
 For provisioning steps, use the [wireless guide](../guides/wireless.md).
 
@@ -17,64 +17,34 @@ The persistent record version is independent of HID/BLE payload versions and fir
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described
 in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
-API names describe the current implementation; internal source layout is not part of this contract.
 
 | Setting | Values | Default | Applied when |
 | --- | --- | --- | --- |
-| CPU clock (`zf_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | Early boot, before storage and radios |
+| CPU clock (`zf_sysclk_profile_t`) | Default (S3 240 MHz, C6 160 MHz), 80, 160 or 240 MHz on S3; at most 160 MHz on C6 | Default | Early boot, before storage and radios |
 | Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | Radio initialization at boot |
 | Wi-Fi SSID, passphrase and auth state | See [record format](#record-format) | None | Saved-network connect at boot |
 | Control key | 32 raw bytes, see [record format](#record-format) | None | [BLE control](bluetooth.md) authentication; BLE does not start without a key |
 
 Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record enables both radios.
 
+The selectable clock values apply to ESP32-S3 and ESP32-C6; C6 rejects profiles above 160 MHz.
+The Raspberry Pi Pico images load the record at boot but cannot save it: Report `1` advertises no settings save,
+so opcode `5` returns Unsupported (error `4`). Those images
+keep the devicetree build clock. W variants apply the saved Wi-Fi switch and credentials, masking out BLE;
+non-W variants start no radios. W candidate credentials remain RAM-only.
+
 ## Architecture
 
-All settings pass through the settings service's RAM state. Writers only
-stage values in RAM; one save call commits the complete record to flash. Boot initialization uses the boot
-snapshot. Saving does not reconfigure the running hardware; host save commands schedule a subsequent reboot.
+The settings service keeps staged, saved and boot snapshots in RAM. Setters change only staged values; one save
+commits the full CRC-checked record. Saved clock and radio settings take effect at the next boot. Missing,
+unreadable or invalid records load complete defaults. The service reads and writes this fixed record through the
+flash API rather than Zephyr settings or NVS. A save is not power-loss atomic.
 
-```mermaid
-flowchart LR
-    subgraph Writers["Writers - under the application lock"]
-        HID["USB HID Feature 20 opcode 5"]
-        BLE["BLE Control opcode 5 (switches unchanged)"]
-    end
-    subgraph Facade["Settings service"]
-        RAM["RAM record copy"]
-        Boot["Boot snapshot"]
-    end
-    Flash[("storage_partition, first sector")]
-    HID -->|setters stage values| RAM
-    BLE -->|setters stage values| RAM
-    RAM -->|zf_boot_config_save| Flash
-    Flash -->|zf_boot_config_load at boot| RAM
-    Flash -->|zf_boot_config_load at boot| Boot
-    Boot -->|at boot| Clock["CPU clock"]
-    Boot -->|at boot| Radio["Wi-Fi, BLE, saved network"]
-    RAM -->|on request| Read["Feature report 2"]
-```
-
-The design rules are:
-
-- **One record, one CRC.** Clock profile, switches and credentials are validated as one unit; no partial record
-  is applied. This is not a power-loss-atomic transaction.
-- **Next boot only.** The clock is set and the radios start once at boot, so setters change only RAM and saved
-  values apply after reboot. Feature report `2` reports the saved values, not the ones running now.
-- **One lock.** `zf_boot_config_load()` runs during early boot, before USB and BLE start. Afterwards every read
-  and save MUST be serialized under the application mutex (`zf_lock()`), whether the request
-  arrived over USB HID or BLE. This is not a general thread-safe settings API.
-- **Boot never depends on flash.** Any missing, unreadable or invalid record loads complete defaults.
-- **No generic store.** The fixed record is read directly and written as one padded page through the
-  flash API. Zephyr's settings/NVS subsystems are not used. Record validation and flash access are internal
-  responsibilities of the settings service.
-
-## RAM Copy Lifecycle
+## RAM copy lifecycle
 
 The module holds three copies: **staged** (what setters change), **saved** (the last record loaded or confirmed) and
-**boot** (what was loaded for this boot). The boot snapshot is intended policy, not proof that clock or radio
-initialization succeeded. There is no lazy first-use loading: boot loads explicitly before settings consumers
-start. Later callers MUST hold the application lock.
+**boot** (what was loaded for this boot). The boot snapshot is policy, not proof that clock or radio initialization
+succeeded. Boot loads the record before settings consumers start.
 
 ```mermaid
 stateDiagram-v2
@@ -95,7 +65,7 @@ a failed save restores the last confirmed RAM values:
 
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
   by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
-  Flash-save failure calls `zf_boot_config_discard()`. See [Host Dashboard Settings](#host-dashboard-settings).
+  Flash-save failure calls `zf_boot_config_discard()`. See [host dashboard settings](#host-dashboard-settings).
 - Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
 
@@ -105,40 +75,18 @@ copy then returns to the last confirmed values, while the next boot loads whatev
 opcode `5` reports Failed even though settings were persisted. Hosts MUST reconcile saved state rather than
 assuming every failed command left flash unchanged. Failed commands do not schedule an automatic retry or reboot.
 
-## Boot Sequence
+## Boot sequence
 
-```mermaid
-sequenceDiagram
-    participant M as Boot lifecycle
-    participant B as Settings service
-    participant F as storage_partition
-    participant C as System clock
-    participant W as Wireless
-    participant S as Storage
-    M->>B: zf_boot_config_load()
-    B->>F: Read 148-byte record
-    F-->>B: Record
-    B-->>M: Validated copy, or defaults
-    M->>C: Apply saved CPU clock profile
-    M->>S: Initialize detected SD storage and runtime monitoring
-    M->>W: Initialize Wi-Fi; join saved network when enabled
-    M->>W: Initialize BLE when enabled with a saved Control key
-    M->>M: Enable USB, then service management and telemetry
-```
-
-The load runs during early boot before USB and the BLE stack start, and before any other thread can read
-settings. Every later consumer reads the same copies.
+Boot reads and validates the record before any settings consumer starts. It then applies the clock profile,
+initializes storage, starts the selected radios, and enables USB where supported.
+Every later consumer reads the same RAM copies; see [architecture](architecture.md#lifecycle-and-failure-handling)
+for the full service lifecycle.
 
 ### Loading and validation
 
-```mermaid
-flowchart TD
-    Read["Read 148 bytes from the partition start"] --> Ok{"Read succeeded?"}
-    Ok -->|No| Err["Defaults, source READ_ERROR"]
-    Ok -->|Yes| Check{"Version 1 record valid?"}
-    Check -->|Yes| Use["Copy record into RAM, source SAVED"]
-    Check -->|No| Defaults["Zero RAM copy - complete defaults, no credentials, source DEFAULTS"]
-```
+`zf_boot_config_load()` reads 148 bytes from the partition start. Read failure loads defaults with source
+`READ_ERROR`; an invalid or erased record loads defaults with source `DEFAULTS`; a valid record uses source `SAVED`.
+Defaults include no credentials.
 
 A record is valid only if all of these hold: magic `EFCF`, version `1`, size `148`, matching CRC-32, clock profile
 `0`–`3`, a zero byte 9, no unknown service bits, Wi-Fi auth state `0`–`3`, SSID length at most 32 with zero padding,
@@ -148,29 +96,24 @@ key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NO
 
 ## Saving
 
-`zf_boot_config_save()` is the only settings writer in ZephyrForge.
+`zf_boot_config_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
+key-only record before application boot; the procedure is in the
+[first-key commissioning guide](../guides/boards/esp32c6-commissioning.md).
 
-```mermaid
-flowchart TD
-    Start["zf_boot_config_save()"] --> Same{"Staged identical to saved copy?"}
-    Same -->|Yes| Ok["Return 0 - no erase"]
-    Same -->|No| Build["Encode magic, version, size, fields and CRC"]
-    Build --> Erase["Erase the first 4 KiB sector"]
-    Erase --> Erased{"Erase succeeded?"}
-    Erased -->|No| Fail["staged = saved, return negative errno"]
-    Erased -->|Yes| Program["Write one 256-byte page, padded with 0xFF"]
-    Program --> Written{"Write succeeded?"}
-    Written -->|No| Fail
-    Written -->|Yes| Read["Read back the page"]
-    Read --> Verify{"Read succeeded and record bytes match?"}
-    Verify -->|Yes| Ok2["saved = staged, return 0"]
-    Verify -->|No| Fail
-```
+For a changed record, save encodes the fields and CRC, erases the first 4 KiB sector, writes one 256-byte page
+padded with `0xFF`, and reads it back. Success updates the saved RAM copy and returns zero. Failure restores staged
+RAM from the last confirmed copy and returns a negative errno; it does not restore an erased flash sector.
 
 The Zephyr ESP32 flash driver suspends the cache and serializes SPI-flash access while erasing and programming, so
 other threads and radio interrupts may be delayed briefly. Saves are rare user actions and execute synchronously
 in the USB or Bluetooth callback thread under the application mutex, not exclusively in the main thread.
 Buffers holding the encoded record and padded page are cleared after use.
+
+Changed saves log `Settings flash operation: N ms, result E` on the UART console. The duration spans erase,
+programming, verification and flash-area closure; `E` is zero on success or a negative errno. It excludes mutex
+acquisition, flash-area opening and transport response delivery. Unchanged saves and failures to open the flash area
+do not emit this timing entry. This is observability, not a response-time guarantee; measure complete host response
+and concurrent read delay using the [qualification procedure](../validation/firmware-qualification.md).
 
 If staged settings equal the last confirmed RAM copy, save returns success without reading or writing flash.
 This does not repair an erased/invalid record or detect external changes to flash. The source indicator remains
@@ -178,7 +121,7 @@ unchanged for such a no-op; a verified write sets it to SAVED.
 After a changed save, success requires a successful erase, write, readback and byte-for-byte match of the
 148-byte record. The implementation reads the full 256-byte page but compares only the record bytes.
 
-## Record Format
+## Record format
 
 Little-endian, 148 bytes, padded with `0xFF` to one 256-byte page at the start of the settings sector.
 Encoders MUST produce the fixed layout below; decoders MUST reject an unsupported version, invalid field,
@@ -227,12 +170,12 @@ values is not guaranteed. At next boot, the device loads a complete valid record
 defaults with no credentials. Under defaults, both radio switches are enabled, Wi-Fi has no saved network and BLE
 stays off because no Control key is saved.
 
-One sector and no wear levelling are used because saves are infrequent user actions. If old
+One sector and no wear leveling are used because saves are infrequent user actions. If old
 values must survive a power loss, or writes become frequent, upgrade to a dual-sector journal or Zephyr ZMS/NVS.
 An incompatible record-format change MUST increment the record version and explicitly define migration or
 default-reset behavior; it MUST NOT silently reinterpret a previous record.
 
-## Flash Reservation
+## Flash reservation
 
 The record lives at offset `0` of the devicetree `storage_partition`. On the `esp32s3_devkitc/esp32s3/procpu`
 target, the N16R8 partition layout reserves 192 KiB at `0xFB0000`. Only the first
@@ -242,27 +185,30 @@ target, the N16R8 partition layout reserves 192 KiB at `0xFB0000`. Only the firs
   Build validation rejects a firmware image that would reach `storage_partition`.
 - The standard flashing procedure avoids a full-chip erase, so normal uploads keep saved settings. A full-chip
   erase, or a different partition table, clears them.
-- To reset settings manually, erase only the settings sector from an initialized workspace:
-  `python -m esptool --chip esp32s3 --port PORT erase_region 0xFB0000 0x1000`. The next boot loads defaults.
-
 A board or partition table without `storage_partition` does not build.
 
-## System Clock
+On the ESP32-C6 N8 target, the 8 MB partition table places `storage_partition` at `0x7B0000`; its
+first 4 KiB sector contains settings. Erasing that sector clears the saved clock, radio switches and credentials.
+
+On the Raspberry Pi Pico boards, `storage_partition` starts at `0x100000`, directly after the 1 MiB code partition,
+and fills the rest of the flash. The images never erase or program it; UF2 flashing writes only the image's blocks.
+
+To clear ESP32 settings, erase only the first settings sector from an initialized workspace:
+
+```sh
+python -m esptool --chip esp32s3 --port PORT erase-region 0xFB0000 0x1000
+python -m esptool --chip esp32c6 --port PORT erase-region 0x7B0000 0x1000
+```
+
+This removes all saved settings, including wireless credentials. Do not erase the full chip.
+
+## System clock
 
 The saved profile is applied during early boot, after the settings load and before the radios, SD mount and
 USB start. It never writes flash.
 
-```mermaid
-flowchart TD
-    A["Saved CPU clock in MHz"] --> B{"0 (Default) or equal to the build clock?"}
-    B -->|Yes| Keep["Keep the build clock (240 MHz)"]
-    B -->|No| Cfg["Configure CPU clock through the platform clock driver"]
-    Cfg --> Result{"Clock apply succeeded?"}
-    Result -->|Yes| Run["Continue boot - initialize storage and radios"]
-    Result -->|No| Warn["Log clock apply error, continue boot"]
-    Warn --> Run
-    Keep --> Run
-```
+Default (`0` MHz), or a request equal to the build clock, keeps the build clock: 240 MHz on S3 and 160 MHz on C6.
+Other accepted profiles are applied through the platform clock driver.
 
 - Kernel ticks come from the ESP32-S3 SYSTIMER (16 MHz from the 40 MHz crystal), not the CPU clock, so Zephyr
   timeouts and uptime are preserved.
@@ -275,17 +221,15 @@ flowchart TD
 `cpu0 clock-frequency` in devicetree describes the **build** clock, not the runtime speed. Select another clock
 through the saved profile, not a devicetree override.
 
-**Clock safety.** All three profiles are within the ESP32-S3 specification. Lower clocks reduce throughput and can
-increase radio latency; none of them is hardware-qualified yet.
+**Clock safety.** The supported profiles are within the ESP32-S3 and ESP32-C6 frequency limits. Lower clocks reduce
+throughput and can increase radio latency; none of them is hardware-qualified on C6.
 
-## SD-Card Speed
+## SD-card speed
 
-There is no saved runtime SD speed profile. The SD card is attached through Zephyr's
-native SDMMC driver, with a four-bit bus and a configured 25 MHz ceiling. The SD stack negotiates clock/timing
-within that ceiling; the application exposes no runtime speed-setting operation. Record byte 9 remains reserved
-as zero; this transport change does not migrate the 148-byte settings record. Board-specific clock changes
-belong in the overlay and require hardware
-validation. See the [SD storage reference](sdcard.md).
+The SD bus, requested ceiling and clock negotiation are defined per board image by the
+[SD storage reference](sdcard.md#driver-and-filesystem-configuration). The application does not change SD speed at
+runtime. Record byte 9 remains reserved as zero; board-specific clock changes belong in the overlay and require
+hardware validation.
 
 ## Using the API
 
@@ -302,58 +246,24 @@ for Default) and `zf_sysclk_profile_from_mhz()` convert between profile IDs and 
 The MHz-to-profile conversion returns an out-of-range profile for unknown MHz; callers MUST reject it rather
 than convert it back into a default setting.
 
-## Host Dashboard Settings
+## Host dashboard settings
 
 HID Feature report `2` reads the saved settings. Feature report `20`, opcode `5`, saves them and reboots. The
-settings arguments contain a two-byte little-endian clock in MHz (`0`, `80`, `160`, `240`),
+settings arguments contain a two-byte little-endian clock in MHz (`0`, `80`, `160`, `240` on S3; C6 accepts at most
+`160`),
 a one-byte SD-card profile that MUST be `0`, and a one-byte service mask (bit 0 Wi-Fi, bit 1 BLE; other bits zero).
-The Python, .NET and Direct dashboards provide **Save&Reboot**, without TCP CLI or SD-speed selectors:
+The Python, .NET and Direct dashboards provide **Save&Reboot**:
 
 - **Save&Reboot** sends opcode `5`. Firmware reboots about one second after a verified save; failed or rejected
   saves do not reboot. Reconnection refreshes Feature `2`.
 - **Wi-Fi** and **Bluetooth** are next-boot controls, enabled by default. Over BLE, opcode `5` must keep the current
   saved radio mask. USB may change it.
-- **CPU clock** offers Default, 80, 160 and 240 MHz.
+- **CPU clock** offers Default, 80, 160 and 240 MHz on ESP32-S3, and at most 160 MHz on ESP32-C6.
 
-### Forced Save and Reboot
-
-There is no forced-save workflow; Report `1` capability bit 6 remains clear.
 Busy or USB-owned storage blocks save/reboot; safely eject and [return ownership](sdcard.md#usb-drive-handoff) first.
-USB opcode `5` with forced-save flag bit 0 returns Unsupported/error `4`; clients MUST NOT fall back silently
-to another save request. BLE opcode `5` requires all flags zero.
 
-## Implementation Status
+## Specification history
 
-| Item | Status |
-| --- | --- |
-| Record format, CRC, validation, staging, discard, restart-required | Implemented; native tests |
-| `storage_partition` read, erase, program and readback | Implemented; builds, pending hardware |
-| CPU clock profile applied at boot | Implemented; builds, pending hardware |
-| Radio switches applied at boot | Implemented; pending hardware |
-| Wi-Fi credentials staged by opcodes `6`/`7`, committed by opcode `5`, joined at boot | Implemented; native tests for the control path, pending hardware |
-| WPA3-SAE probing and confirmed auth state | Field stored; firmware connects with WPA2-PSK |
-| Control key staged by opcode `8`; BLE authentication | Implemented; pending hardware |
-| Host settings editor (HID Feature `2` / `20` opcode `5`) | Implemented in the firmware and all three dashboards; pending hardware |
-
-## Tests
-
-Hardware-free settings tests use an in-memory flash substitute. They cover:
-
-- defaults from erased flash and from read errors;
-- the CRC-32 check value and the documented byte offsets;
-- round trips, including opaque SSIDs and all-zero keys;
-- next-boot snapshots and restart detection;
-- unchanged-save detection and failed-save discard;
-- setter limits, and every malformed field with a valid CRC.
-
-Control tests cover opcode `5`, the commit flag and the radio switches. See the
-[firmware development guide](../development/firmware.md#host-native-unit-tests) for test commands. Flash
-programming, clock changes and saved-network reconnects need hardware and are listed in the
-[qualification gaps](../validation/qualification-gaps.md).
-
-## Specification History
-
-The initial record design was derived from the
+The initial record design was adapted from the
 [PicoForge boot-settings design](https://github.com/djwinter29-oss/PicoForge/blob/5e615725b22714963c2d16ed56215042e1411553/docs/reference/settings.md)
-at commit `5e615725b227`. This document defines the current project contract; the upstream design is historical
-context, not an additional source of requirements.
+at commit `5e615725b227`. This document defines the current contract.

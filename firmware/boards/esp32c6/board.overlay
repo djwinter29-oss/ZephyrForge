@@ -1,0 +1,7 @@
+/* ESP32-C6-DevKitC-1 N8: 8 MB flash; the upstream board DTS uses the 4 MB partition table. */
+&flash0 {
+	reg = <0x0 0x800000>;
+	/delete-node/ partitions;
+};
+
+#include <espressif/partitions_0x0_default_8M.dtsi>

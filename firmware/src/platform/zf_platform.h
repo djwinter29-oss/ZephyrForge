@@ -11,10 +11,10 @@
 #include "wireless_limits.h"
 
 /** Feature 12 scan_state values. */
-#define ZF_SCAN_IDLE 0u
-#define ZF_SCAN_RUNNING 1u
-#define ZF_SCAN_COMPLETE 2u
-#define ZF_SCAN_FAILED 3u
+#define ZF_SCAN_IDLE 0u /**< No scan has been requested since boot. */
+#define ZF_SCAN_RUNNING 1u /**< A scan is in progress; results are being collected. */
+#define ZF_SCAN_COMPLETE 2u /**< The last scan finished and its table is readable. */
+#define ZF_SCAN_FAILED 3u /**< The last scan failed or timed out; the table is stale. */
 
 /** Queue a reset after the result-read grace period. */
 int zf_platform_schedule_reboot(void);
@@ -45,6 +45,7 @@ int zf_platform_benchmark_request(bool start, uint32_t size_mib);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */
 bool zf_wifi_test_active(void);
+/** True while a scan or its timed-out driver request is still active. */
 bool zf_wifi_scan_active(void);
 
 /** Start joining a candidate pair; password is NUL-terminated (empty for an open network). */
@@ -53,9 +54,13 @@ int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 /** Drop any candidate test link and return to the saved network when Wi-Fi is enabled. */
 void zf_wifi_test_cancel(void);
 
+/** Request one scan; returns 0 when started, otherwise a negative errno. */
 int zf_wifi_scan_start(void);
+/** Current ZF_SCAN_* state. */
 uint8_t zf_wifi_scan_state(void);
+/** Generation counter identifying the current or last completed scan table. */
 uint16_t zf_wifi_scan_generation(void);
+/** Entry count of the completed scan table. */
 uint8_t zf_wifi_scan_count(void);
 
 /** Copy one completed scan entry; ssid must hold ZF_SSID_MAX_BYTES bytes. */

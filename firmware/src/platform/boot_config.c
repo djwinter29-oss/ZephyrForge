@@ -104,7 +104,7 @@ static bool decode(const uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE], struct boot
 	    get_u32(record + CRC_OFFSET) != zf_boot_config_crc32(record, CRC_OFFSET)) {
 		return false;
 	}
-	if (record[8] > ZF_SYSCLK_240MHZ || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
+	if (record[8] > ZF_SYSCLK_MAX_PROFILE || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
 	    record[11] > ZF_WIFI_AUTH_SAE || record[12] > ZF_SSID_MAX_BYTES ||
 	    !zero(record + 13 + record[12], ZF_SSID_MAX_BYTES - record[12]) ||
 	    !password_valid(password, ZF_WIFI_PASSWORD_SIZE) || (record[141] & ~KEY_PRESENT) ||
@@ -159,7 +159,7 @@ zf_sysclk_profile_t zf_boot_config_sysclk(void)
 
 bool zf_boot_config_set_sysclk(zf_sysclk_profile_t profile)
 {
-	if ((unsigned)profile > ZF_SYSCLK_240MHZ) {
+	if ((unsigned)profile > ZF_SYSCLK_MAX_PROFILE) {
 		return false;
 	}
 	staged.sysclk = (uint8_t)profile;
@@ -320,9 +320,4 @@ int zf_boot_config_save(void)
 void zf_boot_config_discard(void)
 {
 	staged = saved;
-}
-
-void zf_boot_config_encode(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE])
-{
-	encode(&staged, record);
 }

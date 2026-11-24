@@ -131,7 +131,6 @@ public sealed class ProtocolTests
     [InlineData(2, 0)]
     [InlineData(3, 1)]
     [InlineData(18, 0x9e)]
-    [InlineData(18, 0x86)]
     [InlineData(19, 0)]
     public void RejectsIdentityOutsideTheZephyrForgeProfile(int index, byte value)
     {
@@ -164,13 +163,74 @@ public sealed class ProtocolTests
     }
 
     [Fact]
+    public void Esp32C6IdentityAllowsNoStorageAndCapsClockAt160Mhz()
+    {
+        var identityReport = IdentityReport();
+        identityReport[15] = HidProtocol.McuEsp32C6;
+        identityReport[16] = HidProtocol.BoardEsp32C6DevKitC1;
+        identityReport[18] = HidProtocol.CapabilityReboot | HidProtocol.CapabilitySettings
+            | HidProtocol.CapabilityWireless;
+        var identity = HidProtocol.ParseIdentityReport(identityReport);
+        Assert.Equal("ESP32-C6", identity.Mcu);
+
+        var config = ConfigurationReport();
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 160);
+        config[6] = 16;
+        config[7] = 17;
+        Array.Fill(config, byte.MaxValue, 8, 6);
+        var parsed = HidProtocol.ParseConfigurationReport(config, identity);
+        Assert.Equal(Enumerable.Repeat(byte.MaxValue, 6), parsed.StorageGpios);
+        Assert.Equal((ushort)160, parsed.StoredSystemClockMhz);
+
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 240);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, identity));
+    }
+
+    [Fact]
     public void BoardModelRequiresEsp32S3AndUnknownMcusAreLabelled()
     {
         var report = IdentityReport();
         report[15] = 2;
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
         report[16] = 0;
-        Assert.Equal("Unknown MCU (2)", HidProtocol.ParseIdentityReport(report).Mcu);
+        var rp2350 = HidProtocol.ParseIdentityReport(report);
+        Assert.Equal("RP2350", rp2350.Mcu);
+        var config = ConfigurationReport();
+        config[8] = 47;
+        Assert.Equal((byte)47, HidProtocol.ParseConfigurationReport(config, rp2350).StorageGpios[0]);
+        config[8] = 48;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, rp2350));
+        report[15] = 9;
+        Assert.Equal("Unknown MCU (9)", HidProtocol.ParseIdentityReport(report).Mcu);
+    }
+
+    [Theory]
+    [InlineData(HidProtocol.BoardPico, HidProtocol.McuRp2040)]
+    [InlineData(HidProtocol.BoardPicoW, HidProtocol.McuRp2040)]
+    [InlineData(HidProtocol.BoardPico2, HidProtocol.McuRp2350)]
+    [InlineData(HidProtocol.BoardPico2W, HidProtocol.McuRp2350)]
+    public void PicoBoardsRequireTheirMcuAndGpioRange(byte board, byte mcu)
+    {
+        var report = IdentityReport();
+        report[15] = mcu;
+        report[16] = board;
+        report[18] = HidProtocol.CapabilityReboot | HidProtocol.CapabilitySdmmc | HidProtocol.CapabilitySelfTest;
+        var identity = HidProtocol.ParseIdentityReport(report);
+        Assert.Equal(mcu == HidProtocol.McuRp2040 ? "RP2040" : "RP2350", identity.Mcu);
+        Assert.False(identity.WirelessSupported);
+        var config = ConfigurationReport();
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 0);
+        new byte[] { 0, 0, 1, 2, 3, 4, 5, 6, 7 }.CopyTo(config, 5);
+        config[14] = HidProtocol.BoardFlagMonitorUart | HidProtocol.BoardFlagCardDetect;
+        config[17] = 8;
+        Assert.Equal((byte)8, HidProtocol.ParseConfigurationReport(config, identity).CardDetectGpio);
+        config[17] = 30;
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, identity));
+        foreach (var other in new[] { HidProtocol.McuRp2040, HidProtocol.McuRp2350, HidProtocol.McuEsp32S3 })
+        {
+            report[15] = other;
+            if (other != mcu) Assert.Throws<InvalidDataException>(() => HidProtocol.ParseIdentityReport(report));
+        }
     }
 
     [Theory]

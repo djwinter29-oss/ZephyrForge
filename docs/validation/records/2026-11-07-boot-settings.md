@@ -1,4 +1,4 @@
-# Boot settings - 2026-11-07
+# Boot settings
 
 ## Scope
 
@@ -24,6 +24,6 @@ the settings partition.
 
 ## Evidence limits
 
-No ESP32-S3 hardware was connected. Flash erase, program and readback, power-loss behaviour, CPU clock switching,
-saved-network reconnect and radio-disable behaviour are unobserved on a board. No settings editor exists yet; the
+No ESP32-S3 hardware was connected. Flash erase, program and readback, power-loss behavior, CPU clock switching,
+saved-network reconnect and radio-disable behavior are unobserved on a board. No settings editor exists yet; the
 HID settings commands remain the documented target.

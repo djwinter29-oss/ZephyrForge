@@ -41,11 +41,16 @@ typedef enum {
 
 /** User-selected CPU clock profile; flash stores its ID, while host protocols carry MHz. */
 typedef enum {
-	ZF_SYSCLK_DEFAULT = 0, /**< Keep the devicetree/build clock (240 MHz); used when nothing is saved. */
+	ZF_SYSCLK_DEFAULT = 0, /**< Keep the board build clock (240 MHz on S3, 160 MHz on C6). */
 	ZF_SYSCLK_80MHZ = 1,   /**< 80 MHz. */
 	ZF_SYSCLK_160MHZ = 2,  /**< 160 MHz. */
 	ZF_SYSCLK_240MHZ = 3,  /**< 240 MHz. */
 } zf_sysclk_profile_t;
+
+/** Highest clock-profile ID accepted by this build; C6 builds cap it at 160 MHz. */
+#ifndef ZF_SYSCLK_MAX_PROFILE
+#define ZF_SYSCLK_MAX_PROFILE 3u
+#endif
 
 /** Where the RAM copy came from at the last load. */
 typedef enum {
@@ -74,7 +79,7 @@ static inline zf_sysclk_profile_t zf_sysclk_profile_from_mhz(uint16_t mhz)
 {
 	unsigned profile = ZF_SYSCLK_DEFAULT;
 
-	while (profile <= ZF_SYSCLK_240MHZ && zf_sysclk_profile_mhz((zf_sysclk_profile_t)profile) != mhz) {
+	while (profile <= ZF_SYSCLK_MAX_PROFILE && zf_sysclk_profile_mhz((zf_sysclk_profile_t)profile) != mhz) {
 		++profile;
 	}
 	return (zf_sysclk_profile_t)profile;
@@ -171,11 +176,6 @@ int zf_boot_config_save(void);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */
 void zf_boot_config_discard(void);
 
-/**
- * @brief Serialize the staged configuration into a record, including its CRC.
- * @param record Output buffer of ZF_BOOT_CONFIG_RECORD_SIZE bytes.
- */
-void zf_boot_config_encode(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE]);
 /** @brief Return the IEEE CRC-32 (reflected) used by the record. */
 uint32_t zf_boot_config_crc32(const uint8_t *data, size_t size);
 

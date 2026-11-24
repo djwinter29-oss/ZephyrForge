@@ -1,4 +1,4 @@
-# Python host package layout - 2026-11-07
+# Python host package layout
 
 ## Scope
 
@@ -6,7 +6,8 @@ Restructured `host/python/` to follow the PicoForge Python project layout and se
 `pyproject.toml` (setuptools, package version 0.0.0.dev0, BSD-3-Clause, pinned `pyserial==3.5`, a console
 entry point, strict pyright), `uv.lock`, a mirrored `LICENSE`, and an installable source-layout package with
 `protocol/`, `uart/`, `dashboard/`, `cli.py`, `__main__.py` and version resolution. The wheel maps
-`host/web/src` into the host package's web assets. The flat `server.py`, `protocol.py` and `requirements.txt` were removed.
+`host/web/src` into the host package's web assets. The flat `server.py`, `protocol.py` and `requirements.txt` were
+removed.
 Added `tools/host/run-python.sh`, `tools/check_python_wheel.py` and `publish-pypi.yml`. The release workflow now
 attaches a verified wheel instead of a Python source ZIP.
 

@@ -9,6 +9,7 @@ import { queryElement, setText } from "../../dom.mjs";
  * @property {boolean} available
  * @property {boolean} wirelessReady
  * @property {boolean} radioReady
+ * @property {boolean} [persistent]
  * @property {import("./wireless-form.mjs").WirelessStatus | null} status
  * @property {import("./wireless-form-state.mjs").FormState} form
  * @property {import("./wireless-form.mjs").TestedPair | null} wifiStage
@@ -22,7 +23,7 @@ import { queryElement, setText } from "../../dom.mjs";
  * @param {WirelessFormView} view */
 export function renderWirelessForm({
   available, wirelessReady, radioReady, status, form, wifiStage, remainingSeconds, selectedSsidHex, keyDirty,
-  saveBlockReason,
+  saveBlockReason, persistent = true,
 }) {
   /** @param {string} id */
   const el = id => queryElement(`#${id}`);
@@ -33,15 +34,20 @@ export function renderWirelessForm({
   const working = form.phase === "scanning" || form.phase === "testing";
   const blocked = form.phase !== "idle";
   for (const id of ["direct-settings-wifi", "direct-settings-ble"]) {
-    select(id).disabled = !available || !radioReady || blocked;
-    el(id).closest?.("label")?.toggleAttribute("hidden", !available);
+    const supported = available && (id === "direct-settings-wifi" || persistent);
+    select(id).disabled = !supported || !(persistent ? radioReady : wirelessReady) || blocked;
+    el(id).closest?.("label")?.toggleAttribute("hidden", !supported);
+    for (const value of ["0", "1"]) {
+      const choice = option(id, value);
+      if (choice) choice.disabled = !persistent;
+    }
     const configure = option(id, "configure");
     if (configure) configure.disabled = !wirelessReady || blocked;
   }
   const wifiOn = option("direct-settings-wifi", "1");
-  if (wifiOn) wifiOn.disabled = Boolean(status && !wifiStage && !status.ssid);
+  if (wifiOn) wifiOn.disabled ||= Boolean(status && !wifiStage && !status.ssid);
   const bleOn = option("direct-settings-ble", "1");
-  if (bleOn) bleOn.disabled = Boolean(status && !keyDirty && !status.ble_key_configured);
+  if (bleOn) bleOn.disabled ||= Boolean(status && !keyDirty && !status.ble_key_configured);
   for (const id of ["direct-wifi-scan", "direct-wifi-other", "direct-wifi-connect", "direct-ble-generate",
     "direct-ble-copy"]) {
     queryElement(`button#${id}`).disabled = !wirelessReady || blocked;
@@ -59,10 +65,12 @@ export function renderWirelessForm({
       && button.dataset.ssidHex === selectedSsidHex));
   }
   queryElement("button#direct-ble-copy").disabled ||= !queryElement("input#direct-ble-secret").value;
+  for (const id of ["direct-ble-generate", "direct-ble-copy"]) queryElement(`button#${id}`).disabled ||= !persistent;
   const summary = el("direct-wireless-summary");
   const summaryText = form.phase === "cancelFailed"
     ? `Could not clear the temporary Wi-Fi test: ${form.cancelError}. ${form.cancelNeedsReconnect
       ? "Reconnect the board before retrying." : "Use Retry clearing test before continuing."}`
+    : available && !persistent ? "Wi-Fi scans and tests are temporary; settings saving and Bluetooth are unavailable."
     : available ? saveBlockReason ?? (select("direct-settings-wifi").value === "1" && wifiStage?.use_tested_wifi
       ? `Wi-Fi “${wifiStage.ssid}” tested; expires in ${remainingSeconds}s.` : "") : "";
   setText({ "direct-wireless-summary": summaryText });

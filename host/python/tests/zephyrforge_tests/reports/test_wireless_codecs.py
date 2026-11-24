@@ -122,13 +122,14 @@ class WirelessReportCodecTests(unittest.TestCase):
     def test_detail_namespace_and_status_applicability(self):
         valid = [(4, 3, 3, 3), (4, 5, 5, 2), (5, 3, 3, 27),
                  (5, 5, 5, 26), (6, 3, 3, 16), (7, 3, 3, 17), (8, 3, 3, 18),
-                 (9, 3, 3, 20), (12, 3, 3, 22), (12, 5, 5, 26)]
+                 (9, 3, 3, 20), (12, 3, 3, 22), (12, 5, 5, 26),
+                 (2, 5, 5, 29), (3, 5, 5, 29), (4, 5, 5, 29), (5, 5, 5, 29)]
         for opcode, state, error, detail in valid:
             parsed = parse_control_result_report(result(opcode, state=state, error=error, data=bytes((detail,))))
             self.assertEqual(parsed["detail"], detail)
         invalid = [(4, 6, 6, 8), (4, 6, 6, 9), (4, 6, 6, 10), (5, 5, 5, 28), (6, 5, 5, 26),
                    (13, 5, 5, 25), (10, 1, 0, 0), (6, 1, 0, 0), (5, 3, 1, 27),
-                   (12, 3, 3, 16), (5, 2, 0, 255)]
+                   (12, 3, 3, 16), (5, 2, 0, 255), (1, 5, 5, 29), (5, 3, 3, 29)]
         for opcode, state, error, detail in invalid:
             with self.subTest(opcode=opcode, detail=detail), self.assertRaises(ValueError):
                 parse_control_result_report(result(opcode, state=state, error=error, data=bytes((detail,))))

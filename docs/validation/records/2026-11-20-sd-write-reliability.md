@@ -1,7 +1,7 @@
 # Native SDMMC write reliability
 
-Executed on **2026-11-20** with the user's ESP32-S3-DevKitC-1 N16R8, a hand-wired native four-bit SDMMC breakout and
-a user-identified SanDisk Extreme 64 GB SDXC card. The card's CID fields were not retained in the logs.
+Executed on **2026-11-20** with an ESP32-S3-DevKitC-1 N16R8, a hand-wired native four-bit SDMMC breakout and a
+SanDisk Extreme 64 GB SDXC card identified in the test report. The card's CID fields were not retained in the logs.
 The host was a Raspberry Pi running Linux with the Python bridge on loopback; UART logs used the CH343 port at
 115200 baud. Firmware was based on commit `6fedb5a` with Zephyr 4.3.2 (`28af05ca`) and SDK 0.17.4.
 Test images enabled the storage benchmark and a UART filesystem shell. Some also contained temporary SDHC driver

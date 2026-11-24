@@ -1,11 +1,11 @@
-# Native SDMMC clock and throughput improvement
+# Native SDMMC clock and throughput
 
 Executed on **2026-11-20**. Application source was `124b75f507c9ab8f7f5303cdb7ab09394a3f2bd5` with the
-native board's clock ceiling changed from 25 to 40 MHz. No production C code changed.
+native board's clock ceiling changed from 25 to 40 MHz.
 SPI remains at 25 MHz. Card-speed negotiation uses the existing Zephyr SD stack, not a new retry mechanism.
 The [SD reference](../../reference/sdcard.md#driver-and-filesystem-configuration) owns configuration and recovery.
 
-## Configuration and authorization
+## Configuration and test access
 
 - ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM.
 - Native four-bit SDMMC with unchanged pin allocation and 10 mA pad drive.
@@ -15,8 +15,8 @@ The [SD reference](../../reference/sdcard.md#driver-and-filesystem-configuration
 - Card CID `03534453523634478660A8CB47016BEF`, capacity 63,864,569,856 bytes.
 - CPU clock profile remained `0` before/after flashing; post-flash telemetry reported 240 MHz.
 
-The operator authorized flashing/reboot, both benchmark sizes, exclusive access and a backed-up dedicated card,
-and confirmed `/dev/ttyACM0` as this board's UART connector (USB serial `5A7A040081`).
+Before testing, the operator confirmed the planned flashing/reboot, benchmark sizes, exclusive access and use of a
+backed-up dedicated card, and identified `/dev/ttyACM0` as this board's UART connector (USB serial `5A7A040081`).
 The flashing tool reported chip MAC `50:78:7d:17:3e:8c`, verified the image hash and reset the board.
 No full-chip erase, card formatting, MSC ownership change or physical fault injection was requested or performed.
 
@@ -49,7 +49,6 @@ Compared with the [earlier installed-image observations](2026-11-20-firmware-qua
 
 The earlier installed image's source/hash was not independently established.
 This is an observed before/after comparison, not a controlled same-binary A/B experiment isolating clock alone.
-Historical records are unchanged.
 
 Maximum sampled Feature reads were 3.571 ms and 3.870 ms for the short and long runs.
 Maximum Input polls were 250.200 ms and 250.227 ms, including the intentional 250 ms wait.
@@ -57,11 +56,8 @@ Both remained below the 1000 ms sampled-read threshold, with fresh telemetry/sto
 and no unexpected uptime reset observed. Identity and acknowledgement Feature calls were not individually timed.
 No uncertain command was replayed; test handles were closed.
 
-The native build passed without compiler warnings observed. The existing firmware tooling suite passed 25 tests;
+The native build emitted no compiler warnings. The existing firmware tooling suite passed 25 tests;
 documentation link and whitespace checks passed.
-Build, flashing and machine-readable results were retained in ignored build storage under the
-`firmware-sdmmc-40-` prefix.
-
 ## Limits
 
 Only one card, board, wiring arrangement and Linux/HIDAPI host were exercised, with one run per size.

@@ -1,4 +1,5 @@
 #include "app/zephyrforge.h"
+#include "app/usb/hid_reports.h"
 #include "platform/zf_platform.h"
 
 #include <zephyr/device.h>
@@ -81,7 +82,7 @@ void zf_telemetry_poll(void)
 	}
 }
 
-void zf_telemetry_report(uint8_t sequence, uint8_t out[ZF_TELEMETRY_SIZE])
+void zf_telemetry_report(uint8_t sequence, uint8_t *out)
 {
 	zf_telemetry_t telemetry = {
 		.uptime_ms = (uint64_t)k_uptime_get(),

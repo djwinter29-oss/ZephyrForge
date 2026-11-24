@@ -49,5 +49,13 @@ test("wireless form presentation derives phase gates, key availability and accur
       assert.equal(el(id).label.hidden, true, id);
     }
     assert.equal(el("#direct-wireless-summary").hidden, true);
+    renderWirelessForm({ ...view, persistent: false, radioReady: false });
+    assert.equal(el("#direct-settings-wifi").disabled, false, "temporary Wi-Fi configuration stays available");
+    assert.equal(el("#direct-settings-ble").label.hidden, true);
+    assert.equal(el("#direct-ble-generate").disabled, true);
+    assert.equal(el("#direct-ble-copy").disabled, true);
+    assert.equal(el("#direct-wifi-scan").disabled, false);
+    assert.equal(el("#direct-settings-wifi").options.find(option => option.value === "0").disabled, true);
+    assert.match(el("#direct-wireless-summary").textContent, /temporary/);
   } finally { globalThis.document = previous; }
 });

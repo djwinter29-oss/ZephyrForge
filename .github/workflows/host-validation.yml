@@ -41,6 +41,10 @@ jobs:
       - name: Check firmware hardware-runner safety without hardware
         run: python -m unittest discover -s firmware/tests/hardware -v
 
+      - name: Check firmware tooling without hardware
+        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+        run: python -m unittest discover -s firmware/tests/tooling -v
+
       - name: Type-check Python host
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         working-directory: host/python
@@ -146,6 +150,48 @@ jobs:
         run: |
           bundle exec ceedling test:all
           bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
+
+  wifi-native:
+    name: Wi-Fi lifecycle tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout manifest repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: zephyrforge
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Zephyr host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build gperf device-tree-compiler
+
+      - name: Initialize Zephyr workspace
+        run: |
+          python -m pip install --disable-pip-version-check --no-input west
+          west init -l zephyrforge
+          west update --narrow -o=--depth=1
+          python -m pip install --disable-pip-version-check --no-input \
+            -r zephyr/scripts/requirements-base.txt
+
+      - name: Run native Wi-Fi lifecycle tests
+        run: |
+          export ZEPHYR_BASE="$PWD/zephyr"
+          west build -b native_sim/native/64 zephyrforge/firmware/tests/wifi/native \
+            -d build/wifi-native -- -DZEPHYR_TOOLCHAIN_VARIANT=host
+          build/wifi-native/zephyr/zephyr.exe
+          west build -b native_sim/native/64 zephyrforge/firmware/tests/wifi/native-esp32 \
+            -d build/wifi-native-esp32 -- -DZEPHYR_TOOLCHAIN_VARIANT=host
+          build/wifi-native-esp32/zephyr/zephyr.exe
+          west build -b native_sim/native/64 zephyrforge/firmware/tests/wifi/native-recovery \
+            -d build/wifi-native-recovery -- -DZEPHYR_TOOLCHAIN_VARIANT=host
+          build/wifi-native-recovery/zephyr/zephyr.exe
 
   docs:
     name: Documentation links

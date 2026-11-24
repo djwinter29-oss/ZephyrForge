@@ -26,6 +26,26 @@
     - -:firmware/src/app/usb/usb_hid.c
     - -:firmware/src/app/wireless/bluetooth/ble.c
     - -:firmware/src/app/wireless/wifi/wifi.c
+    - -:firmware/src/platform/rpi_pico/platform.c
+    - -:firmware/src/platform/rpi_pico/sdhc_pio.c
+    - -:firmware/src/platform/rpi_pico/random.c
+
+:defines:
+  :test:
+    # The Raspberry Pi Pico board build definitions.
+    :test_pico_board:
+      - ZF_MCU=ZF_MCU_RP2040
+      - ZF_BOARD_MODEL=ZF_BOARD_PICO
+      - ZF_BOARD_CAPS=0
+    :test_pico_w_board:
+      - ZF_MCU=ZF_MCU_RP2040
+      - ZF_BOARD_MODEL=ZF_BOARD_PICO_W
+      - ZF_BOARD_CAPS=ZF_CAP_WIRELESS
+      - ZF_RADIO_MASK=1u
+    # A hypothetical BLE-only override exercising the radio-mask half of control admission.
+    :test_ble_only_board:
+      - ZF_BOARD_CAPS=ZF_CAP_WIRELESS
+      - ZF_RADIO_MASK=2u
 
 :cmock:
   :mock_prefix: mock_

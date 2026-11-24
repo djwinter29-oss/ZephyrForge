@@ -63,6 +63,7 @@ export function bindWirelessForm({
   /** @param {string} id */
   const select = id => queryElement(`select#${id}`);
   let loaded = false;
+  let persistent = true;
   let lifecycleController = new AbortController();
   /** @type {WirelessStatus | null} */
   let status = null;
@@ -91,7 +92,7 @@ export function bindWirelessForm({
   const refresh = readiness => {
     const available = supported();
     const wirelessReady = readiness?.wireless ?? ready();
-    renderWirelessForm({ available, wirelessReady, radioReady: readiness?.settings ?? settingsReady(),
+    renderWirelessForm({ available, wirelessReady, radioReady: readiness?.settings ?? settingsReady(), persistent,
       status, form, wifiStage: form.wifiStage, remainingSeconds: remainingTestSeconds(),
       selectedSsidHex: form.selectedSsidHex, keyDirty: bleKey.dirty(),
       saveBlockReason: saveBlockReason() });
@@ -110,6 +111,7 @@ export function bindWirelessForm({
   const dirty = () => Boolean(form.wifiTestAttempted || bleKey.dirty() || erasing());
   /** @param {"direct-settings-wifi" | "direct-settings-ble"} id */
   const enableRadio = id => {
+    if (!persistent) return;
     if (radioOn(id)) return;
     select(id).value = "1";
     select(id).dispatchEvent(new Event("change"));
@@ -215,6 +217,7 @@ export function bindWirelessForm({
      * @param {FormReadiness} [readiness]
      */
     update(state, readiness) {
+      persistent = state?.settings_supported !== false;
       let recoveredCancellation = false;
       if (form.phase === "cancelFailed" && state?.connected && !state.outcome_uncertain) {
         dispatch({ type: "recovered" });

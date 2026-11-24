@@ -176,6 +176,8 @@ public sealed class WirelessTests
     [InlineData(4, 6, 6, 8)]
     [InlineData(4, 3, 3, 0)]
     [InlineData(9, 4, 7, 0)]
+    [InlineData(1, 5, 5, 29)]
+    [InlineData(5, 3, 3, 29)]
     public void RejectsDisallowedControlCombinations(byte opcode, byte status, byte error, byte detail) =>
         Assert.Throws<InvalidDataException>(() =>
             HidProtocol.ParseControlResult(Result(opcode, status, error, detail)));
@@ -190,6 +192,10 @@ public sealed class WirelessTests
     [InlineData(13, 3, 3, 24)]
     [InlineData(5, 5, 5, 25)]
     [InlineData(12, 5, 5, 26)]
+    [InlineData(2, 5, 5, 29)]
+    [InlineData(3, 5, 5, 29)]
+    [InlineData(4, 5, 5, 29)]
+    [InlineData(5, 5, 5, 29)]
     [InlineData(255, 4, 7, 0)]
     [InlineData(1, 4, 4, 0)]
     [InlineData(3, 4, 4, 0)]
