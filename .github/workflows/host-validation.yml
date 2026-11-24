@@ -41,6 +41,10 @@ jobs:
       - name: Check firmware hardware-runner safety without hardware
         run: python -m unittest discover -s firmware/tests/hardware -v
 
+      - name: Check firmware packages and release archives without hardware
+        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+        run: python -m unittest discover -s firmware/tests/tooling -p test_packages.py -v
+
       - name: Type-check Python host
         if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
         working-directory: host/python

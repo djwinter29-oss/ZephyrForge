@@ -170,10 +170,22 @@ jobs:
             Software-only ESP32-S3-DevKitC-1 N16R8 (16 MB flash, 8 MB octal PSRAM) and Raspberry Pi Pico, Pico W, Pico 2 and Pico 2 W release, built with pinned Zephyr dependencies.
             Firmware and host packages include source provenance and license notices.
             Separate SDMMC and SD-over-SPI firmware archives are provided for each board; use the matching board and wiring.
+            Each firmware ZIP includes only the flashable image, BUILD-INFO.txt, and licenses; instructions stay in the repository.
             The Direct archive is standalone; the Python wheel bundles the shared dashboard; .NET hosts are self-contained.
+
+            ### Flashing and SD wiring
+
+            Read the [release-image flashing procedure](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/getting-started.md#flash-a-release-image) and select the wiring guide matching your archive:
+
+            | Board family | Native SDMMC | SD-over-SPI |
+            | --- | --- | --- |
+            | ESP32-S3-DevKitC-1 N16R8 | [SDMMC](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/boards/esp32s3-sdmmc.md) | [SPI](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/boards/esp32s3-sd-spi.md) |
+            | Pico, Pico W, Pico 2, Pico 2 W | [SDMMC](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/boards/pico-sdmmc.md) | [SPI](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/boards/pico-sd-spi.md) |
+
+            These links use this release's source tag. Save the guides before working offline.
 
             **Not hardware-qualified:** firmware has not been flashed by this workflow.
             Physical USB HID, Wi-Fi, BLE and SD-card behavior remain unverified. SD testing is deferred.
-            Read the included flashing instructions and qualification gaps before using hardware.
+            Read the [qualification limits](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/validation/qualification-gaps.md) before using hardware.
           files: build/packages/*
           fail_on_unmatched_files: true

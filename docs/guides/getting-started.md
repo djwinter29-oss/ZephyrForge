@@ -1,8 +1,61 @@
 # Getting started
 
-These instructions use a source checkout. [GitHub release automation](../deployment/release.md)
-is configured for tagged packages; configuring a workflow does not mean a release is already published.
-You can build and preview all three dashboards before connecting hardware.
+For downloaded firmware, use [release-image flashing](#flash-a-release-image); no Zephyr workspace is needed.
+The numbered steps below cover source builds. You can build and preview all three dashboards before
+connecting hardware.
+
+## Flash a release image
+
+Download and extract the ZIP for your exact board and storage variant from the GitHub release.
+Check `BUILD-INFO.txt` for the target, storage variant, version and source commit, and verify the ZIP
+against the release's `SHA256SUMS.txt`. Firmware ZIPs contain no instruction file or documentation tree:
+use the repository guides linked from that release, at its tag rather than the current default branch.
+Save those pages before working offline.
+
+Choose the matching wiring guide before connecting an SD card:
+
+| Board family | Native four-bit SDMMC | SD-over-SPI |
+| --- | --- | --- |
+| ESP32-S3-DevKitC-1 N16R8 | [SDMMC wiring](boards/esp32s3-sdmmc.md) | [SPI wiring](boards/esp32s3-sd-spi.md) |
+| Pico, Pico W, Pico 2, Pico 2 W | [SDMMC wiring](boards/pico-sdmmc.md) | [SPI wiring](boards/pico-sd-spi.md) |
+
+Release workflows do not flash or qualify hardware. Read the
+[qualification limits](../validation/qualification-gaps.md); successful upload does not prove application
+boot, USB, radio or SD operation. Disconnect card power before switching storage variants.
+
+### ESP32-S3 release image
+
+Use only ESP32-S3-DevKitC-1 **N16R8**, with 16 MB flash and 8 MB octal PSRAM, PROCPU.
+Check the module marking: do not use on N4/N8 or octal-flash N32R16V/N16R16VA modules.
+Close serial clients and connect the **UART** USB-to-UART connector for flashing.
+Create/activate a Python virtual environment and install esptool 5:
+
+```sh
+python -m pip install "esptool>=5,<6"
+```
+
+From the extracted ZIP directory, replace `PORT` with the actual serial port:
+
+```sh
+python -m esptool --chip esp32s3 --port PORT --baud 460800 write-flash --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 zephyr.bin
+```
+
+This replaces image sectors without requesting a full-chip erase. Do not change the image offset or flash
+parameters. If reset fails, hold BOOT, press/release RESET, release BOOT and retry.
+After flashing, the **USB** connector carries HID management; the UART connector carries console logs
+at 115200 baud, 8N1. The release ZIP is not a relocatable west build directory.
+
+### Raspberry Pi Pico release image
+
+Use only the exact Pico, Pico W, Pico 2 or Pico 2 W board named in `BUILD-INFO.txt`.
+RP2040 and RP2350 images are not interchangeable.
+Hold **BOOTSEL** while connecting the micro-USB cable. Copy the extracted `zephyr.uf2` to the drive
+that appears: `RPI-RP2` for Pico/Pico W, `RP2350` for Pico 2/Pico 2 W.
+Copying replaces existing firmware; the board restarts and the same connector then carries HID management.
+
+For optional console logs at 115200 baud, 8N1, use a 3.3 V USB-UART adapter:
+adapter RX to GP0 TX (header pin 1), adapter TX to GP1 RX (pin 2), GND to GND (pin 3).
+Leave the adapter's supply output disconnected.
 
 ## 1. Prepare a Zephyr workspace
 

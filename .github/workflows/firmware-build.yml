@@ -80,11 +80,9 @@ jobs:
           west sdk install --version 0.17.4 --toolchains "$toolchain" --personal-access-token "$GH_TOKEN"
 
       - name: Build firmware
-        run: |
-          bash zephyrforge/tools/firmware/build.sh --board "$BOARD" --storage "$STORAGE"
-          west manifest --freeze > "$FIRMWARE_BUILD/west-manifest.yml"
+        run: bash zephyrforge/tools/firmware/build.sh --board "$BOARD" --storage "$STORAGE"
 
-      - name: Collect firmware, provenance and dependency licenses
+      - name: Collect firmware, build identity and dependency licenses
         run: bash zephyrforge/tools/release/package-firmware.sh
 
       - name: Attach software build
@@ -92,5 +90,4 @@ jobs:
         with:
           name: zephyrforge-${{ matrix.board }}-${{ matrix.storage }}-software-build
           path: zephyrforge/build/firmware-package/
-          include-hidden-files: true
           if-no-files-found: error

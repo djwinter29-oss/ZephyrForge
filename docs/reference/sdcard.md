@@ -7,107 +7,34 @@ Select the image that matches the wiring; there is no runtime fallback.
 All images use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
 This is the SD memory-card bus, not an SDIO peripheral/function API.
 The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage.
-This reference owns the SD pin allocation,
-mount lifecycle, status reporting and data-safety contract. See the
+This reference owns driver configuration, mount lifecycle, status reporting and the data-safety contract.
+The board/storage guides below own physical pin allocations. See the
 [hardware guide](../guides/hardware.md#sd-card-sdmmc-wiring) for board selection and electrical precautions.
 
 ## Pin allocation
 
-GPIO numbers are MCU signals, not physical header positions. Verify the labels and schematic of your
-exact board and breakout before connecting them.
+GPIO numbers are MCU signals, not physical header positions. Select the wiring guide matching the board
+and storage variant. There is no runtime bus fallback; disconnect card power before changing buses.
 
 ### ESP32-S3-DevKitC-1 N16R8
 
-| SDMMC function | ESP32-S3 pin | Breakout/card signal | Direction relative to ESP32-S3 |
-| --- | --- | --- | --- |
-| Clock | GPIO12 | CLK | Output |
-| Command | GPIO11 | CMD | Bidirectional |
-| Data bit 0 | GPIO13 | DAT0 | Bidirectional |
-| Data bit 1 | GPIO14 | DAT1 | Bidirectional |
-| Data bit 2 | GPIO15 | DAT2 | Bidirectional |
-| Data bit 3 | GPIO10 | DAT3 | Bidirectional |
-| Card detect | GPIO8 | Inserted-low detection switch to GND | Input with internal pull-up |
-| Supply | 3V3 | 3.3 V supply input | Power |
-| Ground | GND | GND | Common ground |
-
-Use a 3.3 V socket/breakout exposing CLK, CMD and **all four data lines**. SPI-only modules exposing just
-MOSI/MISO/CS/CLK are not suitable without access to DAT1 and DAT2. Directional SPI level shifters can also
-prevent bidirectional native operation. Do not connect 5 V logic.
-CMD and DAT0-DAT3 require suitable **external pull-ups to 3.3 V** (typically 10 kOhm; verify the socket/module
-requirements and existing resistors). Do not add a pull-up to CLK. Pinctrl also requests internal command/data
-pull-ups, but these do not replace electrical qualification. Keep all six signal wires short.
-The native image sets CLK, CMD and DAT0-DAT3 pad drive to about 10 mA. The ESP32-S3 reset default of about 20 mA
-caused data-CRC write failures on tested hand wiring while reads and mounting still worked. Wiring changes can need a
-different `drive-strength` value in the board overlay (5, 10, 20 or 40 mA); requalify writes after changing it.
-
-GPIO8 is **active-low**: low means inserted, 3.3 V means absent. Connect the socket's insertion switch between
-GPIO8 and GND, closing when a card is inserted; the internal pull-up holds an open input high. A socket whose
-detect contact instead drives 3.3 V on insertion needs polarity adaptation, not direct connection with this
-configuration. Never apply 5 V. An unwired GPIO8 reads absent; a GPIO8 shorted to GND reads inserted even
-without a card, so firmware retries initialization until a card responds. There is no power-control GPIO.
-In the native image, GPIO10 is DAT3, **not a chip-select output**.
-When changing between native SDMMC and SPI images, disconnect card power before restarting:
-a board reset alone does not necessarily reset the card's selected bus mode.
-
-#### SD-over-SPI image
-
-| SPI function | ESP32-S3 pin | SD-card signal |
-| --- | --- | --- |
-| SCK | GPIO12 | CLK |
-| MOSI | GPIO11 | CMD / DI |
-| MISO | GPIO13 | DAT0 / DO |
-| CS, active-low | GPIO10 | DAT3 / CS |
-| Card detect | GPIO8 | Inserted-low detection switch to GND |
-
-Supply, ground and the active-low detect switch use the same wiring and precautions as above.
-GPIO14 and GPIO15 are unused by the SPI image; DAT1/DAT2 do not carry SPI data.
-Use a 3.3 V-compatible SPI socket/module with appropriate SD pull-ups, including CS; internal data pull-ups do not
-replace external resistors. This is ordinary full-duplex SPI with one MOSI and one MISO line, not native one-bit SDMMC.
-
-The native image enables SDMMC slot 0 with a four-bit bus; the SPI image disables that slot and enables SPI3.
-Native SDMMC requests a 40 MHz maximum frequency; SPI requests 25 MHz.
-SPI2 remains dedicated to the RGB LED in both images.
-GPIO33-37 are occupied by octal PSRAM on N16R8.
+- [Native four-bit SDMMC wiring](../guides/boards/esp32s3-sdmmc.md).
+- [SD-over-SPI wiring](../guides/boards/esp32s3-sd-spi.md).
 
 ### Raspberry Pi Pico boards
 
-The Pico, Pico W, Pico 2 and Pico 2 W images use PicoForge's allocation. Header pins are positions on the 40-pin
-header these boards share.
+These guides cover the shared 40-pin allocation of Pico, Pico W, Pico 2 and Pico 2 W:
 
-| GPIO | Header pin | Native SDMMC | SD-over-SPI (SPI0) |
-| --- | ---: | --- | --- |
-| GP2 | 4 | CLK, output | SCK to card CLK |
-| GP3 | 5 | CMD, bidirectional | MOSI to card CMD / DI |
-| GP4 | 6 | DAT0, bidirectional | MISO from card DAT0 / DO |
-| GP5 | 7 | DAT1, bidirectional | Unused |
-| GP6 | 9 | DAT2, bidirectional | Unused |
-| GP7 | 10 | DAT3, bidirectional | CS to card DAT3 / CS, active-low, GPIO-controlled |
-| GP8 | 11 | Card detect input, active-high | Card detect input, active-high |
-| 3V3(OUT) | 36 | 3.3 V supply | 3.3 V supply |
-| GND | 38 | Ground | Ground |
-
-GP8 is **active-high**: 3.3 V means inserted, low means absent. The MCU applies **no pull** to GP8; the socket or
-breakout must drive or bias it. PicoForge's reference breakout, Adafruit's microSD SPI/SDIO breakout (P4682), grounds
-DET without a card and pulls it up when one is inserted. An unconnected GP8 floats and can read inserted without
-a card, so firmware retries initialization. A detect switch that closes to GND on insertion needs polarity adaptation.
-Supply, external pull-up and short-wiring precautions are the same as for the ESP32-S3. Pinctrl also requests
-internal pull-ups on CMD and DAT0-DAT3, or on MOSI and MISO in the SPI image; they do not replace external resistors.
-GP5 and GP6 carry no SPI data and may stay connected to DAT1/DAT2. Disconnect card power before changing images.
-
-The PIO host constrains rewiring: DAT0-DAT3 must be four ascending consecutive GPIOs below GPIO32, CLK the GPIO two
-below DAT0 (modulo 32), and CMD any other GPIO below GPIO32; the build rejects other native allocations.
-SPI SCK, MOSI and MISO must be functions of the selected SPI controller; CS is an ordinary GPIO.
+- [Native four-bit SDMMC wiring](../guides/boards/pico-sdmmc.md).
+- [SD-over-SPI wiring](../guides/boards/pico-sd-spi.md).
 
 ### Reported allocation
 
 Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order for native SDMMC, and in SCK, MOSI,
-MISO, CS, unassigned, unassigned order for SPI:
+MISO, CS, unassigned, unassigned order for SPI.
 
-| Board | Native SDMMC | SD-over-SPI | Card detect |
-| --- | --- | --- | --- |
-| ESP32-S3-DevKitC-1 N16R8 | `12, 11, 13, 14, 15, 10` | `12, 11, 13, 10, 255, 255` | `8` |
-| Raspberry Pi Pico boards | `2, 3, 4, 5, 6, 7` | `2, 3, 4, 7, 255, 255` | `8` |
-
+Unassigned GPIOs are encoded as `255`; card detect is reported separately.
+The reported values must match the corresponding [wiring guide](#pin-allocation).
 If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
 validate the new allocation before use.
 

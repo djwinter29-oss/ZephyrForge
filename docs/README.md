@@ -7,6 +7,7 @@ Development guides keep the source-layout and command details needed to build, t
 ## Start with your task
 
 - **Connect a board:** [Getting started](guides/getting-started.md).
+- **Flash a downloaded release:** [Release-image flashing](guides/getting-started.md#flash-a-release-image).
 - **Use a dashboard:** [Direct](../host/direct/README.md), [Python](../host/python/README.md) or
   [.NET](../host/dotnet/ZephyrForge/README.md).
 - **Check a contract or maintain the project:** choose its owner below. No sequential reading is required.
@@ -18,7 +19,7 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | Topic | Owner |
 | --- | --- |
 | Targets, connectors, electrical constraints and board pin restrictions | [Hardware](guides/hardware.md) |
-| Workspace creation, build, flash, first dashboard | [Getting started](guides/getting-started.md) |
+| Workspace creation, source/release flashing, first dashboard | [Getting started](guides/getting-started.md) |
 | Wi-Fi network requirements, provisioning and radio troubleshooting | [Wireless](guides/wireless.md) |
 | UART and raw TCP diagnostic shells, commands and network exposure | [Console](guides/console.md) |
 | Layer responsibilities and service lifecycle | [Architecture](reference/architecture.md) |
@@ -27,7 +28,8 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | Shared report layouts, identity values, capabilities, USB control and validation | [USB HID](reference/usb-hid.md) |
 | ZephyrForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
 | Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
-| SD pin allocation, driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
+| SD pin allocation and variant-specific electrical precautions | ESP32-S3 [SDMMC](guides/boards/esp32s3-sdmmc.md) / [SPI](guides/boards/esp32s3-sd-spi.md); Pico family [SDMMC](guides/boards/pico-sdmmc.md) / [SPI](guides/boards/pico-sd-spi.md) |
+| SD driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
 | Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |
 | Toolchains and software validation | [Firmware](development/firmware.md), [host tools](development/host-tools.md) |
 | Firmware target checks and SD/USB/BLE/Wi-Fi qualification procedure | [Firmware qualification](validation/firmware-qualification.md) |
