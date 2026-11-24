@@ -1,4 +1,4 @@
-# USB upload wrapper - 2026-11-07
+# USB upload wrapper
 
 ## Observed software checks
 

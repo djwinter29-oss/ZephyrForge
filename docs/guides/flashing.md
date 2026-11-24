@@ -2,7 +2,6 @@
 
 Choose the procedure for a downloaded release or an existing source build. Both replace firmware on the board.
 Check the exact board and memory variant first; images for boards with the same MCU are not necessarily compatible.
-Recorded hardware test coverage is summarized in [qualification gaps](../validation/qualification-gaps.md).
 
 ## Flash a release image
 

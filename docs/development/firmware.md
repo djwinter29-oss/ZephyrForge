@@ -22,6 +22,8 @@ not in the management loop or under the application lock. Read the
 
 Add tests beside the relevant component. Mock narrow service interfaces rather than recreating Zephyr internals
 with fake headers. Changes to reports or commands also need matching host and specification updates.
+The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
+must use a cryptographically secure source.
 
 ## ESP32-S3 RGB LED integration
 
@@ -69,8 +71,6 @@ bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}
 ## Zephyr native Wi-Fi tests
 
 These suites use the real application and Zephyr scheduling with a dummy interface and controlled driver responses.
-The Pico W-family random source is used for noncryptographic network identifiers only; do not use it for
-authentication challenges.
 From the repository root in an initialized workspace with the native toolchain available:
 
 ```sh

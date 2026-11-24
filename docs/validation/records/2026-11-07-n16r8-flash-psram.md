@@ -1,4 +1,4 @@
-# N16R8 Flash and PSRAM
+# N16R8 flash and PSRAM
 
 Date: 2026-11-07. Scope: retargeting the firmware from the N8 default DTS to the ESP32-S3-DevKitC-1 N16R8
 (16 MB quad flash, 8 MB octal PSRAM).

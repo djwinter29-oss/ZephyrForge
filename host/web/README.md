@@ -62,44 +62,27 @@ Fields are strictly typed, extras are rejected (HTTP 400), and cancel requires z
 Unavailable/stale/busy admission is HTTP 409; transport errors are HTTP 503 and may require explicit resync.
 HTTP 200 acknowledges admission, not a passing run. Both hosts return `{"accepted":true}`; this does not indicate
 benchmark completion.
-Poll `self_test` and `self_test_stale` for [Report 11](../../docs/reference/usb-hid.md#report-id-11-storage-benchmark-status)
-progress/result. `self_test` is null when absent or stale; zero-duration throughput is null.
+Poll `self_test` and `self_test_stale` for
+[Report 11](../../docs/reference/usb-hid.md#report-id-11-storage-benchmark-status) progress/result.
+`self_test` is null when absent or stale; zero-duration throughput is null.
 Controls remain hidden without capability bit 5 or detected storage; BLE is read-only.
 Never automatically replay a start/cancel request.
 
-### Status and recovery
+### Status fields
 
 Unavailable per-core load, temperature, card presence, bus clock and capacity diagnostics use JSON `null`.
 The dashboard displays unavailable measurements as `--` without a footer warning; malformed diagnostic values
-still produce a warning. Unknown card presence is not treated as a confirmed missing card.
-Storage stays hidden until a fresh report detects a card or confirms successful initialization. Detected cards
-remain visible if initialization fails. USB-owned storage remains visible without a valid firmware SD sample.
-Busy or stale reports retain visibility; disconnect clears detection.
+still produce a warning. Unknown card presence is not treated as a confirmed missing card. Storage becomes visible
+after a fresh report detects a card or confirms successful initialization, and remains visible if initialization
+fails or USB owns the card. Busy and stale reports retain the last known visibility; disconnect clears detection.
 Service load shows **Core 0 / Core 1**, for example `3.1% / --` when Core 1 is unavailable.
-
-Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
-remain blocked until explicit reconciliation. Clients must not replay a state-changing request.
-Both hosts remain loopback-only and require local request origins.
-Host-reported uncertainty is shown with its recovery action even after a dashboard reload. Switching boards with
-unsaved settings or wireless edits requires explicit discard confirmation; browser reload or close warns while those
-edits remain, including Wi-Fi names and passwords entered before connection testing. Untested credentials remain
-ineligible to save. Save confirmation identifies the target board, boot and radio changes, and summarizes whether
-Wi-Fi credentials or the Control key are unchanged, replaced or erased. A replacement Wi-Fi action names the tested
-network; credentials are never displayed. Safety warnings are included only when relevant. Failed status polls remain
-visible in open wireless dialogs, including guidance when a generated Bluetooth key is still locally available.
-The dashboard reports the age of the last successful status fetch until a poll recovers.
-Reboot confirmation expires on disconnect and identifies the selected board.
-After a confirmed reboot, writes remain blocked until the dashboard observes a disconnect/reconnect or a host-reported
-reboot-pending transition followed by clear. A fresh lower uptime also confirms a restart when the tab missed the
-disconnect. If controls remain blocked after reconnection, reload the dashboard to reconcile with the host.
 
 ## RGB LED control
 
 `POST /api/led` accepts only `{"colour":0..7}` with an integer additive RGB mask: red=1, green=2, blue=4,
 zero=Off. Capability and fresh available-driver telemetry are required; storage activity does not block it.
-Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The shared
-dropdown beside Device information displays the reported color and uses Re-sync after an
-uncertain outcome.
+Success returns `{"accepted":true}` and means queued transmission, not physical verification or persistence. The
+shared dropdown beside Device information displays the reported color and uses Re-sync after an uncertain outcome.
 
 ## Browser shell
 
@@ -128,3 +111,22 @@ The terminal renders only text, with bounded scrollback and native cursor/edit/e
 emulation or color styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
 multiline paste before sending. Closing the page tears down its relay. Reopening is always explicit.
 The raw shell is unauthenticated plaintext even when management uses authenticated BLE.
+
+## Dashboard behavior
+
+### Recovery and confirmations
+
+Commands are serialized per board. A timeout or disconnect can leave the outcome uncertain; further writes
+remain blocked until explicit reconciliation. Clients must not replay a state-changing request. Both hosts remain
+loopback-only and require local request origins.
+
+After a reload, the dashboard retains an unresolved command and its recovery action. It warns before discarding
+unsaved settings or wireless edits, including untested Wi-Fi credentials. Save confirmation identifies the board
+and summarizes boot/radio changes and whether credentials are unchanged, replaced, or erased; credentials are
+never displayed. A Wi-Fi replacement names the tested network. Failed status polls remain visible in open wireless
+dialogs, and the dashboard shows the age of the last successful status fetch.
+
+Reboot confirmation expires on disconnect and identifies the selected board. After a confirmed reboot, writes
+remain blocked until the host observes a disconnect/reconnect or a reboot-pending transition followed by clear.
+A fresh lower uptime also confirms a restart if the tab missed the disconnect. If controls remain blocked after
+reconnection, reload the dashboard to reconcile with the host.

@@ -5,7 +5,7 @@ advertise until a Control key is saved. The C6 has no native USB HID, so this pr
 its UART flashing port.
 
 This procedure writes settings to an unencrypted board through its flashing port. Use it only with physical access
-to the board and no other application using that port. The procedure has software checks, not hardware qualification.
+to the board and no other application using that port. It has software checks, not hardware qualification.
 
 ## Prepare the board and build
 
@@ -68,9 +68,12 @@ rm -f -- "$readback"
 ```
 
 Replace `OFFSET` with the address printed by the dry run. The temporary readback may contain settings; keep it
-private and remove it after inspection. If the sector is not erased, leave the board unchanged. Only retry
-commissioning after readback confirms the entire sector is erased.
-The utility never requests a full-chip erase or retries an uncertain write.
+private and remove it after inspection. If the sector is erased, retry only after confirming the readback.
+If it contains data and you know the key entered during this attempt, reset the board and try connecting with Direct
+before doing anything else. If the key is unknown or the connection fails, stop and ask the project maintainer for
+recovery guidance; do not erase the sector.
+
+The utility never requests a full-chip erase and makes only one write attempt.
 
 The utility removes its private temporary files on normal success or failure. Abrupt process termination can leave
 private files to clean up manually.

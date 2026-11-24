@@ -1,4 +1,4 @@
-# Python host package layout - 2026-11-07
+# Python host package layout
 
 ## Scope
 

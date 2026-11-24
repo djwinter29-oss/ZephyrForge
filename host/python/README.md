@@ -51,7 +51,7 @@ dashboard version matches the package metadata for the current checkout. The scr
 if installation fails, it does not start the host with stale metadata. Stop an already-running host before relaunching.
 
 Source-checkout launches need no asset copy. Building a wheel or source distribution requires
-[explicit asset staging](../../docs/development/host-tools.md#python-host-design) first; there is no custom build hook.
+[explicit asset staging](../../docs/development/host-tools.md#python-host-checks-and-packaging) first; there is no custom build hook.
 
 ## Commands
 
@@ -87,7 +87,7 @@ The checkout wrapper checks HID permissions before starting and defaults to the 
 
 - **Monitor:** live board identity, runtime, memory, pins, SD-card details, and Wi-Fi state.
 - **Boot configuration:** save the clock (Default, 80, 160 or 240 MHz) and the Wi-Fi/BLE switches with
-  **Save&Reboot**. The saved SD profile is reserved as Standard; storage transport is a build choice.
+  **Save&Reboot**. The SD profile field remains Standard; select SDMMC, SPI or no storage when building the image.
   **Reboot Board** uses the already saved settings. See
   [settings and save safety](../../docs/reference/settings.md).
 - **Wireless:** provision Wi-Fi and a Control key over USB. Bluetooth connections use the independent Direct
@@ -98,19 +98,18 @@ The checkout wrapper checks HID permissions before starting and defaults to the 
   unauthenticated plaintext; use only a trusted, isolated network and never enter secrets. See
   [diagnostic shells](../../docs/guides/console.md).
 
-Controls follow the connected firmware's advertised capabilities; the
-[shared HTTP API](../web/README.md#http-api) owns supported and unsupported operations.
+For operation availability and request details, see the [shared HTTP API](../web/README.md#http-api).
 Return an exported card to firmware before saving. The native diagnostic shell is separate from dashboard
 management and is not protected by the BLE Control key; dashboard management uses USB HID, not CDC.
 
-Commands can be rejected or remain uncertain after a timeout or disconnect; delivery is not completion.
-Do not replay uncertain writes. Feature availability and safety gates follow the connected firmware.
+Controls follow the connected firmware's advertised capabilities. A timeout or disconnect can leave a command
+outcome uncertain; reconcile it before sending another write.
 
 ## Development
 
 For API routes, request fields, and response semantics, see the
 [shared dashboard HTTP API](../web/README.md#http-api). For tests, type checks, package APIs, and asset staging,
-see [host development](../../docs/development/host-tools.md#python-host-design).
+see [host development](../../docs/development/host-tools.md#python-host-checks-and-packaging).
 
 ## License
 

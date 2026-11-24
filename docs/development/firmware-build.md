@@ -241,12 +241,22 @@ Pico images are UF2 files. Example output directories:
 | `pico_w` / `sd-spi` | `build/firmware-pico_w-sd-spi/zephyr/zephyr.uf2` |
 | `pico2` / `none` | `build/firmware-pico2-no-storage/zephyr/zephyr.uf2` |
 
-Pico builds use the Arm toolchain. Non-W builds do not fetch radio blobs. W builds enable the shared Wi-Fi
-configuration and fetch the CYW43439 firmware and Murata-1YN CLM blob from the pinned Infineon HAL. Pico storage
-profiles use the project's PIO SD host for native four-bit SDMMC or SPI0 for SD-over-SPI. The no-storage profile
-does not add the SD bus, card-detect GPIO, disk, FAT or MSC device tree and driver configuration.
-Before using Wi-Fi on a Pico W board, set `CONFIG_WHD_WIFI_COUNTRY` to the appropriate `WHD_COUNTRY_*` value. The pinned
-driver defaults to `WHD_COUNTRY_AUSTRALIA`; selecting the correct region is required for compliant RF operation.
+Pico builds use the Arm toolchain. Non-W builds do not fetch radio blobs. W builds enable Wi-Fi and fetch the
+CYW43439 firmware and Murata-1YN CLM blob from the pinned Infineon HAL. Pico storage profiles use the project's
+PIO SD host for native four-bit SDMMC or SPI0 for SD-over-SPI. The `none` profile omits SD drivers and device-tree
+nodes.
+
+The W-board release images use `WHD_COUNTRY_AUSTRALIA`. For a custom build, select the country that matches the
+board's regulatory region. Create a Kconfig fragment with the selected value, for example:
+
+```text
+CONFIG_WHD_WIFI_COUNTRY="WHD_COUNTRY_UNITED_STATES"
+```
+
+In the matching manual W-board `west build` command below, add
+`-DEXTRA_CONF_FILE=/absolute/path/to/pico-country.conf` after `--`. Keep the existing `CONF_FILE` entries and
+overlays. The build wrapper does not accept this customization. Use a release or wrapper-built image only where
+its Australia country setting is appropriate.
 
 The wrapper does not flash Pico boards. Copy the UF2 image to the board's BOOTSEL drive using the
 [Pico flashing procedure](../guides/flashing.md#raspberry-pi-pico-release-image).

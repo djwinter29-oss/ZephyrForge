@@ -2,6 +2,11 @@
 
 Use this guide to prepare and publish packages. To install firmware, use [flashing](../guides/flashing.md).
 
+## Release sequence
+
+Configure publication settings once using [Before the first release](#before-the-first-release). For each release,
+run the preflight, pass PR checks on the same commit, then [tag and publish it](#publish-a-stable-tag).
+
 ## GitHub workflows
 
 PR checks validate the source; release jobs package it; publication jobs deploy the verified release assets.
@@ -28,7 +33,8 @@ checks on Linux. Release builds require these checks to pass. No workflow flashe
 Workflows call the scripts in [tools/release](../../tools/release) for packaging, archive smoke checks and release
 downloads. Run them from the repository root with the same prerequisites and environment as the corresponding
 workflow; firmware collection instead runs from the Zephyr workspace root with the checkout named `zephyrforge`.
-The workflows retain triggers, permissions, tool installation, build commands, artifact transfer and publication actions.
+The workflows retain triggers, permissions, tool installation, build commands, artifact transfer and publication
+actions.
 
 | Script | Required environment and inputs |
 | --- | --- |
@@ -50,19 +56,19 @@ The download helpers do not publish anything themselves. Package smoke checks st
 Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
 `zephyrforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
 `zephyrforge/web` without a custom build hook. For local builds, follow the
-[asset-staging procedure](host-tools.md#python-host-design). Git tags determine ordinary package versions;
+[asset-staging procedure](host-tools.md#python-host-checks-and-packaging). Git tags determine ordinary package versions;
 release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
 The release installs the wheel in a clean environment and runs
-[the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Browser checks
-run in Host Validation; the extracted Direct and installed Python packages are smoke-tested over HTTP.
+[the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Host Validation runs browser
+checks; release workflows smoke-test the extracted Direct and Python packages over HTTP.
 
 .NET uses MinVer to derive ordinary build versions from Git tags. Release publication uses the validated version
 through `MinVerVersionOverride`, including manual preflight builds that have no tag yet. The extracted-host check
 verifies both the package metadata and the dashboard display against that version.
 
 Direct packages stamp a static copy with the validated release version and record its source commit and dirty
-state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages verifies
-the page and build identity against the published tag before deploying the same released files.
+state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages checks the
+page and build identity against the published tag before deployment.
 See [Direct development](host-tools.md#direct-versions-and-local-serving) for checkout version rules.
 
 ## Before the first release
@@ -118,24 +124,22 @@ The release publishes:
 Firmware packages contain only the flashable image, `BUILD-INFO.txt`, `LICENSE` and `licenses/`.
 They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree and runner/dependency YAML files.
 `BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board and storage
-variant. W-board radio hashes are captured with the build rather than read from the later packaging workspace.
-W firmware packages include Infineon HAL and blob license notices;
+variant. W firmware packages include Infineon HAL and blob license notices.
 `BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
 These images provide Wi-Fi only; a release build does not qualify the radio hardware.
 
 Install the wheel with `python -m pip install zephyrforge-VERSION-py3-none-any.whl` and run `zephyrforge web`.
-Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host without
-hardware, verify every deployed dashboard asset and confirm that `/api/boards` answers with a board list.
-HTML templates are checked through their rendered routes (`/` and `/console`), not their blocked raw-file URLs.
+Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host and make
+an HTTP request without hardware.
 Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
 require explicit approval. No signing credentials are configured by these workflows.
 
 Release notes link to the [release-image flashing procedure](../guides/flashing.md#flash-a-release-image),
-the [board/storage wiring guides](../reference/sdcard.md#pin-allocation) and qualification limits
+the [board/storage wiring guides](../README.md#wire-an-sd-card) and qualification limits
 **at the release tag**, not the default branch. These guides are the authoritative instructions; save them
 before working offline. Pico ZIPs contain `zephyr.uf2`; ESP32-S3 ZIPs contain `zephyr.bin`.
-Each firmware ZIP is not a relocatable west build directory; the
-[source-build flash wrapper](../guides/flashing.md#from-a-source-build) remains the west-based path.
+Firmware ZIPs are flashable images, not relocatable west build directories. Use the
+[source-build flash wrapper](../guides/flashing.md#from-a-source-build) for west-based uploads.
 Choose the archive matching the board and wiring. Before changing buses, follow the
 [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
 

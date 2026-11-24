@@ -54,7 +54,6 @@ GPIO48 from the LED input. Check the [board-family pinout](https://github.com/vc
 [reference photo](https://github.com/HiraAbbas/Esp32-s3-Onboard-Leds-Rgb-Blinking/blob/main/rgb_solder_jumper.jpeg),
 but verify the actual board before changing anything. Disconnect both USB cables and all external power first.
 Do not confuse **RGB** with **IN-OUT** or **USB-OTG**, which alter power connections.
-Pin choice and visible output still need checking on each board revision.
 
 ## ESP32-C6-DevKitC-1 N8
 

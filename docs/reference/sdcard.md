@@ -15,17 +15,9 @@ or the [optional benchmark](#optional-storage-benchmark).
 
 ## Pin allocation
 
-GPIO numbers are MCU signals, not physical header positions. Select the wiring guide matching the board
-and storage variant. Read [safety and ownership](#safety-and-ownership) before changing buses.
-
-| Board | Native four-bit SDMMC | SD-over-SPI |
-| --- | --- | --- |
-| ESP32-S3-DevKitC-1 N16R8 | [Wiring](../guides/boards/esp32s3-sdmmc.md) | [Wiring](../guides/boards/esp32s3-sd-spi.md) |
-| ESP32-C6-DevKitC-1 N8 | Not supported | [Wiring](../guides/boards/esp32c6-sd-spi.md) |
-| Pico, Pico W, Pico 2, Pico 2 W | [Wiring](../guides/boards/pico-sdmmc.md) | [Wiring](../guides/boards/pico-sd-spi.md) |
-
-The Pico guides use the family's shared 40-pin header. For connectors and electrical precautions, see
-[hardware setup](../guides/hardware.md#sd-card-wiring).
+GPIO numbers are MCU signals, not physical header positions. Use the wiring guide for the exact board and storage
+variant from [Wire an SD card](../README.md#wire-an-sd-card). Read
+[safety and ownership](#safety-and-ownership) before changing buses.
 
 ### Reported allocation
 
@@ -92,7 +84,7 @@ nonzero sector count and 512-byte sectors; failed geometry validation releases t
 usable storage.
 Hardware metadata is collected before mounting. A failed mount leaves the initialized card's CID, capacity and
 configured bus facts available, with filesystem format unknown. Retries clean up the previous filesystem registration
-and disk references before reinitializing; they do not format, repair or automatically export the card.
+and disk references before reinitializing.
 
 An observed removal, even shorter than the debounce period, invalidates current card facts and revokes USB ownership.
 Absence is confirmed after 100 ms stability; raw absence already rejects USB I/O before the worker handles it.
@@ -140,7 +132,6 @@ Use the UART log for diagnosis, and do not label every uninitialized sample "no 
 
 Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
 no native USB HID, so Direct BLE can read storage status but cannot start the USB-only benchmark or handoff commands.
-Power-cycle the card as described in the wiring instructions.
 
 ## Optional storage benchmark
 
@@ -149,9 +140,9 @@ CMake; the build wrapper enables it for SD-enabled ESP32-S3 and Pico images, not
 [build configuration](../development/firmware-build.md#configuration-and-storage-profiles).
 It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
 
-Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a deterministic
-pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file of that name is
-never overwritten or removed. The volume must already be mounted for firmware; no formatting or repair occurs.
+Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a
+deterministic pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file
+of that name is never overwritten or removed. The volume must already be mounted for firmware.
 Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
 
 ### Admission, progress, and timing
@@ -183,7 +174,6 @@ The benchmark causes real card writes and wear; it provides neither power-loss a
   make writes atomic, or provide power-loss recovery. Back up data and safely eject before returning USB ownership.
 - Power-cycle the card before changing between SDMMC and SPI images. A board reset can leave the card in SPI mode;
   the board has no card power switch.
-- A failed mount returns an error rather than creating a new volume.
 - Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.
 - Downstream filesystem users must participate in ownership serialization, check every return value and close/sync
   files before handoff. Keep blocking storage work out of the management loop and application lock.

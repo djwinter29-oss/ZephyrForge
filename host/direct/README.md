@@ -27,7 +27,8 @@ package installation step.
 
 Local checkout launches serve a temporary versioned snapshot. Restart the server after editing or committing to
 refresh it. Release ZIPs and Pages keep their release version; the version tooltip shows the source commit.
-For version rules and development checks, see [host development](../../docs/development/host-tools.md#direct-dashboard-independence).
+For version rules and development checks, see
+[host development](../../docs/development/host-tools.md#direct-integration).
 
 ### Connect a board
 
@@ -54,8 +55,8 @@ See [wireless setup](../../docs/guides/wireless.md).
 
 Hover or focus Product for Board/MCU details, or Module memory for SRAM/PSRAM reservations and flash capacity.
 Click/tap toggles the details; Escape closes them. Reserved RAM is boot-stable accounting, not live heap usage.
-The storage clock is the value reported by firmware, not a dashboard measurement. The saved SD profile is reserved
-as Standard (profile 0); storage transport is selected when building the image.
+The storage clock is the value reported by firmware. The SD profile field is fixed at Standard; select SDMMC, SPI,
+or no storage when building the image.
 
 ## Controls
 
@@ -98,16 +99,14 @@ confirmation and identifies the board.
 ## Wi-Fi shell
 
 When served by the local ZephyrForge server, fresh connected Wi-Fi status links to the
-[diagnostic shell](../../docs/guides/console.md). Keep the originating dashboard tab open and connected.
-The terminal checks that tab's fresh board identity and address before opening, reading, or sending.
-Replacement, stale status, or a closed dashboard disconnects the terminal.
+[diagnostic shell](../../docs/guides/console.md). Keep the originating dashboard tab open and connected:
+the terminal checks its current board identity and address before each operation and disconnects if they change
+or the status becomes stale.
 
 The relay accepts only private LAN IPv4 targets on port 2323 through same-origin loopback requests. Pages and
-Other static servers show plain Wi-Fi status instead of a shell link. TCP connection failures are reported because
-connected Wi-Fi does not guarantee that the listener is ready.
-
-Keep the originating dashboard tab open while using the terminal. The relay checks the current board and Wi-Fi
-status and disconnects when either changes. The release ZIP includes the relay and needs no Python host installation.
+other static servers show plain Wi-Fi status instead of a shell link. TCP connection failures are reported because
+connected Wi-Fi does not guarantee that the listener is ready. The release ZIP includes the relay and needs no
+Python host installation.
 The [shared HTTP API](../web/README.md#browser-shell) documents the relay contract.
 
 The terminal discards unfinished input from the previous client and requests `shell echo on` once for that

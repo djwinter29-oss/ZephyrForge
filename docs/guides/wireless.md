@@ -13,8 +13,9 @@ Radio switches default to enabled where supported. Wi-Fi needs saved credentials
 BLE needs a saved Control key before it advertises. An enabled switch is not evidence of a working connection.
 
 Pico W reads settings at boot but cannot save them. Wi-Fi credentials entered in the dashboard stay in RAM and are
-discarded on cancellation, expiry, or reset. Before using Pico W-family radio, configure its country code in the
-[firmware build guide](../development/firmware-build.md#raspberry-pi-pico-family).
+discarded on cancellation, expiry, or reset. The release image uses the driver's Australia country default.
+Use a locally built image configured for your regulatory region before enabling Pico W Wi-Fi; see the
+[Pico build instructions](../development/firmware-build.md#raspberry-pi-pico-family).
 
 ## Open radio settings
 

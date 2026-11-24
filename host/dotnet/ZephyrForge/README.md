@@ -36,8 +36,8 @@ If a HID write times out or its result cannot be matched, the dashboard marks th
 further writes rather than replaying or overwriting the result. Persistent errors, invalid reports, and permission
 failures remain errors.
 
-Saved radio switches refresh after a settings save or reconnect. Tested saves commit the staged pair without
-restaging it. See [wireless setup](../../../docs/guides/wireless.md) for provisioning.
+Saved radio switches refresh after a settings save or reconnect. After a successful Wi-Fi test, saving commits the
+tested credentials. See [wireless setup](../../../docs/guides/wireless.md) for provisioning.
 
 Board monitoring starts asynchronously on first access, so the first status response can briefly show that it is
 waiting for HID. The monitor polls every 100 ms.

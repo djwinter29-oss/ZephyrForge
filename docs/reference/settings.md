@@ -1,6 +1,6 @@
 # Boot settings specification
 
-For an application change, read [RAM Copy Lifecycle](#ram-copy-lifecycle) and [Using the API](#using-the-api).
+For an application change, read [RAM copy lifecycle](#ram-copy-lifecycle) and [Using the API](#using-the-api).
 For tooling or image compatibility, use [record format](#record-format) and [flash reservation](#flash-reservation).
 
 ## Scope and conventions
@@ -35,28 +35,16 @@ non-W variants start no radios. W candidate credentials remain RAM-only.
 
 ## Architecture
 
-During firmware operation, all settings pass through the settings service's RAM state. Writers only
-stage values in RAM; one save call commits the complete record to flash. Boot initialization uses the boot
-snapshot. Saving does not reconfigure the running hardware; host save commands schedule a subsequent reboot.
-
-- **One record, one CRC.** Clock profile, switches and credentials are validated as one unit; no partial record
-  is applied. This is not a power-loss-atomic transaction.
-- **Next boot only.** The clock is set and the radios start once at boot, so setters change only RAM and saved
-  values apply after reboot. Feature report `2` reports the saved values, not the ones running now.
-- **One lock.** `zf_boot_config_load()` runs during early boot, before USB and BLE start. Afterwards every read
-  and save MUST be serialized under the application mutex (`zf_lock()`), whether the request
-  arrived over USB HID or BLE. This is not a general thread-safe settings API.
-- **Invalid settings do not stop boot.** Missing, unreadable, or invalid records load complete defaults.
-- **No generic store.** The fixed record is read directly and written as one padded page through the
-  flash API. Zephyr's settings/NVS subsystems are not used. Record validation and flash access are internal
-  responsibilities of the settings service.
+The settings service keeps staged, saved and boot snapshots in RAM. Setters change only staged values; one save
+commits the full CRC-checked record. Saved clock and radio settings take effect at the next boot. Missing,
+unreadable or invalid records load complete defaults. The service reads and writes this fixed record through the
+flash API rather than Zephyr settings or NVS. A save is not power-loss atomic.
 
 ## RAM copy lifecycle
 
 The module holds three copies: **staged** (what setters change), **saved** (the last record loaded or confirmed) and
-**boot** (what was loaded for this boot). The boot snapshot is intended policy, not proof that clock or radio
-initialization succeeded. Boot loads the record before settings consumers start. Later callers MUST hold the
-application lock.
+**boot** (what was loaded for this boot). The boot snapshot is policy, not proof that clock or radio initialization
+succeeded. Boot loads the record before settings consumers start.
 
 ```mermaid
 stateDiagram-v2
@@ -197,13 +185,22 @@ target, the N16R8 partition layout reserves 192 KiB at `0xFB0000`. Only the firs
   Build validation rejects a firmware image that would reach `storage_partition`.
 - The standard flashing procedure avoids a full-chip erase, so normal uploads keep saved settings. A full-chip
   erase, or a different partition table, clears them.
-- To reset settings manually, erase only the settings sector from an initialized workspace:
-  `python -m esptool --chip esp32s3 --port PORT erase_region 0xFB0000 0x1000`. The next boot loads defaults.
-
 A board or partition table without `storage_partition` does not build.
+
+On the ESP32-C6 N8 target, the 8 MB partition table places `storage_partition` at `0x7B0000`; its
+first 4 KiB sector contains settings. Erasing that sector clears the saved clock, radio switches and credentials.
 
 On the Raspberry Pi Pico boards, `storage_partition` starts at `0x100000`, directly after the 1 MiB code partition,
 and fills the rest of the flash. The images never erase or program it; UF2 flashing writes only the image's blocks.
+
+To clear ESP32 settings, erase only the first settings sector from an initialized workspace:
+
+```sh
+python -m esptool --chip esp32s3 --port PORT erase-region 0xFB0000 0x1000
+python -m esptool --chip esp32c6 --port PORT erase-region 0x7B0000 0x1000
+```
+
+This removes all saved settings, including wireless credentials. Do not erase the full chip.
 
 ## System clock
 
@@ -229,10 +226,10 @@ throughput and can increase radio latency; none of them is hardware-qualified on
 
 ## SD-card speed
 
-The SD bus, requested ceiling, and clock negotiation are defined per board image by the
+The SD bus, requested ceiling and clock negotiation are defined per board image by the
 [SD storage reference](sdcard.md#driver-and-filesystem-configuration). The application does not change SD speed at
-runtime. Record byte 9 remains reserved as zero; this transport change does not migrate the 148-byte settings
-record. Board-specific clock changes belong in the overlay and require hardware validation.
+runtime. Record byte 9 remains reserved as zero; board-specific clock changes belong in the overlay and require
+hardware validation.
 
 ## Using the API
 
@@ -264,22 +261,6 @@ The Python, .NET and Direct dashboards provide **Save&Reboot**:
 - **CPU clock** offers Default, 80, 160 and 240 MHz on ESP32-S3, and at most 160 MHz on ESP32-C6.
 
 Busy or USB-owned storage blocks save/reboot; safely eject and [return ownership](sdcard.md#usb-drive-handoff) first.
-
-## Tests
-
-Hardware-free settings tests use an in-memory flash substitute. They cover:
-
-- defaults from erased flash and from read errors;
-- the CRC-32 check value and the documented byte offsets;
-- round trips, including opaque SSIDs and all-zero keys;
-- next-boot snapshots and restart detection;
-- unchanged-save detection and failed-save discard;
-- setter limits, and every malformed field with a valid CRC.
-
-Control tests cover opcode `5`, the commit flag and the radio switches. See the
-[firmware development guide](../development/firmware.md#host-native-unit-tests) for test commands. Flash
-programming, clock changes and saved-network reconnects need hardware and are listed in the
-[qualification gaps](../validation/qualification-gaps.md).
 
 ## Specification history
 

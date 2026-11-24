@@ -1,4 +1,4 @@
-# USB HID, BLE and Wi-Fi Implementation
+# USB HID, BLE and Wi-Fi implementation
 
 Date: 2026-11-07. Scope: the firmware, Python, .NET and Direct implementation of the
 [USB HID](../../reference/usb-hid.md), [Bluetooth](../../reference/bluetooth.md) and
