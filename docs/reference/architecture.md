@@ -36,8 +36,9 @@ USB HID and BLE share ZephyrForge report payloads and Control semantics, defined
 
 The diagram shows the ESP32-S3. The Raspberry Pi Pico images keep the USB HID path, control dispatcher, SD storage
 and UART shell, but have no BLE or TCP shell; W variants also include Wi-Fi. They are flashed as UF2 images through
-the MCU's USB bootloader.
-Their native SD bus runs on a PIO block, as described in the [SD storage reference](sdcard.md).
+the MCU's USB bootloader. The ESP32-C6 has no native USB HID or MSC; Direct uses its authenticated BLE service only
+when a Control key is already provisioned. The repository has no fresh-device key-provisioning path for C6.
+Its SD-enabled image uses SPI2, not native SDMMC. See the [C6 hardware guide](../guides/hardware.md#esp32-c6-devkitc-1-n8).
 
 ## Repository responsibilities
 

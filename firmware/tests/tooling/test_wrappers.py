@@ -44,17 +44,24 @@ case "$*" in
         exit "${MOCK_BLOB_STATUS:-0}" ;;
     "-m west sdk install "*)
         sdk="$HOME/zephyr-sdk-0.17.4"
-        mkdir -p "$sdk/xtensa-espressif_esp32s3_zephyr-elf/bin"
+        toolchain=arm-zephyr-eabi
+        while (($#)); do
+            if [[ "$1" == --toolchains ]]; then toolchain="$2"; shift; fi
+            shift
+        done
+        mkdir -p "$sdk/$toolchain/bin"
         printf '0.17.4\n' > "$sdk/sdk_version"
-        touch "$sdk/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gcc"
-        chmod +x "$sdk/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gcc" ;;
+        touch "$sdk/$toolchain/bin/$toolchain-gcc"
+        chmod +x "$sdk/$toolchain/bin/$toolchain-gcc" ;;
     "-m west build "*)
         [[ "${MOCK_BUILD_STATUS:-0}" == 0 ]] || exit "$MOCK_BUILD_STATUS"
         build="$MOCK_ROOT/build/firmware"
         driver=SDHC_ESP32
+        target=esp32s3_devkitc/esp32s3/procpu
         while (($#)); do
             case "$1" in
                 -d) build="$2"; shift ;;
+                -b) target="$2"; shift ;;
                 -DDTC_OVERLAY_FILE=*sd_spi.overlay) driver=SPI_SDHC ;;
             esac
             shift
@@ -75,8 +82,14 @@ case "$*" in
         else
             printf '\xe9image\n' > "$build/zephyr/zephyr.bin"
         fi
-        printf 'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"\nCONFIG_%s=y\n' "$driver" \
-            > "$build/zephyr/.config" ;;
+        printf 'CONFIG_BOARD_TARGET="%s"\n' "$target" > "$build/zephyr/.config"
+        if [[ "$build" == *-no-storage ]]; then
+            printf '%s\n' '# CONFIG_USBD_MSC_CLASS is not set' \
+                '# CONFIG_DISK_ACCESS is not set' \
+                '# CONFIG_FILE_SYSTEM is not set' >> "$build/zephyr/.config"
+        else
+            printf 'CONFIG_%s=y\n' "$driver" >> "$build/zephyr/.config"
+        fi ;;
     "-m west flash "*)
         exit "${MOCK_FLASH_STATUS:-0}" ;;
     *)
@@ -116,7 +129,8 @@ set -euo pipefail
 printf 'cmake %s\\n' "$*" >> "$MOCK_LOG"
 if [[ "$*" == *"/cmake/pristine.cmake" ]]; then
     case "$1" in
-        "-DBINARY_DIR=$MOCK_ROOT/build/firmware"|"-DBINARY_DIR=$MOCK_ROOT/build/firmware-sd-spi")
+    "-DBINARY_DIR=$MOCK_ROOT/build/firmware"|"-DBINARY_DIR=$MOCK_ROOT/build/firmware-sd-spi"|\
+    "-DBINARY_DIR=$MOCK_ROOT/build/firmware-no-storage")
             rm "${1#-DBINARY_DIR=}/CMakeCache.txt" ;;
         *) printf 'Refusing to clean outside the selected build\\n' >&2; exit 20 ;;
     esac
@@ -149,10 +163,11 @@ fi
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
         self.assertIn("-b esp32s3_devkitc/esp32s3/procpu", commands)
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
-                      "boards/espressif/sdmmc.overlay", commands)
-        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;bluetooth.conf;"
-                      "boards/espressif/esp32s3_devkitc_n16r8.conf", commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3/board.overlay;"
+                      "boards/esp32s3/storage/sdmmc.overlay", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;"
+                      "profiles/tcp-shell.conf;boards/esp32s3/board.conf;profiles/usb.conf;"
+                      "profiles/storage.conf;profiles/usb-msc.conf", commands)
         self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=ON", commands)
 
     def test_dependency_patch_applies_once_accepts_reverse_match_and_rejects_conflict(self):
@@ -267,10 +282,11 @@ esac
         result = self.run_script("build.sh", "--storage", "sd-spi")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-d " + str(self.root / "build/firmware-sd-spi"), self.commands())
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/espressif/esp32s3_devkitc_n16r8.overlay;"
-                      "boards/espressif/sd_spi.overlay", self.commands())
-        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;bluetooth.conf;"
-                      "boards/espressif/esp32s3_devkitc_n16r8.conf", self.commands())
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32s3/board.overlay;"
+                      "boards/esp32s3/storage/sd_spi.overlay", self.commands())
+        self.assertIn("-DCONF_FILE=prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;"
+                      "profiles/tcp-shell.conf;boards/esp32s3/board.conf;profiles/usb.conf;"
+                      "profiles/storage.conf;profiles/usb-msc.conf", self.commands())
         self.log.write_text("")
         result = self.run_script("flash.sh", "--storage", "sd-spi", "--port", "/dev/mock")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -284,22 +300,103 @@ esac
         commands = self.commands()
         self.assertIn("-b rpi_pico2/rp2350a/m33/w", commands)
         self.assertIn("-d " + str(self.root / "build/firmware-pico2_w-sd-spi"), commands)
-        self.assertIn("-DDTC_OVERLAY_FILE=boards/rpi_pico/sd_spi.overlay;boards/rpi_pico/rp2350.overlay;"
-                      "boards/rpi_pico/w.overlay", commands)
-        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;boards/rpi_pico/w.conf", commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/rpi_pico/board.overlay;"
+                      "boards/rpi_pico/soc/rp2350.overlay;boards/rpi_pico/storage/sd_spi.overlay;"
+                      "boards/rpi_pico/wireless/w.overlay", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;profiles/wifi.conf;boards/rpi_pico/wireless/w.conf;"
+                      "profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf", commands)
         self.assertIn("-m west sdk install --version 0.17.4 --toolchains arm-zephyr-eabi", commands)
         self.assertIn("-m west blobs fetch hal_infineon --allow-regex", commands)
         self.assertNotIn("-m west blobs fetch hal_espressif", commands)
         self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_rp2350_sdmmc_build_uses_shared_storage_overlay(self):
+        result = self.run_script("build.sh", "--board", "pico2", "--storage", "sdmmc")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/rpi_pico/board.overlay;"
+                      "boards/rpi_pico/soc/rp2350.overlay;boards/rpi_pico/storage/sdmmc.overlay", commands)
+        self.assertNotIn("rp2350_sdmmc.overlay", commands)
 
     def test_pico_w_uses_the_shared_wifi_configuration_and_radio_firmware(self):
         result = self.run_script("build.sh", "--board", "pico_w")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
         self.assertIn("-b rpi_pico/rp2040/w", commands)
-        self.assertIn("-DCONF_FILE=prj.conf;wifi.conf;boards/rpi_pico/w.conf", commands)
+        self.assertIn("-DCONF_FILE=prj.conf;profiles/wifi.conf;boards/rpi_pico/wireless/w.conf;"
+                      "profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf", commands)
         self.assertIn("-m west blobs fetch hal_infineon --allow-regex", commands)
-        self.assertNotIn("bluetooth.conf", commands)
+        self.assertNotIn("profiles/bluetooth.conf", commands)
+
+    def test_no_storage_build_omits_sd_overlays_and_stack_for_each_family(self):
+        cases = (
+            ("esp32s3", "esp32s3_devkitc/esp32s3/procpu",
+             "boards/esp32s3/board.overlay",
+             "prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;"
+             "boards/esp32s3/board.conf;profiles/usb.conf",
+             "firmware-no-storage"),
+            ("pico2_w", "rpi_pico2/rp2350a/m33/w",
+             "boards/rpi_pico/board.overlay;boards/rpi_pico/soc/rp2350.overlay;"
+             "boards/rpi_pico/wireless/w.overlay",
+             "prj.conf;profiles/wifi.conf;boards/rpi_pico/wireless/w.conf;profiles/usb.conf",
+             "firmware-pico2_w-no-storage"),
+            ("esp32c6", "esp32c6_devkitc/esp32c6/hpcore",
+             "boards/esp32c6/board.overlay",
+             "prj.conf;profiles/wifi.conf;profiles/bluetooth.conf",
+             "firmware-esp32c6-no-storage"),
+        )
+        for board, target, overlays, config, directory in cases:
+            with self.subTest(board=board):
+                self.log.write_text("")
+                result = self.run_script("build.sh", "--board", board, "--storage", "none")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                commands = self.commands()
+                self.assertIn(f"-b {target}", commands)
+                self.assertIn(f"-d {self.root / 'build' / directory}", commands)
+                self.assertIn(f"-DDTC_OVERLAY_FILE={overlays}", commands)
+                self.assertIn(f"-DCONF_FILE={config} ", commands)
+                self.assertIn("-DZF_ENABLE_STORAGE=OFF", commands)
+                self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=OFF", commands)
+                self.assertNotIn("sdmmc.overlay", commands)
+                self.assertNotIn("profiles/storage.conf", commands)
+                self.assertNotIn("sd_spi.overlay", commands)
+
+    def test_esp32c6_defaults_to_no_storage_and_selects_riscv_sdk_and_radio_blobs(self):
+        result = self.run_script("build.sh", "--board", "esp32c6")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-b esp32c6_devkitc/esp32c6/hpcore", commands)
+        self.assertIn("-d " + str(self.root / "build/firmware-esp32c6-no-storage"), commands)
+        self.assertIn("-m west sdk install --version 0.17.4 --toolchains riscv64-zephyr-elf", commands)
+        self.assertIn("-m west blobs fetch hal_espressif", commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32c6/board.overlay", commands)
+        self.assertNotIn("profiles/usb.conf", commands)
+        self.assertNotIn("profiles/storage.conf", commands)
+        self.assertNotIn("profiles/tcp-shell.conf", commands)
+        self.assertNotIn("-m west blobs fetch hal_infineon", commands)
+        self.log.write_text("")
+        result = self.run_script("build.sh", "--board", "esp32c6", "--storage", "sdmmc")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not native SDMMC", result.stderr)
+        self.assertEqual(self.commands(), "")
+
+    def test_esp32c6_spi_build_and_flash_use_their_own_profile(self):
+        result = self.run_script("build.sh", "--board", "esp32c6", "--storage", "sd-spi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-d " + str(self.root / "build/firmware-esp32c6-sd-spi"), commands)
+        self.assertIn("-DDTC_OVERLAY_FILE=boards/esp32c6/board.overlay;"
+                      "boards/esp32c6/storage/sd_spi.overlay", commands)
+        self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=OFF", commands)
+        self.assertNotIn("profiles/usb.conf", commands)
+        self.assertNotIn("profiles/storage.conf;profiles/usb-msc.conf", commands)
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--board", "esp32c6", "--storage", "sd-spi",
+                                 "--port", "/dev/mock", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-d " + str(self.root / "build/firmware-esp32c6-sd-spi"), result.stdout)
+        self.assertIn("--esp-device /dev/mock", result.stdout)
+        self.assertNotIn("-m west flash ", self.commands())
 
     def test_non_w_pico_boards_do_not_enable_wireless_or_fetch_radio_firmware(self):
         for board in ("pico", "pico2"):
@@ -308,8 +405,10 @@ esac
                 result = self.run_script("build.sh", "--board", board)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 commands = self.commands()
-                self.assertIn("-DCONF_FILE=prj.conf -DDTC_OVERLAY_FILE=boards/rpi_pico/", commands)
-                self.assertNotIn("wifi.conf", commands)
+                self.assertIn("-DCONF_FILE=prj.conf;profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf "
+                              "-DDTC_OVERLAY_FILE=boards/rpi_pico/",
+                              commands)
+                self.assertNotIn("profiles/wifi.conf", commands)
                 self.assertNotIn("-m west blobs fetch", commands)
 
     def test_spi_dry_run_builds_only_the_selected_image(self):
@@ -317,6 +416,27 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.root / "build/firmware-sd-spi/zephyr/zephyr.bin").exists())
         self.assertFalse((self.root / "build/firmware").exists())
+        self.assertNotIn("-m west flash ", self.commands())
+
+    def test_no_storage_esp_image_is_flashable_and_profile_checked(self):
+        result = self.run_script("build.sh", "--storage", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.log.write_text("")
+        result = self.run_script("flash.sh", "--storage", "none", "--port", "/dev/mock", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-d " + str(self.root / "build/firmware-no-storage"), result.stdout)
+        self.assertIn("Dry run only (no device access)", result.stdout)
+        self.assertNotIn("-m west flash ", self.commands())
+        self.assertNotIn("-m west build ", self.commands())
+        self.assertFalse((self.root / "build/firmware").exists())
+
+    def test_esp32c6_no_storage_flash_accepts_absent_usb_msc_symbol(self):
+        self.assertEqual(self.run_script("build.sh", "--board", "esp32c6").returncode, 0)
+        config = self.root / "build/firmware-esp32c6-no-storage/zephyr/.config"
+        config.write_text(config.read_text().replace("# CONFIG_USBD_MSC_CLASS is not set\n", ""))
+        result = self.run_script("flash.sh", "--board", "esp32c6", "--port", "/dev/mock", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Dry run only (no device access)", result.stdout)
         self.assertNotIn("-m west flash ", self.commands())
 
     def test_wrong_storage_image_is_rejected_without_flashing(self):

@@ -18,8 +18,8 @@ Raspberry Pi Pico boards both projects support.
 
 The first target is **ESP32-S3-DevKitC-1 N16R8**: **16 MB flash** and **8 MB octal PSRAM**. The **Raspberry Pi
 Pico, Pico W, Pico 2 and Pico 2 W** are also supported with USB management, without LED control or settings save.
-The W variants support temporary [Wi-Fi scans and candidate joins](docs/guides/wireless.md), but not Bluetooth LE.
-Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmware image.
+The **ESP32-C6-DevKitC-1 N8** has software builds for SD-over-SPI or no storage, but no native USB HID interface.
+ESP32-S3 and Pico images offer native **four-bit SDMMC** or a separate **SD-over-SPI** image; C6 has no SDMMC.
 
 **Start here:** [Firmware releases (choose SD transport)](https://github.com/djwinter29-oss/ZephyrForge/releases/latest) ·
 [Direct dashboard (firmware required)](https://djwinter29-oss.github.io/ZephyrForge/) ·
@@ -28,7 +28,7 @@ Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmwa
 
 > **Project status:** software-tested, with functional hardware tests reported on the target N16R8 board.
 > No issues were reported. See the [hardware test report](docs/validation/records/2026-11-14-hardware-tests.md)
-> for coverage and remaining qualification limits. The Raspberry Pi Pico images are software builds only.
+> for coverage and remaining qualification limits. Raspberry Pi Pico and ESP32-C6 images are software builds only.
 
 ## What ZephyrForge provides
 
@@ -41,8 +41,10 @@ Each board offers native **four-bit SDMMC** or a separate **SD-over-SPI** firmwa
 | **Diagnostics** | Native Zephyr shells over UART and raw TCP, separate from dashboard management |
 | **Application foundation** | Board/platform integration, management services, documented wire contracts and portable firmware tests |
 
-Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect;
-BLE management needs a provisioned Control key. Wireless setup, the TCP shell and LED control are ESP32-S3 features.
+Wi-Fi and BLE switches are enabled by default. Wi-Fi needs a saved network to connect; BLE needs a saved Control key.
+On the C6, USB HID cannot provision that key, and this repository does not yet provide a C6 key-provisioning path;
+fresh C6 images therefore do not advertise BLE until settings are provisioned externally. Wireless setup, the TCP shell
+and LED control remain ESP32-S3 features.
 An SD card is **optional for basic management**.
 Storage requires a compatible external 3.3 V SD socket or module and wiring for the selected firmware image.
 
@@ -55,11 +57,15 @@ flowchart LR
     Python["Python dashboard<br/>Flask + hidapi"] --> USB
     Dotnet[".NET dashboard<br/>ASP.NET Core + HidSharp"] --> USB
     USB --> Board["ESP32-S3 + Zephyr<br/>Settings · Telemetry · Wi-Fi · SD storage"]
-    BLE --> Board
     UART["UART connector<br/>Flash + diagnostic shell/logs"] -.-> Board
+    UART -.-> C6["ESP32-C6 + Zephyr<br/>Direct BLE after Control-key provisioning"]
+    BLE --> Board
+    BLE --> C6
 ```
 
-Use the board's **USB** connector for native USB HID (`CAFE:4021`).
+Use the ESP32-S3 board's **USB** connector or a Pico board's micro-USB connector for native USB HID (`CAFE:4021`).
+The ESP32-C6 DevKitC has no native USB HID support; only Direct's Bluetooth LE transport can manage it, and only
+after a Control key is already present in saved settings.
 The separate **UART** connector is for flashing and a diagnostic shell/logs, not dashboard commands.
 Wi-Fi is provisioned by the dashboards and also exposes the [raw TCP diagnostic shell](docs/guides/console.md).
 Raspberry Pi Pico boards use their micro-USB connector for USB HID management and UF2 flashing; their diagnostic UART
@@ -107,6 +113,7 @@ Keep bridge hosts on loopback and use one management client per board at a time.
    ```
 
    Flash only the matching N16R8 module through its UART connector; replace the port with yours.
+   For an ESP32-C6, build with `--board esp32c6` (no storage by default) and flash with the same board option.
    For a Raspberry Pi Pico board, add `--board pico`, `pico_w`, `pico2` or `pico2_w` to the build and copy the UF2
    image in BOOTSEL mode instead of running `flash.sh`.
    See [hardware setup](docs/guides/hardware.md) before connecting an SD card and

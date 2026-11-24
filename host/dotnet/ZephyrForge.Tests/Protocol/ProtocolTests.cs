@@ -131,7 +131,6 @@ public sealed class ProtocolTests
     [InlineData(2, 0)]
     [InlineData(3, 1)]
     [InlineData(18, 0x9e)]
-    [InlineData(18, 0x86)]
     [InlineData(19, 0)]
     public void RejectsIdentityOutsideTheZephyrForgeProfile(int index, byte value)
     {
@@ -161,6 +160,30 @@ public sealed class ProtocolTests
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, native));
         storage[5] = 3;
         Assert.Throws<InvalidDataException>(() => HidProtocol.ParseStorageReport(storage, spi));
+    }
+
+    [Fact]
+    public void Esp32C6IdentityAllowsNoStorageAndCapsClockAt160Mhz()
+    {
+        var identityReport = IdentityReport();
+        identityReport[15] = HidProtocol.McuEsp32C6;
+        identityReport[16] = HidProtocol.BoardEsp32C6DevKitC1;
+        identityReport[18] = HidProtocol.CapabilityReboot | HidProtocol.CapabilitySettings
+            | HidProtocol.CapabilityWireless;
+        var identity = HidProtocol.ParseIdentityReport(identityReport);
+        Assert.Equal("ESP32-C6", identity.Mcu);
+
+        var config = ConfigurationReport();
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 160);
+        config[6] = 16;
+        config[7] = 17;
+        Array.Fill(config, byte.MaxValue, 8, 6);
+        var parsed = HidProtocol.ParseConfigurationReport(config, identity);
+        Assert.Equal(Enumerable.Repeat(byte.MaxValue, 6), parsed.StorageGpios);
+        Assert.Equal((ushort)160, parsed.StoredSystemClockMhz);
+
+        BinaryPrimitives.WriteUInt16LittleEndian(config.AsSpan(2), 240);
+        Assert.Throws<InvalidDataException>(() => HidProtocol.ParseConfigurationReport(config, identity));
     }
 
     [Fact]

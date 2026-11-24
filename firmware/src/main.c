@@ -30,9 +30,11 @@ int main(void)
 	zf_storage_init();
 	zf_wifi_init((radios & ZF_WIRELESS_WIFI) != 0);
 	zf_ble_init((radios & ZF_WIRELESS_BLE) != 0);
+#if CONFIG_USB_DEVICE_STACK_NEXT
 	if (zf_usb_init() != 0) {
 		printk("USB HID unavailable\n");
 	}
+#endif
 
 	while (true) {
 		zf_lock();
@@ -40,7 +42,9 @@ int main(void)
 		zf_unlock();
 		zf_wifi_poll();
 		zf_telemetry_poll();
+#if CONFIG_USB_DEVICE_STACK_NEXT
 		zf_usb_poll();
+#endif
 		k_sleep(K_MSEC(POLL_PERIOD_MS));
 	}
 	return 0;

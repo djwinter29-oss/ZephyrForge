@@ -163,6 +163,21 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_identity_report(raw + bytes(3) + b"\x01")
 
+    def test_esp32c6_identity_accepts_no_storage_and_caps_the_clock(self):
+        identity = parse_identity_report(identity_report(0x86, mcu=4, board=6))
+        self.assertEqual((identity["mcu"], identity["board_model"]), ("ESP32-C6", "ESP32-C6-DevKitC-1"))
+        self.assertIsNone(identity["storage_transport"])
+        config = bytearray(configuration_report(clock=160, flags=0x04))
+        config[5:8] = bytes([0, 16, 17])
+        config[8:14] = bytes([255]) * 6
+        decoded = parse_configuration_report(config, identity)
+        self.assertEqual(decoded["storage_gpios"], (255,) * 6)
+        self.assertIsNone(decoded["storage_transport"])
+        invalid_clock = bytearray(config)
+        invalid_clock[2:4] = struct.pack("<H", 240)
+        with self.assertRaisesRegex(ValueError, "profile"):
+            parse_configuration_report(invalid_clock, identity)
+
     def test_identity_accepts_only_the_zephyrforge_product_and_profile(self):
         for product, name in ((2, "PicoForge"), (1, "PicoUart"), (0x1234, "Unknown product (0x1234)")):
             with self.subTest(product=product):

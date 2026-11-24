@@ -30,6 +30,13 @@ test("ESP32-S3 clock choices are Default, 80, 160 and 240 MHz and keep an unsupp
   assert.deepEqual(deriveClockOptions(null, 0).choices, [[0, "Default"]]);
 });
 
+test("ESP32-C6 clock choices stop at 160 MHz", () => {
+  assert.deepEqual(deriveClockOptions("ESP32-C6", 160).choices.map(([value]) => value), [0, 80, 160]);
+  assert.equal(deriveClockOptions("ESP32-C6", 0).choices[0][1], "Default (160 MHz)");
+  assert.deepEqual(deriveClockOptions("ESP32-C6", 240).choices.at(-1),
+    [240, "240 MHz (saved; unsupported)", true]);
+});
+
 test("Bluetooth keeps clock save and reboot available while radios and credentials stay USB-only", () => {
   const state = { ...snapshot(), link: "ble", settings_supported: true };
   const model = deriveControlsViewModel(state, ui(state), environment);

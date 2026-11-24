@@ -27,7 +27,7 @@ class SupportedHardwareIdentity(TypedDict):
     led_available: bool
     reboot_available: bool
     settings_supported: bool
-    storage_transport: str
+    storage_transport: str | None
     self_test_supported: bool
     wireless_supported: bool
     ram_total_bytes: int

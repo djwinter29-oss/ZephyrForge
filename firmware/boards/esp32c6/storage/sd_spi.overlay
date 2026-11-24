@@ -1,36 +1,35 @@
-#include "sdmmc.overlay"
+/*
+ * ESP32-C6 SD over SPI2: GPIO6 SCK, GPIO7 MOSI, GPIO2 MISO, GPIO10 CS, GPIO3 card detect (active low).
+ */
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/esp32c6-pinctrl.h>
 
 / {
 	aliases {
 		zephyrforge-sd = &zephyrforge_sd_spi;
 	};
-};
-
-&sdhc {
-	status = "disabled";
-};
-
-&sdhc0 {
-	status = "disabled";
-	mmc {
-		status = "disabled";
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 	};
+};
+
+&i2c0 {
+	status = "disabled";
 };
 
 &pinctrl {
 	zephyrforge_sd_spi_default: zephyrforge_sd_spi_default {
 		clock {
-			pinmux = <SPIM3_SCLK_GPIO12>;
+			pinmux = <SPIM2_SCLK_GPIO6>;
 		};
 		data {
-			pinmux = <SPIM3_MOSI_GPIO11>, <SPIM3_MISO_GPIO13>;
+			pinmux = <SPIM2_MOSI_GPIO7>, <SPIM2_MISO_GPIO2>;
 			bias-pull-up;
 		};
 	};
 };
 
-/* Override all default SPI3 pins to avoid the module's internal flash/PSRAM signals. */
-&spi3 {
+&spi2 {
 	status = "okay";
 	pinctrl-0 = <&zephyrforge_sd_spi_default>;
 	pinctrl-names = "default";

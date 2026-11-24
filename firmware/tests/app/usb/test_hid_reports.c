@@ -32,10 +32,12 @@ void test_identity_layout(void)
 						    3, 1, 1, 0x97, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
 	uint8_t out[ZF_IDENTITY_SIZE];
 
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if !ZF_ENABLE_STORAGE
+	expected[17] = 0x87;
+#elif ZF_ENABLE_STORAGE_BENCHMARK
 	expected[17] = 0xB7;
 #endif
-#if ZF_STORAGE_SPI
+#if ZF_ENABLE_STORAGE && ZF_STORAGE_SPI
 	expected[17] = (expected[17] & ~ZF_CAP_SDMMC) | ZF_CAP_SPI;
 #endif
 	zf_report_identity(&identity, out);
@@ -89,6 +91,21 @@ void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
 
 	zf_report_config(&config, out);
 	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out + 7, sizeof(expected));
+}
+
+void test_config_without_storage_marks_card_pins_unassigned(void)
+{
+#if !ZF_ENABLE_STORAGE
+	const zf_config_t config = {
+		.storage_gpios = {255, 255, 255, 255, 255, 255},
+	};
+	uint8_t out[ZF_CONFIG_SIZE];
+	const uint8_t unassigned[] = {255, 255, 255, 255, 255, 255};
+
+	zf_report_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unassigned, out + 7, sizeof(unassigned));
+	TEST_ASSERT_EQUAL_UINT8(255, out[16]);
+#endif
 }
 
 void test_telemetry_layout(void)

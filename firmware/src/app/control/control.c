@@ -61,6 +61,12 @@ static void finish(result_t *result, uint8_t status, uint8_t error, uint8_t deta
 /** True unless the opcode drives LED, settings or radio hardware that Report 1 does not advertise. */
 static bool capable(uint8_t opcode)
 {
+	if (opcode == ZF_OP_MSC) {
+		return (ZF_CAPABILITIES & ZF_CAP_STORAGE) != 0;
+	}
+	if (opcode == ZF_OP_BENCHMARK) {
+		return (ZF_CAPABILITIES & ZF_CAP_BENCHMARK) != 0;
+	}
 	if (opcode == ZF_OP_LED) {
 		return (ZF_CAPABILITIES & ZF_CAP_LED) != 0;
 	}
@@ -148,7 +154,7 @@ static void save(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 		return;
 	}
-	if (profile > ZF_SYSCLK_240MHZ || request->args[2] != 0 ||
+	if ((unsigned)profile > ZF_SYSCLK_MAX_PROFILE || request->args[2] != 0 ||
 	    (radios & (uint8_t)~(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE))) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 		return;

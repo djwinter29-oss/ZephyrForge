@@ -14,21 +14,6 @@
 	};
 };
 
-/* Native USB device on the Pico micro-USB connector. */
-&zephyr_udc0 {
-	zephyrforge_hid: hid_dev_0 {
-		compatible = "zephyr,hid-device";
-		label = "ZephyrForge";
-		protocol-code = "none";
-		in-report-size = <64>;
-		in-polling-period-us = <4000>;
-	};
-};
-
-coretemp: &die_temp {
-	status = "okay";
-};
-
 /* The board's default I2C0 (GP4/GP5) and I2C1 (GP6/GP7) pins carry SD data. */
 &i2c0 {
 	status = "disabled";
@@ -60,8 +45,8 @@ coretemp: &die_temp {
 		compatible = "zephyrforge,rpi-pico-pio-sdhc";
 		pinctrl-0 = <&zephyrforge_sd_default>;
 		pinctrl-names = "default";
-		/* High Speed ceiling: the RP2040's 125 MHz system clock divided by four. */
-		max-bus-freq = <31250000>;
+		/* PIO divider limits the bus to one quarter of the SoC clock. */
+		max-bus-freq = <50000000>;
 		status = "okay";
 		mmc {
 			compatible = "zephyr,sdmmc-disk";

@@ -1,3 +1,7 @@
+/*
+ * ESP32-S3 native four-bit SDMMC: GPIO12 CLK, GPIO11 CMD, GPIO13/14/15/10 DAT0-DAT3,
+ * GPIO8 card detect (active low, MCU pull-up).
+ */
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
 

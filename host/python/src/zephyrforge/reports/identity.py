@@ -63,7 +63,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
     transport = capabilities & (CAP_SPI | CAP_SDMMC)
-    if (transport not in (CAP_SPI, CAP_SDMMC)
+    if (transport not in (0, CAP_SPI, CAP_SDMMC)
             or capabilities & ~(CAP_LED | CAP_SAVE_SETTINGS | CAP_SELF_TEST | CAP_WIRELESS | CAP_SPI | CAP_SDMMC)
             != CAP_REBOOT):
         raise ValueError("HID identity capabilities do not match the ZephyrForge profile")
@@ -90,7 +90,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "led_available": bool(capabilities & CAP_LED),
         "reboot_available": bool(capabilities & CAP_REBOOT),
         "settings_supported": bool(capabilities & CAP_SAVE_SETTINGS),
-        "storage_transport": "spi" if transport == CAP_SPI else "sdmmc",
+        "storage_transport": "spi" if transport == CAP_SPI else "sdmmc" if transport == CAP_SDMMC else None,
         "self_test_supported": bool(capabilities & CAP_SELF_TEST),
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
@@ -129,7 +129,8 @@ def parse_configuration_report(
     flags, reset_cause, led_gpio, card_detect_gpio = payload[13:17]
     if version != REPORT_VERSION:
         raise ValueError(f"unsupported HID board configuration report version {version}")
-    if clock_profile not in CLOCK_PROFILES_MHZ or sd_profile != 0:
+    if (clock_profile not in CLOCK_PROFILES_MHZ or
+            identity["mcu_id"] == 4 and clock_profile > 160 or sd_profile != 0):
         raise ValueError("invalid stored board configuration profile")
     if flags & ~0x7F:
         raise ValueError("unknown board configuration flags")
@@ -155,7 +156,7 @@ def parse_configuration_report(
     if flags & 0x04 and uart_index == 255:
         raise ValueError("enabled monitor UART is unavailable")
     transport = identity["storage_transport"]
-    assigned_count = 4 if transport == "spi" else 6
+    assigned_count = 4 if transport == "spi" else 6 if transport == "sdmmc" else 0
     if (any(gpio == 255 for gpio in storage_gpios[:assigned_count])
             or any(gpio != 255 for gpio in storage_gpios[assigned_count:])):
         raise ValueError("storage GPIO layout disagrees with the selected transport")

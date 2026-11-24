@@ -11,5 +11,9 @@ for storage in sdmmc sd-spi; do
       zip -r "../../packages/zephyrforge-firmware-v$VERSION-$board-$storage.zip" .)
   done
 done
+for storage in sd-spi none; do
+  (cd "build/firmware-packages/zephyrforge-esp32c6-$storage-software-build" &&
+    zip -r "../../packages/zephyrforge-firmware-v$VERSION-esp32c6-devkitc-$storage.zip" .)
+done
 cd build/packages
 sha256sum *.zip *.tar.gz *.whl > SHA256SUMS.txt

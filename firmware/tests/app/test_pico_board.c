@@ -53,7 +53,8 @@ void test_identity_and_config_advertise_pico_without_led_settings_or_radios(void
 	zf_report_identity(&identity, identity_out);
 	TEST_ASSERT_EQUAL_UINT8(1, identity_out[14]);
 	TEST_ASSERT_EQUAL_UINT8(2, identity_out[15]);
-	TEST_ASSERT_EQUAL_HEX8(ZF_ENABLE_STORAGE_BENCHMARK ? 0x32 : 0x12, identity_out[17]);
+	TEST_ASSERT_EQUAL_HEX8(!ZF_ENABLE_STORAGE ? 0x02 :
+			       ZF_ENABLE_STORAGE_BENCHMARK ? 0x32 : 0x12, identity_out[17]);
 	zf_report_config(&config, config_out);
 	TEST_ASSERT_EQUAL_UINT8(0, config_out[5]);
 	TEST_ASSERT_EQUAL_UINT8(1, config_out[6]);

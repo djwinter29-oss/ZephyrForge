@@ -17,6 +17,7 @@ Choose the matching wiring guide before connecting an SD card:
 | Board family | Native four-bit SDMMC | SD-over-SPI |
 | --- | --- | --- |
 | ESP32-S3-DevKitC-1 N16R8 | [SDMMC wiring](boards/esp32s3-sdmmc.md) | [SPI wiring](boards/esp32s3-sd-spi.md) |
+| ESP32-C6-DevKitC-1 N8 | Not supported | [SPI wiring](boards/esp32c6-sd-spi.md) |
 | Pico, Pico W, Pico 2, Pico 2 W | [SDMMC wiring](boards/pico-sdmmc.md) | [SPI wiring](boards/pico-sd-spi.md) |
 
 Release workflows do not flash or qualify hardware. Read the
@@ -57,10 +58,24 @@ For optional console logs at 115200 baud, 8N1, use a 3.3 V USB-UART adapter:
 adapter RX to GP0 TX (header pin 1), adapter TX to GP1 RX (pin 2), GND to GND (pin 3).
 Leave the adapter's supply output disconnected.
 
+### ESP32-C6 release image
+
+Use only the ESP32-C6-DevKitC-1 N8 target named in `BUILD-INFO.txt`. The image is a BIN, not a UF2. Connect the
+board's serial flashing port, close other serial clients and install esptool 5 as shown above. From the extracted
+ZIP directory, replace `PORT` with the actual serial port:
+
+```sh
+python -m esptool --chip esp32c6 --port PORT --baud 460800 write-flash 0x0 zephyr.bin
+```
+
+This writes the image without requesting a full-chip erase. After flashing, use the UART console for logs.
+The C6 has no native USB HID; Direct can manage it over authenticated BLE only if a Control key is already present
+in saved settings. The repository does not yet provide a secure way to provision that key on a fresh C6 board.
+
 ## 1. Prepare a Zephyr workspace
 
-Default build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM. The Raspberry Pi Pico,
-Pico W, Pico 2 and Pico 2 W have their own [images](#raspberry-pi-pico-boards).
+Default build target: ESP32-S3-DevKitC-1 N16R8, PROCPU, 16 MB flash and 8 MB octal PSRAM. The
+[ESP32-C6](../development/firmware-build.md#esp32-c6-family) and Raspberry Pi Pico family have their own images.
 Check the module marking against the [hardware guide](hardware.md) before flashing.
 Linux instructions below use Python 3.12, Zephyr 4.3.2, and Zephyr SDK 0.17.4.
 For automatic setup on Debian/Ubuntu-compatible Linux or Raspberry Pi OS, run from your existing checkout:
@@ -70,10 +85,10 @@ tools/firmware/build.sh
 ```
 
 The script installs missing host packages (requesting `sudo` when needed), creates/reuses a Python venv,
-initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules, plus radio blobs
-for ESP32-S3 builds, and installs the selected board's SDK toolchain before building. First use requires network
+initializes a workspace in the checkout's parent directory if none exists, downloads pinned modules and required
+radio blobs, and installs the selected board's SDK toolchain before building. First use requires network
 access and several GB of disk space.
-See [build environment options](../development/firmware.md#zephyr-target-build) to choose a Python interpreter or venv.
+See [build environment options](../development/firmware-build.md#shared-build-behavior) to choose a Python interpreter or venv.
 For a moved checkout, the wrappers update `manifest.path` only when its directory no longer exists and a local
 firmware build cache identifies that directory as the previous application source. Other manifest checkouts
 are not redirected.
@@ -111,7 +126,8 @@ a second workspace inside an existing Zephyr workspace.
 
 ## 2. Build now; flash later
 
-These steps build and flash the default ESP32-S3 image; the [Pico boards](#raspberry-pi-pico-boards) follow.
+These steps build and flash the default ESP32-S3 image; [ESP32-C6](#esp32-c6-board) and
+[Pico boards](#raspberry-pi-pico-boards) follow.
 Run from the workspace created above; missing build prerequisites are prepared automatically:
 
 ```sh
@@ -120,12 +136,12 @@ bash zephyrforge/tools/firmware/build.sh
 
 Outputs are in `zephyrforge/build/firmware/zephyr/`: `zephyr.elf` and `zephyr.bin`.
 Both radios and native four-bit SDMMC support are enabled in the default build; no card is needed to compile.
-For the alternate SD-over-SPI image, add `--storage sd-spi` to both build and flash commands.
-See [image selection](../development/firmware.md#zephyr-target-build)
-and use its matching [SD wiring](../reference/sdcard.md#pin-allocation).
+For SD-over-SPI, add `--storage sd-spi` to both build and flash commands. To omit SD, FAT and USB mass storage
+entirely, use `--storage none`. See [ESP32-S3 build options](../development/firmware-build.md#esp32-s3-family)
+and use matching [SD wiring](../reference/sdcard.md#pin-allocation) for storage-enabled images.
 The build uses PROCPU only, not a dual-core application.
 
-When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:
+When When hardware arrives, attach the board's **UART** (USB-to-UART bridge) connector and close any serial terminal on it:
 
 ```sh
 # Preview an upload command; the likely USB-UART port is detected automatically
@@ -156,9 +172,30 @@ If automatic reset fails,
 hold BOOT, press/release RESET, release BOOT, and retry. Flash only a matching module configuration;
 flashing replaces its existing firmware. If uploading is unreliable, retry with
 `--baud 115200` after checking the cable and power. The ESP32-S3 firmware is not a UF2 image.
-After flashing, connect the **USB** connector as well and check live status in a dashboard; uploader success alone
-is not proof that application boot or radios work. The UART connector keeps showing the Zephyr console log, for
+After flashing an ESP32-S3, connect the **USB** connector as well and check live status in a dashboard; uploader
+success alone is not proof that application boot or radios work. The UART connector keeps showing the Zephyr console log, for
 example with `python -m serial.tools.miniterm /dev/ttyUSB0 115200`.
+
+### ESP32-C6 board
+
+The C6 image is no-storage by default; build the SD-over-SPI variant only when using the documented wiring:
+
+```sh
+bash zephyrforge/tools/firmware/build.sh --board esp32c6
+bash zephyrforge/tools/firmware/build.sh --board esp32c6 --storage sd-spi
+```
+
+Outputs are in `zephyrforge/build/firmware-esp32c6-no-storage/zephyr/zephyr.bin` and
+`zephyrforge/build/firmware-esp32c6-sd-spi/zephyr/zephyr.bin`. Flash with the C6 target selected:
+
+```sh
+bash zephyrforge/tools/firmware/flash.sh --board esp32c6 --port PORT
+```
+
+The C6 has no native USB HID, so the USB dashboards cannot manage it. Direct BLE management requires a Control key
+already saved in settings; fresh-board key provisioning is not yet supported. See the
+[C6 build options](../development/firmware-build.md#esp32-c6-family) and
+[C6 SD wiring](boards/esp32c6-sd-spi.md).
 
 ### Raspberry Pi Pico boards
 
@@ -169,8 +206,8 @@ bash zephyrforge/tools/firmware/build.sh --board pico2 --storage sd-spi
 ```
 
 This example writes `zephyrforge/build/firmware-pico2-sd-spi/zephyr/zephyr.uf2`; see
-[image selection](../development/firmware.md#zephyr-target-build) for every output directory and the matching
-[Pico SD wiring](../reference/sdcard.md#raspberry-pi-pico-boards). `flash.sh` supports only the ESP32-S3.
+[Pico build options](../development/firmware-build.md#raspberry-pi-pico-family) for every output directory and the matching
+[Pico SD wiring](../reference/sdcard.md#raspberry-pi-pico-boards). `flash.sh` supports the ESP32-S3 and ESP32-C6 only.
 To flash a Pico, hold **BOOTSEL** while connecting its micro-USB cable, then copy `zephyr.uf2` to the drive that
 appears: `RPI-RP2` for the Pico and Pico W, `RP2350` for the Pico 2 and Pico 2 W. The board restarts into
 ZephyrForge, and the same cable then carries USB management. Copying replaces the existing firmware.
@@ -199,9 +236,11 @@ do not run the dashboards as root. Without a board the hosts show an empty board
 
 Connect the board's **USB** connector. In Direct, click **USB** and choose the ZephyrForge HID device; in Python or
 .NET, select the board in the list. Confirm product `ZephyrForge`, the board, firmware version and serial number.
-An SD mount failure is expected without a card and does not prevent dashboard operation.
+An SD mount failure is expected without a card in storage-enabled images and does not prevent dashboard operation.
+The optional `--storage none` build omits SD, filesystem and USB mass-storage support.
 On the ESP32-S3, test and save a 2.4 GHz network, and optionally create a Bluetooth Control key, using
-[wireless setup](wireless.md).
+[wireless setup](wireless.md). ESP32-C6 has no USB HID for provisioning and requires a previously saved Control key
+before its BLE service can be used.
 Run one host per board at a time, so Control commands do not interleave. A command whose outcome is uncertain is
 never retried; confirm the
 re-sync prompt after checking the board.

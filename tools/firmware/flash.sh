@@ -3,11 +3,13 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: bash tools/firmware/flash.sh [--storage sdmmc|sd-spi] [--port PORT] [--baud BAUD] [--dry-run]
+Usage: bash tools/firmware/flash.sh [--board esp32s3|esp32c6] [--storage sdmmc|sd-spi|none]
+                                    [--port PORT] [--baud BAUD] [--dry-run]
 
 Flash ZephyrForge through the USB-to-UART connector; build first if artifacts are missing.
 Missing workspace, Python dependencies and build tools are prepared automatically.
-  --storage     Storage image: sdmmc (default) or sd-spi; power-cycle the card when changing buses
+  --storage     Image profile: sdmmc (default), sd-spi or none
+  --board       ESP32 target (default: esp32s3; ESP32-C6 defaults to no storage)
   --port PORT   Serial port, e.g. /dev/ttyUSB0 or COM4 (auto-detected if omitted)
   --baud BAUD   Positive upload baud rate (default: 460800)
   --dry-run     Validate prerequisites and print the command; do not flash
@@ -28,13 +30,16 @@ fail() {
 port=""
 baud=460800
 dry_run=false
-storage=sdmmc
+board=esp32s3
+storage=""
 while (($#)); do
 	case "$1" in
-		--port|--baud|--storage)
+		--board|--port|--baud|--storage)
 			(($# >= 2)) && [[ -n "$2" && "$2" != -* ]] ||
 				fail "$1 requires a value"
-			if [[ "$1" == --port ]]; then
+			if [[ "$1" == --board ]]; then
+				board="$2"
+			elif [[ "$1" == --port ]]; then
 				port="$2"
 			elif [[ "$1" == --baud ]]; then
 				baud="$2"
@@ -51,12 +56,26 @@ done
 
 [[ "$baud" =~ ^[1-9][0-9]*$ ]] || fail "--baud must be a positive integer"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-build="$root/build/firmware"
-case "$storage" in
-	sdmmc) driver=SDHC_ESP32 ;;
-	sd-spi) build="$root/build/firmware-sd-spi"; driver=SPI_SDHC ;;
-	*) fail "--storage must be sdmmc or sd-spi" ;;
+case "$board" in
+	esp32s3) target=esp32s3_devkitc/esp32s3/procpu; build_name=firmware
+		toolchain=xtensa-espressif_esp32s3_zephyr-elf ;;
+	esp32c6) target=esp32c6_devkitc/esp32c6/hpcore; build_name=firmware-esp32c6
+		toolchain=riscv64-zephyr-elf ;;
+	*) fail "--board must be esp32s3 or esp32c6" ;;
 esac
+if [[ -z "$storage" ]]; then
+	storage=sdmmc
+	[[ "$board" != esp32c6 ]] || storage=none
+fi
+case "$storage" in
+	sdmmc)
+		[[ "$board" == esp32s3 ]] || fail "ESP32-C6 does not support native SDMMC"
+		driver=SDHC_ESP32 ;;
+	sd-spi) build_name+="-sd-spi"; driver=SPI_SDHC ;;
+	none) build_name+="-no-storage"; driver=none ;;
+	*) fail "--storage must be sdmmc, sd-spi or none" ;;
+esac
+build="$root/build/$build_name"
 is_esp_image() {
 	[[ -s "$1" ]] && [[ "$(od -An -tx1 -N1 "$1" | tr -d '[:space:]')" == "e9" ]]
 }
@@ -102,17 +121,25 @@ PY
 fi
 if "$needs_build"; then
 	printf 'Build artifacts are missing or incomplete; building %s firmware before upload.\n' "$storage"
-	bash "$root/tools/firmware/build.sh" --storage "$storage"
+	bash "$root/tools/firmware/build.sh" --board "$board" --storage "$storage"
 fi
 for artifact in zephyr.bin zephyr.elf .config runners.yaml; do
 	[[ -s "$build/zephyr/$artifact" ]] || fail "Build did not produce $build/zephyr/$artifact"
 done
 is_esp_image "$build/zephyr/zephyr.bin" ||
 	fail "Build did not produce a valid ESP image at $build/zephyr/zephyr.bin"
-grep -Fxq 'CONFIG_BOARD_TARGET="esp32s3_devkitc/esp32s3/procpu"' "$build/zephyr/.config" ||
-	fail "Build is not for esp32s3_devkitc/esp32s3/procpu; rebuild for the supported target"
-grep -Fxq "CONFIG_$driver=y" "$build/zephyr/.config" ||
-	fail "Build does not match --storage $storage; rebuild the selected image"
+grep -Fxq "CONFIG_BOARD_TARGET=\"$target\"" "$build/zephyr/.config" ||
+	fail "Build is not for $target; rebuild for the selected target"
+if [[ "$storage" == none ]]; then
+	for feature in USBD_MSC_CLASS DISK_ACCESS FILE_SYSTEM; do
+		if grep -Eq "^CONFIG_${feature}=(y|m)$" "$build/zephyr/.config"; then
+			fail "Build does not match --storage none; rebuild the selected image"
+		fi
+	done
+else
+	grep -Fxq "CONFIG_$driver=y" "$build/zephyr/.config" ||
+		fail "Build does not match --storage $storage; rebuild the selected image"
+fi
 
 command=(python -m west flash -d "$build" --skip-rebuild -r esp32
 	--esp-device "$port" --esp-baud-rate "$baud" --no-erase)
@@ -124,5 +151,6 @@ if "$dry_run"; then
 	exit 0
 fi
 
-printf 'Flashing ESP32-S3 %s image on %s at %s baud; existing firmware will be replaced.\n' "$storage" "$port" "$baud"
+printf 'Flashing %s %s image on %s at %s baud; existing firmware will be replaced.\n' \
+	"$board" "$storage" "$port" "$baud"
 exec "${command[@]}"

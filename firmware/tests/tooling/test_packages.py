@@ -62,16 +62,18 @@ class FirmwarePackageTests(unittest.TestCase):
         self.write(f"{resources}/clm/COMPONENT_43439/COMPONENT_MURATA-1YN/43439A0.clm_blob", "clm")
         boards = {
             "esp32s3": "esp32s3_devkitc/esp32s3/procpu",
+            "esp32c6": "esp32c6_devkitc/esp32c6/hpcore",
             "pico": "rpi_pico/rp2040",
             "pico_w": "rpi_pico/rp2040/w",
             "pico2": "rpi_pico2/rp2350a/m33",
             "pico2_w": "rpi_pico2/rp2350a/m33/w",
         }
         for board, target in boards.items():
-            for storage in ("sdmmc", "sd-spi"):
+            storage_profiles = ("sd-spi", "none") if board == "esp32c6" else ("sdmmc", "sd-spi")
+            for storage in storage_profiles:
                 with self.subTest(board=board, storage=storage):
                     package = self.package(board, target, storage)
-                    image = "zephyr.bin" if board == "esp32s3" else "zephyr.uf2"
+                    image = "zephyr.bin" if board in ("esp32s3", "esp32c6") else "zephyr.uf2"
                     self.assertEqual({path.name for path in package.iterdir()},
                                      {image, "BUILD-INFO.txt", "LICENSE", "licenses"})
                     self.assertEqual((package / image).read_text(), "fixture")
@@ -108,10 +110,10 @@ class ReleaseArchiveTests(unittest.TestCase):
             packages = root / "build/packages"
             packages.mkdir(parents=True)
             expected = {}
-            for board in ("esp32s3", "pico", "pico_w", "pico2", "pico2_w"):
-                for storage in ("sdmmc", "sd-spi"):
+            for board in ("esp32s3", "esp32c6", "pico", "pico_w", "pico2", "pico2_w"):
+                for storage in (("sd-spi", "none") if board == "esp32c6" else ("sdmmc", "sd-spi")):
                     artifact = root / f"build/firmware-packages/zephyrforge-{board}-{storage}-software-build"
-                    image = "zephyr.bin" if board == "esp32s3" else "zephyr.uf2"
+                    image = "zephyr.bin" if board in ("esp32s3", "esp32c6") else "zephyr.uf2"
                     contents = {
                         image: f"{board}-{storage}".encode(),
                         "BUILD-INFO.txt": b"build identity",
@@ -122,7 +124,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                         path = artifact / name
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_bytes(content)
-                    target = "esp32s3-devkitc" if board == "esp32s3" else board
+                    target = f"{board}-devkitc" if board.startswith("esp32") else board
                     expected[f"zephyrforge-firmware-v1.2.3-{target}-{storage}.zip"] = contents
             for name in ("zephyrforge-direct-v1.2.3.zip", "zephyrforge-host-v1.2.3-win-x64.zip",
                          "zephyrforge-host-v1.2.3-linux-x64.tar.gz", "zephyrforge-1.2.3-py3-none-any.whl"):

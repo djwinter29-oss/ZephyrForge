@@ -17,14 +17,16 @@ const element = id => queryElement(`#${id}`);
 
 /**
  * @brief Clock choices for an MCU; a saved unsupported clock stays visible but disabled.
- * @param {string | null | undefined} mcu Reported MCU name; only ESP32-S3 offers the selectable clocks.
+ * @param {string | null | undefined} mcu Reported MCU name; Espressif targets offer selectable clocks.
  * @param {number | null | undefined} savedClock Saved next-boot clock in MHz.
  * @return {{signature: string, choices: Array<[number, string, boolean?]>}} `signature` changes with the choices.
  */
 export function deriveClockOptions(mcu, savedClock) {
   /** @type {Array<[number, string, boolean?]>} */
-  const choices = mcu === "ESP32-S3"
-    ? CLOCKS_MHZ.map(mhz => [mhz, mhz ? `${mhz} MHz` : "Default (240 MHz)"]) : [[0, "Default"]];
+  const maxClock = mcu === "ESP32-C6" ? 160 : mcu === "ESP32-S3" ? 240 : 0;
+  const choices = maxClock
+    ? CLOCKS_MHZ.filter(mhz => mhz <= maxClock)
+      .map(mhz => [mhz, mhz ? `${mhz} MHz` : `Default (${maxClock} MHz)`]) : [[0, "Default"]];
   const unsupported = Number.isInteger(savedClock) && savedClock !== 0
     && !choices.some(([value]) => value === savedClock) ? savedClock : null;
   if (unsupported !== null) choices.push([unsupported, `${unsupported} MHz (saved; unsupported)`, true]);

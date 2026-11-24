@@ -3,7 +3,7 @@
 ## GitHub workflows
 
 The automation follows PicoForge's validation, release and publication split, adapted to the
-Zephyr ESP32-S3 and Raspberry Pi Pico firmware and its USB HID/BLE hosts.
+Zephyr ESP32-S3, ESP32-C6 and Raspberry Pi Pico firmware and its USB HID/BLE hosts.
 
 | Workflow | Trigger | Responsibility |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ The workflows retain triggers, permissions, tool installation, build commands, a
 | [check-wheel.sh](../../tools/release/check-wheel.sh) | `VERSION`; wheel in `dist/`. Installs into `build/wheel-check` and runs the installed-wheel check. |
 | [package-direct.py](../../tools/release/package-direct.py) | `VERSION`, `SOURCE_SHA`; Git checkout. Builds and checks the extracted Direct ZIP. |
 | [package-dotnet.py](../../tools/release/package-dotnet.py) | `VERSION`, `RID`; self-contained publish in `build/host-release` and restored packages in `build/nuget`. |
-| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build. `BOARD` selects `esp32s3` (default), `pico`, `pico_w`, `pico2` or `pico2_w`. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
+| [package-firmware.sh](../../tools/release/package-firmware.sh) | `STORAGE`, `FIRMWARE_BUILD`; completed firmware build. `BOARD` selects `esp32s3` (default), `esp32c6`, `pico`, `pico_w`, `pico2` or `pico2_w`. `ZEPHYRFORGE_VERSION` optionally overrides the source version. |
 | [archive.sh](../../tools/release/archive.sh) | `VERSION`; downloaded firmware artifacts in `build/firmware-packages` and host packages in `build/packages`. |
 | [download-direct.sh](../../tools/release/download-direct.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`, `GH_REPO`; fetches and verifies the released site for Pages. |
 | [download-wheel.sh](../../tools/release/download-wheel.sh) | `RELEASE_TAG`, `SOURCE_SHA`, `GH_TOKEN`; fetches and verifies the released wheel for PyPI. |
@@ -102,6 +102,8 @@ The release publishes:
 | --- | --- |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot BIN image, build identity and project/dependency licenses |
 | `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
+| `zephyrforge-firmware-vVERSION-esp32c6-devkitc-sd-spi.zip` | ESP32-C6 BIN image with SD-over-SPI and no USB HID/MSC |
+| `zephyrforge-firmware-vVERSION-esp32c6-devkitc-none.zip` | ESP32-C6 BIN image without SD or filesystem support |
 | `zephyrforge-firmware-vVERSION-BOARD-sdmmc.zip` | Raspberry Pi Pico native four-bit SDMMC UF2 image for `BOARD` `pico`, `pico_w`, `pico2` or `pico2_w`, with the same package contents |
 | `zephyrforge-firmware-vVERSION-BOARD-sd-spi.zip` | Raspberry Pi Pico SD-over-SPI UF2 image for the same four boards |
 | `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |

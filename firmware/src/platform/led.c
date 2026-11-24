@@ -6,12 +6,14 @@
 
 #include <errno.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(zephyrforge_led, LOG_LEVEL_INF);
 
+#if DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led))
 static const struct device *const strip = DEVICE_DT_GET(DT_NODELABEL(zephyrforge_led));
 K_MUTEX_DEFINE(led_lock);
 static uint8_t current_colour;
@@ -104,3 +106,20 @@ void zf_platform_led_status(uint8_t *colour, bool *ready)
 	*ready = available;
 	k_mutex_unlock(&led_lock);
 }
+#else
+void zf_platform_led_init(void)
+{
+}
+
+int zf_platform_led_request(uint8_t colour)
+{
+	ARG_UNUSED(colour);
+	return -ENOTSUP;
+}
+
+void zf_platform_led_status(uint8_t *colour, bool *ready)
+{
+	*colour = 0;
+	*ready = false;
+}
+#endif

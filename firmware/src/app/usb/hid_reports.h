@@ -47,12 +47,14 @@
 #define ZF_MCU_RP2040 1u /**< Raspberry Pi RP2040. */
 #define ZF_MCU_RP2350 2u /**< Raspberry Pi RP2350. */
 #define ZF_MCU_ESP32S3 3u /**< Espressif ESP32-S3. */
+#define ZF_MCU_ESP32C6 4u /**< Espressif ESP32-C6. */
 /** Report 1 board model enum values. */
 #define ZF_BOARD_DEVKITC 1u /**< Espressif ESP32-S3-DevKitC-1 N16R8. */
 #define ZF_BOARD_PICO 2u /**< Raspberry Pi Pico (RP2040). */
 #define ZF_BOARD_PICO_W 3u /**< Raspberry Pi Pico W (RP2040). */
 #define ZF_BOARD_PICO2 4u /**< Raspberry Pi Pico 2 (RP2350). */
 #define ZF_BOARD_PICO2_W 5u /**< Raspberry Pi Pico 2 W (RP2350). */
+#define ZF_BOARD_ESP32C6_DEVKITC 6u /**< Espressif ESP32-C6-DevKitC-1 N8. */
 /** Report 1 MCU and board model of the build target; board builds override the DevKitC defaults. */
 #ifndef ZF_MCU
 #define ZF_MCU ZF_MCU_ESP32S3
@@ -69,12 +71,16 @@
 #define ZF_CAP_SPI 0x08u
 /** Native SDMMC card transport. */
 #define ZF_CAP_SDMMC 0x10u
+/** Whether the image includes removable-card storage services. */
+#ifndef ZF_ENABLE_STORAGE
+#define ZF_ENABLE_STORAGE 1
+#endif
 /** Build-selected storage transport; portable tests default to native SDMMC. */
 #ifndef ZF_STORAGE_SPI
 #define ZF_STORAGE_SPI 0
 #endif
-/** Exactly one storage capability is advertised by each firmware image. */
-#define ZF_CAP_STORAGE (ZF_STORAGE_SPI ? ZF_CAP_SPI : ZF_CAP_SDMMC)
+/** Storage transport capability, or zero when removable-card support is omitted. */
+#define ZF_CAP_STORAGE (ZF_ENABLE_STORAGE ? (ZF_STORAGE_SPI ? ZF_CAP_SPI : ZF_CAP_SDMMC) : 0u)
 /** Optional temporary-file benchmark capability. */
 #define ZF_CAP_BENCHMARK 0x20u
 /** Wireless management (staging, tests, scans, BLE) is supported. */
@@ -87,9 +93,11 @@
 #ifndef ZF_BOARD_CAPS
 #define ZF_BOARD_CAPS (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
 #endif
+#define ZF_BOARD_CAPS_ESP32S3 (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
+#define ZF_BOARD_CAPS_ESP32C6 (ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
 /** Union of advertised capability bits; board builds override the DevKitC defaults. */
 #define ZF_CAPABILITIES (ZF_BOARD_CAPS | ZF_CAP_REBOOT | ZF_CAP_STORAGE | \
-			 (ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
+			 (ZF_ENABLE_STORAGE && ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
 
 /** Board unique-identity length in bytes. */
 #define ZF_UID_SIZE 8u

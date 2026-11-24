@@ -1,21 +1,25 @@
-/* Raspberry Pi Pico family, SD over SPI0: GP2 SCK, GP3 MOSI, GP4 MISO, GP7 GPIO-controlled CS, GP8 card detect. */
-#include "sdmmc.overlay"
+/*
+ * Raspberry Pi Pico family, SD over SPI0: GP2 SCK, GP3 MOSI, GP4 MISO, GP7 GPIO-controlled CS,
+ * GP8 card detect (active high, biased by the breakout, no MCU pull).
+ */
+#include <zephyr/dt-bindings/gpio/gpio.h>
 
 / {
 	aliases {
 		zephyrforge-sd = &zephyrforge_sd_spi;
 	};
-};
-
-&pio1 {
-	status = "disabled";
-};
-
-&zephyrforge_sd {
-	status = "disabled";
-	mmc {
-		status = "disabled";
+	zephyr,user {
+		sd-detect-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
 	};
+};
+
+/* The board's default I2C0 (GP4/GP5) and I2C1 (GP6/GP7) pins carry SD signals. */
+&i2c0 {
+	status = "disabled";
+};
+
+&i2c1 {
+	status = "disabled";
 };
 
 &pinctrl {

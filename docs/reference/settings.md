@@ -21,14 +21,14 @@ API names describe the current implementation; internal source layout is not par
 
 | Setting | Values | Default | Applied when |
 | --- | --- | --- | --- |
-| CPU clock (`zf_sysclk_profile_t`) | Default (devicetree build clock, 240 MHz), 80, 160 or 240 MHz | Default | Early boot, before storage and radios |
+| CPU clock (`zf_sysclk_profile_t`) | Default (S3 240 MHz, C6 160 MHz), 80, 160 or 240 MHz on S3; at most 160 MHz on C6 | Default | Early boot, before storage and radios |
 | Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | Radio initialization at boot |
 | Wi-Fi SSID, passphrase and auth state | See [record format](#record-format) | None | Saved-network connect at boot |
 | Control key | 32 raw bytes, see [record format](#record-format) | None | [BLE control](bluetooth.md) authentication; BLE does not start without a key |
 
 Wi-Fi and BLE stay **enabled by default**: an erased, missing or invalid record enables both radios.
 
-The selectable clock values apply to the ESP32-S3. The Raspberry Pi Pico images load the record at boot but
+The selectable clock values apply to ESP32-S3 and ESP32-C6; C6 rejects profiles above 160 MHz. The Raspberry Pi Pico images load the record at boot but
 cannot save it: Report `1` advertises no settings save, so opcode `5` returns Unsupported (error `4`). Those images
 keep the devicetree build clock. W variants apply the saved Wi-Fi switch and credentials, masking out BLE;
 non-W variants start no radios. W candidate credentials remain RAM-only.
@@ -263,7 +263,7 @@ USB start. It never writes flash.
 ```mermaid
 flowchart TD
     A["Saved CPU clock in MHz"] --> B{"0 (Default) or equal to the build clock?"}
-    B -->|Yes| Keep["Keep the build clock (240 MHz)"]
+    B -->|Yes| Keep["Keep the build clock (S3 240 MHz, C6 160 MHz)"]
     B -->|No| Cfg["Configure CPU clock through the platform clock driver"]
     Cfg --> Result{"Clock apply succeeded?"}
     Result -->|Yes| Run["Continue boot - initialize storage and radios"]
@@ -283,8 +283,8 @@ flowchart TD
 `cpu0 clock-frequency` in devicetree describes the **build** clock, not the runtime speed. Select another clock
 through the saved profile, not a devicetree override.
 
-**Clock safety.** All three profiles are within the ESP32-S3 specification. Lower clocks reduce throughput and can
-increase radio latency; none of them is hardware-qualified yet.
+**Clock safety.** The supported profiles are within the ESP32-S3 and ESP32-C6 frequency limits. Lower clocks reduce
+throughput and can increase radio latency; none of them is hardware-qualified on C6.
 
 ## SD-Card Speed
 
@@ -311,7 +311,8 @@ than convert it back into a default setting.
 ## Host Dashboard Settings
 
 HID Feature report `2` reads the saved settings. Feature report `20`, opcode `5`, saves them and reboots. The
-settings arguments contain a two-byte little-endian clock in MHz (`0`, `80`, `160`, `240`),
+settings arguments contain a two-byte little-endian clock in MHz (`0`, `80`, `160`, `240` on S3; C6 accepts at most
+`160`),
 a one-byte SD-card profile that MUST be `0`, and a one-byte service mask (bit 0 Wi-Fi, bit 1 BLE; other bits zero).
 The Python, .NET and Direct dashboards provide **Save&Reboot**, without TCP CLI or SD-speed selectors:
 
@@ -319,7 +320,7 @@ The Python, .NET and Direct dashboards provide **Save&Reboot**, without TCP CLI 
   saves do not reboot. Reconnection refreshes Feature `2`.
 - **Wi-Fi** and **Bluetooth** are next-boot controls, enabled by default. Over BLE, opcode `5` must keep the current
   saved radio mask. USB may change it.
-- **CPU clock** offers Default, 80, 160 and 240 MHz.
+- **CPU clock** offers Default, 80, 160 and 240 MHz on ESP32-S3, and at most 160 MHz on ESP32-C6.
 
 ### Forced Save and Reboot
 

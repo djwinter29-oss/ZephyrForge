@@ -1,0 +1,8 @@
+/* 4 MB flash: 1 MB code and 3 MB settings storage; settings use the first storage sector. */
+#include <raspberrypi/partitions_4M_storage.dtsi>
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+	};
+};

@@ -2,7 +2,9 @@
 #include <hardware/flash.h>
 #else
 #include <esp_flash.h>
+#if CONFIG_ESP_SPIRAM
 #include <esp_psram.h>
+#endif
 #endif
 
 #include "app/zephyrforge.h"
@@ -34,11 +36,15 @@
 #define UID_SOURCE_SIZE 6u
 #define PIN_FROM_MUX(mux) ((mux) & ESP32_PIN_NUM_MASK)
 
+#if CONFIG_ESP_SPIRAM
 extern char _ext_ram_start[];
 extern char _ext_ram_end[];
 #endif
+#endif
+#if ZF_ENABLE_STORAGE
 #define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(zephyrforge_sd), pinctrl_0, 0)
 #define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(zephyrforge_sd)), pinctrl_0, 0)
+#endif
 #define GPIO_FROM_MUX(node, index) PIN_FROM_MUX(DT_PROP_BY_IDX(node, pinmux, index))
 
 /* Report 2 monitor UART: the chosen console's controller index and TX/RX pins, read from the same
@@ -93,6 +99,7 @@ static void read_memory_inventory(void)
 #else
 static void read_memory_inventory(void)
 {
+#if CONFIG_ESP_SPIRAM
 	memory_inventory.psram_available = esp_psram_is_initialized();
 	if (memory_inventory.psram_available) {
 		memory_inventory.psram_total_bytes = esp_psram_get_size();
@@ -100,6 +107,7 @@ static void read_memory_inventory(void)
 	} else {
 		LOG_ERR("PSRAM inventory unavailable: external RAM is not initialized");
 	}
+#endif
 	int err = esp_flash_get_physical_size(esp_flash_default_chip, &memory_inventory.flash_total_bytes);
 
 	memory_inventory.flash_available = err == ESP_OK;
@@ -173,13 +181,18 @@ void zf_config_report(uint8_t out[ZF_CONFIG_SIZE])
 		.monitor_uart_index = CONSOLE_UART_INDEX,
 		.monitor_uart_tx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group1), 0),
 		.monitor_uart_rx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group2), 0),
+		.storage_gpios = {ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED,
+				  ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED},
+#if ZF_ENABLE_STORAGE
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
 		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),
+#endif
 #if DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led_default))
 		.led_available = true,
 		.led_gpio = GPIO_FROM_MUX(DT_CHILD(DT_NODELABEL(zephyrforge_led_default), mosi), 0),
 #endif
+#if ZF_ENABLE_STORAGE
 #if ZF_STORAGE_SPI
 		.storage_gpios = {
 			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, clock), 0),
@@ -197,6 +210,7 @@ void zf_config_report(uint8_t out[ZF_CONFIG_SIZE])
 			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 3),
 			GPIO_FROM_MUX(DT_CHILD(SD_PINCTRL, command_data), 4),
 		},
+#endif
 #endif
 	};
 

@@ -186,11 +186,13 @@ internal static partial class HidProtocol
     public const byte McuRp2040 = 1;
     public const byte McuRp2350 = 2;
     public const byte McuEsp32S3 = 3;
+    public const byte McuEsp32C6 = 4;
     public const byte BoardEsp32S3DevKitC1 = 1;
     public const byte BoardPico = 2;
     public const byte BoardPicoW = 3;
     public const byte BoardPico2 = 4;
     public const byte BoardPico2W = 5;
+    public const byte BoardEsp32C6DevKitC1 = 6;
     public const uint Usage = 0xFF000001;
     public const byte IdentityReportId = 1;
     public const byte MemoryReportId = 13;
@@ -273,7 +275,8 @@ internal static partial class HidProtocol
         var spi = (capabilities & CapabilitySpi) != 0;
         const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc |
             CapabilitySpi | CapabilitySelfTest | CapabilityWireless;
-        Require(sdmmc != spi && (capabilities & ~supported) == 0, "invalid HID capability flags");
+        Require(!(sdmmc && spi) && (capabilities & CapabilityReboot) != 0
+            && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];
         var boardModel = payload[15];
         byte? boardMcu = boardModel switch
@@ -281,6 +284,7 @@ internal static partial class HidProtocol
             BoardEsp32S3DevKitC1 => McuEsp32S3,
             BoardPico or BoardPicoW => McuRp2040,
             BoardPico2 or BoardPico2W => McuRp2350,
+            BoardEsp32C6DevKitC1 => McuEsp32C6,
             _ => null,
         };
         Require(boardMcu is null || mcuId == boardMcu, "board model and MCU do not match");
@@ -293,6 +297,7 @@ internal static partial class HidProtocol
             McuRp2040 => "RP2040",
             McuRp2350 => "RP2350",
             McuEsp32S3 => "ESP32-S3",
+            McuEsp32C6 => "ESP32-C6",
             _ => $"Unknown MCU ({mcuId})",
         };
         return new("ZephyrForge", mcu, mcuId, uid,
@@ -333,6 +338,7 @@ internal static partial class HidProtocol
         var detectGpio = payload[16];
         const int wirelessFlags = BoardFlagWifi | BoardFlagBle;
         Require(IsValidClock(clock), "unsupported persisted system-clock profile");
+        Require(identity.McuId != McuEsp32C6 || clock <= 160, "clock exceeds the ESP32-C6 limit");
         Require(sdProfile == 0, "unsupported persisted SD-card profile");
         Require((flags & ~(BoardFlagLed | BoardFlagMonitorUart | BoardFlagCardDetect | BoardFlagMsc | wirelessFlags)) == 0,
             "unknown board-configuration flags");
@@ -352,11 +358,13 @@ internal static partial class HidProtocol
             (McuRp2040, _) or (_, BoardPico2 or BoardPico2W) => 30,
             (McuRp2350, _) => 48,
             (McuEsp32S3, _) => 49,
+            (McuEsp32C6, _) => 31,
             _ => 256,
         };
         foreach (var pin in gpios.Concat([tx, rx, ledGpio, detectGpio]))
             Require(pin == byte.MaxValue || pin < gpioLimit, "GPIO is invalid for the reported MCU");
-        var assignedCount = (identity.Capabilities & CapabilitySpi) != 0 ? 4 : 6;
+        var assignedCount = (identity.Capabilities & CapabilitySpi) != 0 ? 4
+            : (identity.Capabilities & CapabilitySdmmc) != 0 ? 6 : 0;
         Require(gpios.Take(assignedCount).All(pin => pin != byte.MaxValue)
             && gpios.Skip(assignedCount).All(pin => pin == byte.MaxValue),
             "storage GPIO layout disagrees with selected transport");

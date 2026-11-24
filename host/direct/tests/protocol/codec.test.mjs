@@ -67,11 +67,11 @@ test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3
     assert.throws(() => decodeIdentityReport(bytes));
   }
   for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
-    [17, 0x86], [14, 1]]) {
+    [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
-  assert.equal(decodeIdentityReport(identity(16 | 128)).capabilities, 0x90, "capabilities may be a subset");
+  assert.equal(decodeIdentityReport(identity(2 | 128)).capabilities, 0x82, "capabilities may be a subset");
   assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ZephyrForge", "identity reserved byte is ignored");
@@ -106,6 +106,20 @@ test("Pico identities require their board MCU and limit GPIOs to the package", (
   assert.equal(decodeConfigReport(pins, unspecified).storage_gpios[0], 47);
   pins[7] = 48;
   assert.throws(() => decodeConfigReport(pins, unspecified));
+});
+
+test("ESP32-C6 identity allows no storage, uses its GPIO range and rejects 240 MHz", () => {
+  const report = identity(0x86); report[14] = 4; report[15] = 6;
+  const id = decodeIdentityReport(report);
+  assert.deepEqual([id.mcu, id.board_name, id.transport], ["ESP32-C6", "ESP32-C6-DevKitC-1", null]);
+  const pins = config(); pins[1] = 160;
+  pins.set([16, 17], 5); pins.fill(255, 7, 13);
+  const decoded = decodeConfigReport(pins, id);
+  assert.deepEqual(decoded.storage_gpios, [255, 255, 255, 255, 255, 255]);
+  pins[1] = 240;
+  assert.throws(() => decodeConfigReport(pins, id));
+  pins[1] = 160; pins[5] = 31;
+  assert.throws(() => decodeConfigReport(pins, id));
 });
 
 test("SPI identity selects four pins and matching storage samples", () => {

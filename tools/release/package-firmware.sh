@@ -4,8 +4,8 @@
 set -euo pipefail
 
 case "$STORAGE" in
-  sdmmc|sd-spi) ;;
-  *) printf 'Error: STORAGE must be sdmmc or sd-spi.\n' >&2; exit 1 ;;
+  sdmmc|sd-spi|none) ;;
+  *) printf 'Error: STORAGE must be sdmmc, sd-spi or none.\n' >&2; exit 1 ;;
 esac
 board="${BOARD:-esp32s3}"
 case "$board" in
@@ -26,13 +26,25 @@ case "$board" in
     done
     image=zephyr.bin
     components=(zephyr modules/hal/espressif modules/crypto/mbedtls) ;;
+  esp32c6)
+    if [[ "$STORAGE" == sdmmc ]]; then
+      printf 'Error: ESP32-C6 supports SD over SPI or no storage, not native SDMMC.\n' >&2
+      exit 1
+    fi
+    target=esp32c6_devkitc/esp32c6/hpcore
+    if ! grep -Fxq "CONFIG_BOARD_TARGET=\"$target\"" "$FIRMWARE_BUILD/zephyr/.config"; then
+      printf 'Error: ESP32-C6 packaging requires board target %s.\n' "$target" >&2
+      exit 1
+    fi
+    image=zephyr.bin
+    components=(zephyr modules/hal/espressif modules/crypto/mbedtls) ;;
   pico) target=rpi_pico/rp2040 ;;
   pico_w) target=rpi_pico/rp2040/w ;;
   pico2) target=rpi_pico2/rp2350a/m33 ;;
   pico2_w) target=rpi_pico2/rp2350a/m33/w ;;
-  *) printf 'Error: BOARD must be esp32s3, pico, pico_w, pico2 or pico2_w.\n' >&2; exit 1 ;;
+  *) printf 'Error: BOARD must be esp32s3, esp32c6, pico, pico_w, pico2 or pico2_w.\n' >&2; exit 1 ;;
 esac
-if [[ "$board" != esp32s3 ]]; then
+if [[ "$board" == pico* ]]; then
   if ! grep -Fxq "CONFIG_BOARD_TARGET=\"$target\"" "$FIRMWARE_BUILD/zephyr/.config"; then
     printf 'Error: %s packaging requires board target %s.\n' "$board" "$target" >&2
     exit 1
@@ -65,6 +77,10 @@ source_version=$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' zephyrfor
   printf 'Storage image: %s\n' "$STORAGE"
   if [[ "$board" == esp32s3 ]]; then
     printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
+  elif [[ "$board" == esp32c6 ]]; then
+    printf 'Board: esp32c6_devkitc/esp32c6/hpcore\nModule: ESP32-C6-WROOM-1U-N8\nZephyr SDK: 0.17.4\n'
+    printf 'Management: authenticated BLE; USB Serial/JTAG is console/flashing only.\n'
+    printf 'Provisioning: BLE requires a Control key already present in saved settings.\n'
   else
     printf 'Board: %s\nZephyr SDK: 0.17.4\n' "$target"
     if [[ "$board" == pico_w || "$board" == pico2_w ]]; then

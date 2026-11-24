@@ -130,6 +130,16 @@ void test_unassigned_and_unsupported_opcodes(void)
 	assert_result(usb(ZF_OP_TCP_PROOF, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
+#if !ZF_ENABLE_STORAGE
+void test_msc_is_unsupported_when_storage_is_not_built(void)
+{
+	const uint8_t enable[1] = {1};
+
+	assert_result(usb(ZF_OP_MSC, 0, enable, sizeof(enable), 0),
+		      ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
+}
+#endif
+
 void test_led_admission_and_invalid_arguments(void)
 {
 	const uint8_t blue = 4;
@@ -171,6 +181,7 @@ void test_benchmark_admission_size_and_transport_rules(void)
 	assert_result(ble(ZF_OP_BENCHMARK, 0, NULL, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
+#if ZF_ENABLE_STORAGE
 void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)
 {
 	const uint8_t enable[1] = {1};
@@ -189,6 +200,7 @@ void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(
 	assert_result(usb(ZF_OP_MSC, 0, enable, 1, 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	assert_result(ble(ZF_OP_MSC, 0, enable, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
+#endif
 
 void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
 {

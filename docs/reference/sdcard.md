@@ -1,12 +1,17 @@
 # SD Storage Reference
 
-Each supported board has two firmware images: **native four-bit SDMMC** (the default) and **SD-over-SPI**.
-The ESP32-S3-DevKitC-1 N16R8 uses SDMMC slot 0 or SPI3. The Raspberry Pi Pico boards have no SD controller, so their
-native image runs the bus on a PIO block; their SPI image uses SPI0.
+ESP32-S3 and Raspberry Pi Pico boards have **native four-bit SDMMC** (the default) and **SD-over-SPI** images.
+ESP32-C6 has SD-over-SPI only. The build wrapper also provides a `none` profile that omits all SD and filesystem
+support; see the
+[family-organized build guide](../development/firmware-build.md).
+The ESP32-S3-DevKitC-1 N16R8 uses SDMMC slot 0 or SPI3; the ESP32-C6 uses SPI2. The Raspberry Pi Pico boards have no
+SD controller, so their native image runs the bus on a PIO block and their SPI image uses SPI0.
 Select the image that matches the wiring; there is no runtime fallback.
-All images use Zephyr's SDMMC disk layer and FatFs, with the same card detection and ownership behavior.
+SD-enabled profiles use Zephyr's SDMMC disk layer and FatFs. USB MSC ownership handoff is available only on boards
+with native USB HID and MSC support.
 This is the SD memory-card bus, not an SDIO peripheral/function API.
-The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage.
+The disk is `SD`, mounted at `/SD:` for firmware access or explicitly handed to native USB mass storage on boards
+that provide that interface.
 This reference owns driver configuration, mount lifecycle, status reporting and the data-safety contract.
 The board/storage guides below own physical pin allocations. See the
 [hardware guide](../guides/hardware.md#sd-card-sdmmc-wiring) for board selection and electrical precautions.
@@ -20,6 +25,10 @@ and storage variant. There is no runtime bus fallback; disconnect card power bef
 
 - [Native four-bit SDMMC wiring](../guides/boards/esp32s3-sdmmc.md).
 - [SD-over-SPI wiring](../guides/boards/esp32s3-sd-spi.md).
+
+### ESP32-C6-DevKitC-1 N8
+
+- [SD-over-SPI wiring](../guides/boards/esp32c6-sd-spi.md).
 
 ### Raspberry Pi Pico boards
 
@@ -40,14 +49,14 @@ validate the new allocation before use.
 
 ## Driver and filesystem configuration
 
-| Layer | ESP32-S3-DevKitC-1 N16R8 | Raspberry Pi Pico boards |
-| --- | --- | --- |
-| Native image controller | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus | ZephyrForge PIO SD host on PIO1, compatible `zephyrforge,rpi-pico-pio-sdhc`, four-bit bus |
-| SPI image controller | SPI3, compatible `zephyr,sdhc-spi-slot` | SPI0, compatible `zephyr,sdhc-spi-slot` |
-| Native Kconfig driver | `CONFIG_SDHC_ESP32` | `CONFIG_ZF_SDHC_RPI_PICO_PIO` |
-| Requested native ceiling | 40 MHz | 31.25 MHz on RP2040, 37.5 MHz on RP2350 |
-| Requested SPI ceiling | 25 MHz | 25 MHz |
-| Native image pads | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 | Default drive; Schmitt-trigger inputs |
+| Layer | ESP32-S3-DevKitC-1 N16R8 | ESP32-C6-DevKitC-1 N8 | Raspberry Pi Pico boards |
+| --- | --- | --- | --- |
+| Native image controller | Espressif SDHC slot 0, compatible `espressif,esp32-sdhc-slot`, four-bit bus | Not supported | ZephyrForge PIO SD host on PIO1, compatible `zephyrforge,rpi-pico-pio-sdhc`, four-bit bus |
+| SPI image controller | SPI3, compatible `zephyr,sdhc-spi-slot` | SPI2, compatible `zephyr,sdhc-spi-slot` | SPI0, compatible `zephyr,sdhc-spi-slot` |
+| Native Kconfig driver | `CONFIG_SDHC_ESP32` | Not supported | `CONFIG_ZF_SDHC_RPI_PICO_PIO` |
+| Requested native ceiling | 40 MHz | Not supported | 50 MHz; the PIO divider limits actual clock to one quarter of the SoC clock (31.25 MHz RP2040, 37.5 MHz RP2350) |
+| Requested SPI ceiling | 25 MHz | 25 MHz | 25 MHz |
+| Native image pads | `drive-strength = <10>` on CLK, CMD and DAT0-DAT3 | Not supported | Default drive; Schmitt-trigger inputs |
 
 Requested ceilings are not measured runtime clocks or throughput. Every image uses the `zephyr,sdmmc-disk` disk
 layer with disk name `SD` and FatFs mounted at `/SD:`, and enables GPIO/pinctrl, disk access, the SDMMC disk driver,
@@ -76,6 +85,8 @@ A card's write-speed class does not determine its negotiated bus clock.
 Keep the ESP32-S3 10 mA pad drive and qualify writes on the actual wiring; if higher-speed operation is unreliable,
 set `max-bus-freq = <25000000>` in the native board overlay and rebuild rather than replaying failed writes.
 On the Pico boards that setting withdraws High Speed, leaving cards on the one-bit legacy bus.
+The C6 SPI image reports GPIO2 MISO, GPIO6 SCK, GPIO7 MOSI, GPIO10 CS and active-low card detect on GPIO3; its
+wiring guide documents the GPIO6/7 conflict with the default I2C0 pins.
 
 ## Boot and runtime mount lifecycle
 
@@ -135,14 +146,15 @@ and hardware initialization from a mounted filesystem, but cannot classify a mou
 Use the UART log for
 diagnosis, and do not label every uninitialized sample "no card".
 
-Current hosts accept exactly one advertised storage transport and validate its pin layout and bus-mode reports.
-Older native-only hosts reject the SPI image; update the host when selecting it.
+Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
+no native USB HID, so Direct BLE can read storage status but cannot start the USB-only benchmark or handoff commands.
 Power-cycle the card as described in the wiring instructions.
 
 ## Optional storage benchmark
 
 The dashboards offer a USB-controlled benchmark when capability bit 5 is advertised. It is disabled by default in
-CMake; the firmware build wrapper currently enables it. See [build configuration](../development/firmware.md#zephyr-target-build).
+CMake; the build wrapper enables it for SD-enabled ESP32-S3 and Pico images, not for C6. See
+[build configuration](../development/firmware-build.md#shared-build-behavior).
 It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
 
 Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a deterministic

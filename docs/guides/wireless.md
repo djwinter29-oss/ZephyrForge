@@ -1,11 +1,13 @@
 # Wireless Setup and Operation
 
-Wi-Fi and Bluetooth LE are compiled into the ESP32-S3 image, and both radio switches **default to enabled**.
+Wi-Fi and Bluetooth LE are compiled into ESP32-S3 and ESP32-C6 images, and both radio switches **default to enabled**.
 Pico W and Pico 2 W include Wi-Fi, while the non-W Pico boards have no radios. Wi-Fi joins its saved network
 at boot, while a dashboard can temporarily test a candidate network. BLE advertises only when it is enabled and a
 Control key is saved. Radio switches and saved credentials are boot settings; see the
 [settings design](../reference/settings.md) for persistence and save behaviour. Espressif software coexistence is
 enabled on ESP32-S3.
+ESP32-C6 has no USB HID path for first-use setup. Its BLE service remains off until a Control key is saved, and the
+repository currently provides no secure way to provision that key on a fresh C6 board.
 
 Pico W and Pico 2 W support USB-controlled scans and temporary candidate joins in both SD images. Their settings
 record is read at boot, but settings save remains unsupported: credentials tested through the dashboard stay in RAM
@@ -20,9 +22,11 @@ the pinned driver defaults to `WHD_COUNTRY_AUSTRALIA`. A successful build is not
 
 ## Configuration and operation
 
-Use USB to provision wireless settings. In Python and .NET, open the selected board's **Boot configuration**. In the
-Direct dashboard, open **Board configuration**. Use **Configure…** to scan and test Wi-Fi or to create a Control key.
-The radio switches are separate next-boot controls.
+On ESP32-S3 and Pico W boards, use USB to provision wireless settings. In Python and .NET, open the selected board's
+**Boot configuration**. In the Direct dashboard, open **Board configuration**. Use **Configure…** to scan and test
+Wi-Fi or to create a Control key. The radio switches are separate next-boot controls.
+ESP32-C6 has no USB HID and cannot use this setup flow; its BLE service requires a Control key already present in
+saved settings.
 
 ### Wi-Fi
 
@@ -71,7 +75,7 @@ actions over BLE.
 
 Live diagnostics report the wireless state; an enabled switch does not mean the radio is connected.
 On ESP32-S3, the [raw TCP diagnostic shell](console.md) is reachable on a usable IPv4 connection, including a
-temporary Wi-Fi test. The Pico images do not include it.
+temporary Wi-Fi test. The Pico images do not include it. C6 Wi-Fi configuration is unavailable without USB HID.
 
 ## Security boundaries
 

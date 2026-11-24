@@ -47,7 +47,8 @@ void test_w_board_reports_wifi_without_ble_led_or_settings_save(void)
 
 	zf_report_identity(&identity, identity_out);
 	TEST_ASSERT_EQUAL_UINT8(ZF_BOARD_PICO_W, identity_out[15]);
-	TEST_ASSERT_EQUAL_HEX8(ZF_ENABLE_STORAGE_BENCHMARK ? 0xB2 : 0x92, identity_out[17]);
+	TEST_ASSERT_EQUAL_HEX8(!ZF_ENABLE_STORAGE ? 0x82 :
+			       ZF_ENABLE_STORAGE_BENCHMARK ? 0xB2 : 0x92, identity_out[17]);
 	zf_report_config(&config, config_out);
 	TEST_ASSERT_EQUAL_HEX8(0x0C, config_out[13]);
 }

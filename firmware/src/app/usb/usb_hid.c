@@ -2,6 +2,8 @@
  * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/zephyrforge.h"
+
+#if CONFIG_USB_DEVICE_STACK_NEXT
 #include "app/control/control.h"
 #include "app/storage/storage.h"
 
@@ -47,7 +49,11 @@ USBD_DEVICE_DEFINE(zephyrforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), Z
 USBD_DESC_LANG_DEFINE(zephyrforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(zephyrforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(zephyrforge_product, "ZephyrForge");
+#if ZF_ENABLE_STORAGE
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID + SD storage");
+#else
+USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID management");
+#endif
 USBD_CONFIGURATION_DEFINE(zephyrforge_config, 0, 100, &zephyrforge_config_name);
 
 /* The serial is Report 1's 8-byte UID; Zephyr's hwinfo serial would carry only the 6-byte MAC. */
@@ -219,6 +225,7 @@ bool zf_usb_configured(void)
 	return atomic_get(&ready) != 0;
 }
 
+#if ZF_ENABLE_STORAGE
 int zf_storage_usb_refresh(void)
 {
 	int err = usbd_disable(&zephyrforge_usbd);
@@ -232,6 +239,7 @@ int zf_storage_usb_refresh(void)
 	}
 	return err;
 }
+#endif
 
 int zf_usb_init(void)
 {
@@ -265,3 +273,21 @@ int zf_usb_init(void)
 	}
 	return err;
 }
+#else
+#if ZF_ENABLE_STORAGE
+#include "app/storage/storage.h"
+
+#include <errno.h>
+#endif
+
+bool zf_usb_configured(void)
+{
+	return false;
+}
+#if ZF_ENABLE_STORAGE
+int zf_storage_usb_refresh(void)
+{
+	return -ENOTSUP;
+}
+#endif
+#endif

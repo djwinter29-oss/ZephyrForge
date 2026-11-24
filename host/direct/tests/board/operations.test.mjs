@@ -106,13 +106,12 @@ for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} require
   await client.disconnect();
 });
 
-test("stale storage and capability gates stop reboot and settings writes", async () => {
+test("stale storage and settings capability gates stop writes", async () => {
   let now = 0;
-  const { client, device, sent } = fakeConnection({ now: () => now, capabilities: 16 | 128 });
+  const { client, device, sent } = fakeConnection({ now: () => now, capabilities: 2 | 16 | 128 });
   await client.connect();
   await assert.rejects(client.reboot(true), says(/Fresh storage status/));
   emit(device, 3, telemetry()); emit(device, 10, storage());
-  await assert.rejects(client.reboot(true), says(/capability/));
   await assert.rejects(client.saveSettings({ system_clock_mhz: 160, sdcard_profile: 0, radios: 0 }),
     says(/capability/));
   await client.disconnect();

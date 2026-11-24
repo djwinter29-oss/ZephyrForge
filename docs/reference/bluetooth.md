@@ -66,8 +66,11 @@ privacy tradeoff for a local development tool.
 
 Pairing is not required: [session unlock](#session-unlock) and [command proofs](#command-proofs) authorize
 application access. The default firmware does not enable a pairing or bonding workflow, request link encryption,
-or persist peer keys. Pairing is not an alternative to the Control key. Bluetooth never writes flash:
-the Control key is provisioned through USB and loaded from boot settings.
+or persist peer keys. Pairing is not an alternative to the Control key. Bluetooth never writes flash. On USB-HID
+boards the Control key is provisioned through USB and loaded from boot settings. The ESP32-C6 has no native USB HID,
+and the repository does not yet provide another secure key-provisioning path for it. A fresh C6 image therefore leaves
+Bluetooth off until settings containing a Control key are provisioned externally; this limitation is not bypassed
+with unauthenticated access.
 
 ## GATT Layout
 
@@ -390,15 +393,16 @@ force a save, or change USB storage ownership.
 | BT-004 | BLE opcode restrictions, save validation, result isolation and USB staging conflicts. | Firmware control tests |
 
 These tests use portable modules and simulated browser transports. They do not qualify the Zephyr GATT callbacks,
-controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 hardware.
+controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 or
+ESP32-C6 hardware.
 See the [qualification gaps](../validation/qualification-gaps.md). Test commands are maintained in the
 [firmware](../development/firmware.md) and [host development](../development/host-tools.md) guides.
 
 ## Implementation
 
-The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 controller.
+The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 or ESP32-C6 controller.
 `CONFIG_BT_GATT_SERVICE_CHANGED` and `CONFIG_BT_GATT_CACHING` enable the standard caching attributes.
-Challenges use the ESP32-S3 entropy source through Zephyr's cryptographically secure random API.
+Challenges use the SoC entropy source through Zephyr's cryptographically secure random API.
 Accepted reboot commands use a 1000 ms grace period.
 
 Bluetooth callbacks run in the Zephyr Bluetooth thread. They hold the application mutex while accessing

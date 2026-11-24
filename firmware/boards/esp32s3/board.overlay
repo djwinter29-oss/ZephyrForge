@@ -1,10 +1,9 @@
-#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
-#include <zephyr/dt-bindings/led/led.h>
-
 /*
- * ESP32-S3-DevKitC-1 N16R8 (ESP32-S3-WROOM-1-N16R8): 16 MB quad flash and 8 MB octal PSRAM.
+ * ESP32-S3-DevKitC-1 N16R8: 16 MB flash, 8 MB octal PSRAM, USB HID on GPIO19/20 and WS2812 on GPIO48.
  * The upstream board DTS describes the N8 module with the 4 MB partition table, so replace both.
  */
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <zephyr/dt-bindings/led/led.h>
 &flash0 {
 	reg = <0x0 DT_SIZE_M(16)>;
 	/delete-node/ partitions;

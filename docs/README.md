@@ -28,10 +28,12 @@ Keep each topic in one document; other documents link rather than duplicate its 
 | Shared report layouts, identity values, capabilities, USB control and validation | [USB HID](reference/usb-hid.md) |
 | ZephyrForge BLE advertising, GATT, authentication and control contract | [Bluetooth LE](reference/bluetooth.md) |
 | Saved next-boot settings: record format, flash partition, clock and radio application | [Boot settings](reference/settings.md) |
-| SD pin allocation and variant-specific electrical precautions | ESP32-S3 [SDMMC](guides/boards/esp32s3-sdmmc.md) / [SPI](guides/boards/esp32s3-sd-spi.md); Pico family [SDMMC](guides/boards/pico-sdmmc.md) / [SPI](guides/boards/pico-sd-spi.md) |
+| SD pin allocation and variant-specific electrical precautions | ESP32-S3 [SDMMC](guides/boards/esp32s3-sdmmc.md) / [SPI](guides/boards/esp32s3-sd-spi.md); ESP32-C6 [SPI](guides/boards/esp32c6-sd-spi.md); Pico family [SDMMC](guides/boards/pico-sdmmc.md) / [SPI](guides/boards/pico-sd-spi.md) |
 | SD driver configuration, mount behavior, status and data safety | [SD storage](reference/sdcard.md) |
 | Shared dashboard HTTP routes and request rules | [Shared dashboard API](../host/web/README.md) |
-| Toolchains and software validation | [Firmware](development/firmware.md), [host tools](development/host-tools.md) |
+| Target families, storage profiles and firmware build options | [Firmware builds](development/firmware-build.md) |
+| Firmware source layout, unit tests and development | [Firmware development](development/firmware.md) |
+| Host toolchains and software validation | [Host tools](development/host-tools.md) |
 | Firmware target checks and SD/USB/BLE/Wi-Fi qualification procedure | [Firmware qualification](validation/firmware-qualification.md) |
 | Packaging and publication | [Release](deployment/release.md) |
 | Unqualified behavior and observed results | [Gaps](validation/qualification-gaps.md), [records](validation/records/README.md) |

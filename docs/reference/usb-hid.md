@@ -23,8 +23,10 @@ wire fields. Software tests do not establish hardware qualification; see [Design
 
 ## USB Interface and Discovery
 
-The device exposes one vendor-defined HID interface with no boot protocol, plus native USB mass storage.
-There is no CDC ACM interface. Hosts identify HID by its usage collection, not a fixed composite interface number.
+ESP32-S3 and Raspberry Pi Pico images expose one vendor-defined HID interface with no boot protocol. SD-enabled
+images also expose native USB mass storage; no-storage images expose HID only. There is no CDC ACM interface.
+ESP32-C6 has no native USB HID or MSC interface; its BLE transport mirrors the reports defined here. Hosts identify
+HID by its usage collection, not a fixed composite interface number.
 
 | Item | Value |
 | --- | --- |
@@ -119,8 +121,8 @@ Read after connection. Identity and capabilities remain stable for that boot.
 | 11 | 1 | `firmware_major` | Firmware semantic-version major |
 | 12 | 1 | `firmware_minor` | Firmware semantic-version minor |
 | 13 | 1 | `firmware_patch` | Firmware semantic-version patch |
-| 14 | 1 | `mcu` | `1` RP2040, `2` RP2350, `3` ESP32-S3; other values unassigned in this project |
-| 15 | 1 | `board_model` | `0` unspecified; `1`-`5` per [Board Models](#board-models) |
+| 14 | 1 | `mcu` | `1` RP2040, `2` RP2350, `3` ESP32-S3, `4` ESP32-C6; other values unassigned |
+| 15 | 1 | `board_model` | `0` unspecified; `1`-`6` per [Board Models](#board-models) |
 | 16 | 1 | `capabilities_extension` | Capability bits 8-15; bit 0 advertises Report `13` |
 | 17 | 1 | `capabilities` | Static capabilities and selected storage transport |
 | 18 | 4 | `ram_total_bytes` | Total internal SRAM, not free memory or PSRAM |
@@ -133,7 +135,7 @@ An unsupported version is an explicit layout error. An unknown product MUST NOT 
 Product IDs identify families, not releases, MCU types or individual devices.
 
 Display the UID as **Serial / UID**, two uppercase hex characters per byte in order. It is not an integer or a
-host-generated identifier. The ESP32-S3 board uses its six-byte eFuse base MAC followed by two zero bytes; the
+host-generated identifier. Espressif boards use their six-byte eFuse base MAC followed by two zero bytes; the
 Raspberry Pi Pico boards use the eight-byte unique ID of their flash chip.
 Clients MUST preserve the eight reported bytes for identity matching and BLE proofs.
 Unknown MCU or board-model values MAY be retained for diagnostics, but MUST NOT be guessed or corrected.
@@ -147,28 +149,34 @@ Each nonzero board model requires the MCU listed under [Board Models](#board-mod
 | `0x0003` | ZephyrForge |
 | Other | Not a supported project identity |
 
-| Capability bit | Meaning | ESP32-S3 | Raspberry Pi Pico boards |
-| ---: | --- | --- | --- |
-| 0 | RGB LED control | Set | Clear |
-| 1 | Confirmed standalone reboot | Set | Set |
-| 2 | Persistent boot-settings save | Set | Clear |
-| 3 | SPI storage transport | Set only in the SD-over-SPI image | Set only in the SD-over-SPI image |
-| 4 | Native SDMMC storage transport | Set only in the native image | Set only in the native image |
-| 5 | Storage benchmark | Set only when built with the optional feature | Set only when built with the optional feature |
-| 6 | Forced settings save | Clear | Clear |
-| 7 | Wireless capability | Set | Clear |
-| 8 | Module memory inventory | Set in extension byte bit 0 | Set in extension byte bit 0 |
+| Capability bit | Meaning | ESP32-S3 | ESP32-C6 | Raspberry Pi Pico boards |
+| ---: | --- | --- | --- | --- |
+| 0 | RGB LED control | Set | Clear | Clear |
+| 1 | Confirmed standalone reboot | Set | Set | Set |
+| 2 | Persistent boot-settings save | Set | Set | Clear |
+| 3 | SPI storage transport | SD-over-SPI only | SD-over-SPI only | SD-over-SPI only |
+| 4 | Native SDMMC storage transport | Native image only | Clear | Native image only |
+| 5 | Storage benchmark | Optional | Clear | Optional |
+| 6 | Forced settings save | Clear | Clear | Clear |
+| 7 | Wireless capability | Set | Set | W boards only |
+| 8 | Module memory inventory | Set in extension byte bit 0 | Set in extension byte bit 0 | Set in extension byte bit 0 |
 
-Exactly one storage capability is set. The ESP32-S3 native image's low capability byte is `0x97`, or `0xB7` with
+Exactly one storage capability is set in SD-enabled images; both bits are clear when storage is omitted.
+The ESP32-S3 no-storage image's low capability byte is `0x87`; its native image is `0x97`, or `0xB7` with
 benchmarking; its SPI image uses `0x8F`, or `0xAF` with benchmarking. Non-W Pico native images use `0x12` or `0x32`;
 their SPI images use `0x0A` or `0x2A`. W images additionally set wireless bit 7: `0x92`/`0xB2` native and
-`0x8A`/`0xAA` SPI. The extension byte is `0x01`.
+`0x8A`/`0xAA` SPI. Non-W Pico no-storage images use `0x02`, and W no-storage images use `0x82`.
+ESP32-C6 no-storage uses `0x86`; its SD-over-SPI image uses `0x8E` (benchmarking is not built because its start
+command is USB-only).
+The extension byte is `0x01`.
 Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
 as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
 Hosts MUST NOT offer LED, settings-save or wireless operations whose capability bit is clear.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
-bit 3 selects its four-signal SPI layout. Neither implies USB mass-storage support.
+bit 3 selects its four-signal SPI layout. When both bits are clear, the image has no SD storage; Report `2` reports
+unassigned storage/card-detect pins and no MSC support, and opcode `3` is unsupported/error `4`.
+Neither storage bit alone implies USB mass-storage support.
 Report `2` board flag bit 6 advertises MSC ownership control.
 Forced-save support is absent: opcode `5` flag bit 0 returns Unsupported/error `4`.
 When bit 5 is clear, opcode `4` is also unsupported and Report `11` is unavailable.
@@ -188,7 +196,8 @@ opcode `8` (Control-key staging) returns Unsupported/error `4` before argument v
 | `3` | `1` RP2040 | Configured Raspberry Pi Pico W target |
 | `4` | `2` RP2350 | Configured Raspberry Pi Pico 2 target |
 | `5` | `2` RP2350 | Configured Raspberry Pi Pico 2 W target |
-| `6`-`255` | Unassigned | Reserved |
+| `6` | `4` ESP32-C6 | Configured ESP32-C6-DevKitC-1 N8 target |
+| `7`-`255` | Unassigned | Reserved |
 
 The board model is the configured build target, not automatic hardware detection.
 Pico W and Pico 2 W builds enable Wi-Fi scans and temporary candidate joins; BLE remains unavailable.
@@ -200,7 +209,7 @@ Display **Firmware RAM reserved / total**, in KiB and optionally as a percentage
 or a reservation greater than total. This is build accounting, not free heap, stack high-water use or runtime
 memory pressure.
 
-The ESP32-S3 board reports 524288 bytes of internal SRAM; RP2040 boards report 270336 and RP2350 boards 532480.
+The ESP32-S3 and ESP32-C6 boards report 524288 bytes of internal SRAM; RP2040 boards report 270336 and RP2350 boards 532480.
 Reservation covers statically linked RAM,
 including the reserved Zephyr heap pool and thread stacks. PSRAM is separate and
 is not represented by these fields. Count each reservation once; do not infer live allocations.
@@ -213,7 +222,7 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
 | 0 | 1 | `version` | Layout version, `1` |
-| 1 | 2 | `stored_sysclk_profile` | Stored clock in MHz: `0` build default, `80`, `160` or `240` |
+| 1 | 2 | `stored_sysclk_profile` | Stored clock in MHz: `0` build default, `80`, `160` or `240` (C6 maximum `160`) |
 | 3 | 1 | `stored_sdcard_profile` | `0` Standard; other values unsupported |
 | 4 | 1 | `monitor_uart_index` | Hardware UART index; `255` unavailable |
 | 5 | 1 | `monitor_uart_tx_gpio` | TX GPIO; `255` unassigned |
@@ -222,25 +231,27 @@ Settings describe the next boot, while GPIOs describe configured board facts.
 | 13 | 1 | `board_flags` | Flags below |
 | 14 | 1 | `reset_cause` | Reset enum below |
 | 15 | 1 | `led_gpio` | Configured RGB data GPIO; `255` if unallocated |
-| 16 | 1 | `card_detect_gpio` | Card-detect input GPIO, `8` on current boards; `255` on older firmware without detection |
+| 16 | 1 | `card_detect_gpio` | Card-detect input GPIO, `8` on S3, `3` on C6, `255` on Pico or older firmware without detection |
 | **Total** | **17** | | **18 bytes including report ID** |
 
-| Board flag bit | Meaning | ESP32-S3 | Raspberry Pi Pico boards |
-| ---: | --- | --- | --- |
-| 0 | Card detect configured | Set | Set |
-| 1 | RGB LED data GPIO allocated | Set | Clear |
-| 2 | Monitor UART enabled | Set | Set |
-| 3 | Wi-Fi enabled for next boot | Saved switch | Saved switch on W boards; clear on non-W |
-| 4 | BLE enabled for next boot | Saved switch | Clear |
-| 5 | Reserved TCP CLI switch | Clear | Clear |
-| 6 | Native USB MSC with explicit ownership handoff | Set | Set |
-| 7 | Reserved | Zero | Zero |
+| Board flag bit | Meaning | ESP32-S3 | ESP32-C6 | Raspberry Pi Pico boards |
+| ---: | --- | --- | --- | --- |
+| 0 | Card detect configured | Set with storage | Set with SPI storage | Set with storage |
+| 1 | RGB LED data GPIO allocated | Set | Clear | Clear |
+| 2 | Monitor UART enabled | Set | Set | Set |
+| 3 | Wi-Fi enabled for next boot | Saved switch | Saved switch | Saved switch on W boards; clear on non-W |
+| 4 | BLE enabled for next boot | Saved switch | Saved switch | Clear |
+| 5 | Reserved TCP CLI switch | Clear | Clear | Clear |
+| 6 | Native USB MSC with explicit ownership handoff | Set with storage | Clear | Set with storage |
+| 7 | Reserved | Zero | Zero | Zero |
 
-The ESP32-S3 board reports UART0 TX GPIO43 / RX GPIO44; the Pico boards report UART0 TX GPIO0 / RX GPIO1 and LED
-GPIO `255`. Card detect is active-low on the ESP32-S3 and active-high on the Pico boards.
+The ESP32-S3 board reports UART0 TX GPIO43 / RX GPIO44, and C6 reports its board UART pin allocation; Pico boards
+report UART0 TX GPIO0 / RX GPIO1 and LED GPIO `255`. Card detect is active-low on Espressif boards and active-high
+on the Pico boards.
 GPIO values are signal numbers, not physical header positions. [SD reported allocation](sdcard.md#reported-allocation)
 lists the storage pins of each board and image.
-Assigned GPIOs MUST be valid for the reported MCU/board: `0`-`48` for the ESP32-S3, `0`-`29` for the RP2040 and
+Assigned GPIOs MUST be valid for the reported MCU/board: `0`-`48` for the ESP32-S3, `0`-`30` for the ESP32-C6,
+`0`-`29` for the RP2040 and
 board models `4` and `5`, and `0`-`47` for an RP2350 without a board claim.
 An enabled UART requires its index and both pins;
 TX/RX MUST both be assigned or both unavailable. Native four-bit SDMMC requires all six storage pins assigned.
@@ -250,7 +261,7 @@ Wi-Fi and BLE switches default on and represent next-boot policy, not current li
 Without wireless capability, flag bits 3 and 4 MUST be clear.
 Hosts MUST reject unsupported stored profiles and inconsistent flags/pins.
 Report `3` carries the running CPU clock; Report `10` carries storage status. `0` selects the build clock,
-currently 240 MHz on the ESP32-S3, 125 MHz on RP2040 and 150 MHz on RP2350. Images without settings save cannot
+currently 240 MHz on the ESP32-S3, 160 MHz on the ESP32-C6, 125 MHz on RP2040 and 150 MHz on RP2350. Images without settings save cannot
 store another profile. The SD profile does not promise a clock rate or measured performance.
 
 A successful opcode `5` returns verified saved settings and schedules reboot. During the 1000 ms grace period,

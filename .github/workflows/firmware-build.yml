@@ -28,6 +28,9 @@ jobs:
         include:
           - {board: esp32s3, storage: sdmmc, build: firmware, title: "ESP32-S3-DevKitC (PROCPU, sdmmc)"}
           - {board: esp32s3, storage: sd-spi, build: firmware-sd-spi, title: "ESP32-S3-DevKitC (PROCPU, sd-spi)"}
+          - {board: esp32c6, storage: sd-spi, build: firmware-esp32c6-sd-spi, title: "ESP32-C6-DevKitC-1 (sd-spi)"}
+          - {board: esp32c6, storage: none, build: firmware-esp32c6-no-storage,
+             title: "ESP32-C6-DevKitC-1 (no storage)"}
           - {board: pico, storage: sdmmc, build: firmware-pico, title: "Raspberry Pi Pico (RP2040, sdmmc)"}
           - {board: pico, storage: sd-spi, build: firmware-pico-sd-spi, title: "Raspberry Pi Pico (RP2040, sd-spi)"}
           - {board: pico_w, storage: sdmmc, build: firmware-pico_w, title: "Raspberry Pi Pico W (RP2040, sdmmc)"}
@@ -76,6 +79,9 @@ jobs:
           if [[ "$BOARD" == esp32s3 ]]; then
             west blobs fetch hal_espressif
             toolchain=xtensa-espressif_esp32s3_zephyr-elf
+          elif [[ "$BOARD" == esp32c6 ]]; then
+            west blobs fetch hal_espressif
+            toolchain=riscv64-zephyr-elf
           fi
           west sdk install --version 0.17.4 --toolchains "$toolchain" --personal-access-token "$GH_TOKEN"
 
