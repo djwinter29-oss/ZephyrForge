@@ -1,10 +1,9 @@
 #include "control/control.h"
 #include "board/board.h"
+#include "capabilities.h"
 #include "led/led.h"
 #include "control/control_stage.h"
-#include "report/report.h"
 #include "settings/settings.h"
-#include "settings/settings_flash.h"
 #include "benchmark/benchmark.h"
 #include "storage/storage.h"
 #include "wireless/wifi/wifi.h"
@@ -34,6 +33,8 @@ typedef struct {
 	uint8_t opcode; /**< Wire opcode, already range-checked by the dispatcher. */
 	uint8_t flags; /**< Wire flags byte: confirm, forced-save and commit bits. */
 	uint8_t args[64]; /**< Fixed 64-byte argument field: opcode-specific layout. */
+	zf_control_save_done_t save_done; /**< BLE completion notifier, absent for USB requests. */
+	void *save_context; /**< Opaque BLE completion context. */
 } request_t;
 
 static result_t usb_result;
@@ -42,9 +43,35 @@ static zf_control_stage_t stage;
 /* A started candidate test whose join result has not yet marked the staged pair. */
 static bool test_pending;
 static bool reboot_pending;
-/* Result slot of the save whose record the settings work item is writing; NULL when idle. */
-static result_t *save_result;
+static bool save_pending;
+static bool save_ble;
+static bool usb_save_result_unread;
+static result_t save_result;
 static uint8_t save_commit_mask;
+static zf_control_save_done_t ble_save_done;
+static void *ble_save_context;
+
+typedef struct {
+	uint8_t capability;
+	uint8_t radio;
+	bool ble_allowed;
+	bool usb_msc;
+} opcode_policy_t;
+
+static const opcode_policy_t opcode_policy[ZF_OP_SCAN_ENTRY + 1] = {
+	[ZF_OP_LED] = {ZF_CAP_LED, 0, true, false},
+	[ZF_OP_REBOOT] = {ZF_CAP_REBOOT, 0, true, false},
+	[ZF_OP_MSC] = {ZF_CAP_STORAGE, 0, false, true},
+	[ZF_OP_BENCHMARK] = {ZF_CAP_BENCHMARK, 0, false, false},
+	[ZF_OP_SAVE] = {ZF_CAP_SETTINGS, 0, true, false},
+	[ZF_OP_STAGE_SSID] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_STAGE_PASSWORD] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_STAGE_KEY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_BLE, false, false},
+	[ZF_OP_TEST_WIFI] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_CANCEL_TEST] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_SCAN] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_SCAN_ENTRY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+};
 
 void zf_control_init(void)
 {
@@ -53,13 +80,23 @@ void zf_control_init(void)
 	zf_control_stage_reset(&stage);
 	test_pending = false;
 	reboot_pending = false;
-	save_result = NULL;
+	save_pending = false;
+	save_ble = false;
+	usb_save_result_unread = false;
+	memset(&save_result, 0, sizeof(save_result));
+	ble_save_done = NULL;
+	ble_save_context = NULL;
 }
 
-/* A scheduled reset or an in-flight settings write blocks reboot, save and storage commands. */
+/* A scheduled reset or an in-flight settings write blocks state-changing commands. */
 static bool reset_blocked(void)
 {
-	return reboot_pending || save_result != NULL;
+	return reboot_pending || save_pending;
+}
+
+static uint8_t reset_block_detail(void)
+{
+	return save_pending ? ZF_DETAIL_SAVE_PENDING : ZF_DETAIL_REBOOT_PENDING;
 }
 
 static bool zero(const uint8_t *data, size_t size)
@@ -79,27 +116,17 @@ static void finish(result_t *result, uint8_t status, uint8_t error, uint8_t deta
 	result->data[0] = detail;
 }
 
-/** True unless the opcode drives LED, settings or radio hardware that Report 1 does not advertise. */
-static bool capable(uint8_t opcode)
+/** Keep transport and feature admission in one descriptor table. */
+static bool capable(const request_t *request)
 {
-	if (opcode == ZF_OP_MSC) {
-		return ZF_ENABLE_USB_MSC && (ZF_CAPABILITIES & ZF_CAP_STORAGE) != 0;
+	if (request->opcode > ZF_OP_SCAN_ENTRY) {
+		return false;
 	}
-	if (opcode == ZF_OP_BENCHMARK) {
-		return (ZF_CAPABILITIES & ZF_CAP_BENCHMARK) != 0;
-	}
-	if (opcode == ZF_OP_LED) {
-		return (ZF_CAPABILITIES & ZF_CAP_LED) != 0;
-	}
-	if (opcode == ZF_OP_SAVE) {
-		return (ZF_CAPABILITIES & ZF_CAP_SETTINGS) != 0;
-	}
-	if (opcode >= ZF_OP_STAGE_SSID && opcode <= ZF_OP_SCAN_ENTRY) {
-		const uint8_t radio = opcode == ZF_OP_STAGE_KEY ? ZF_WIRELESS_BLE : ZF_WIRELESS_WIFI;
+	const opcode_policy_t *policy = &opcode_policy[request->opcode];
 
-		return (ZF_CAPABILITIES & ZF_CAP_WIRELESS) != 0 && (ZF_RADIO_MASK & radio) != 0;
-	}
-	return true;
+	return policy->capability != 0 && (ZF_CAPABILITIES & policy->capability) != 0 &&
+	       (policy->radio == 0 || (ZF_RADIO_MASK & policy->radio) != 0) &&
+	       (!policy->usb_msc || ZF_ENABLE_USB_MSC) && (!request->ble || policy->ble_allowed);
 }
 
 /** Map a platform admission result: zero Completed, -EBUSY Busy, any other error Failed. */
@@ -130,7 +157,7 @@ static void reboot(const request_t *request, result_t *result)
 	} else if (!(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
 	} else if (reset_blocked()) {
-		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 	} else if (zf_storage_busy()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_CONFLICT);
 	} else if (request->ble && zf_control_stage_active(&stage)) {
@@ -170,7 +197,7 @@ static void save_complete(result_t *result, int err, uint8_t commit_mask)
 	}
 	zf_control_stage_reset(&stage);
 	if (zf_board_schedule_reboot() != 0) {
-		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, ZF_DETAIL_SAVED_REBOOT_FAILED);
 		return;
 	}
 	reboot_pending = true;
@@ -185,14 +212,28 @@ static void save_complete(result_t *result, int err, uint8_t commit_mask)
 
 static void save_written(int err)
 {
-	result_t discarded;
+	zf_control_save_done_t done;
+	void *context;
 
 	zf_lock();
-	err = zf_settings_save_finish(err);
-	/* A later USB request may have replaced the Pending result; the reset still follows a successful save. */
-	save_complete(save_result->status == ZF_STATUS_PENDING ? save_result : &discarded, err, save_commit_mask);
-	save_result = NULL;
+	save_complete(&save_result, err, save_commit_mask);
+	save_pending = false;
+	if (save_ble) {
+		ble_result = save_result;
+		done = ble_save_done;
+		context = ble_save_context;
+		ble_save_done = NULL;
+		ble_save_context = NULL;
+	} else {
+		usb_result = save_result;
+		usb_save_result_unread = true;
+		done = NULL;
+		context = NULL;
+	}
 	zf_unlock();
+	if (done != NULL) {
+		done(context);
+	}
 }
 
 static void save(const request_t *request, result_t *result)
@@ -202,7 +243,6 @@ static void save(const request_t *request, result_t *result)
 	bool commit = (request->flags & FLAG_COMMIT) != 0;
 	zf_sysclk_profile_t profile = zf_sysclk_profile_from_mhz(mhz);
 	uint8_t commit_mask = 0;
-	uint8_t record[ZF_SETTINGS_RECORD_SIZE];
 	uint8_t detail;
 	int err;
 
@@ -220,7 +260,7 @@ static void save(const request_t *request, result_t *result)
 		return;
 	}
 	if (reset_blocked()) {
-		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 		return;
 	}
 	if (zf_storage_busy()) {
@@ -267,24 +307,20 @@ static void save(const request_t *request, result_t *result)
 	if (commit) {
 		apply_commit();
 	}
-	if (request->ble) {
-		commit_mask = 0;
+	finish(result, ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
+	save_pending = true;
+	save_ble = request->ble;
+	save_result = *result;
+	save_commit_mask = commit_mask;
+	ble_save_done = request->save_done;
+	ble_save_context = request->save_context;
+	err = zf_settings_save_async(save_written);
+	if (err != 0) {
+		save_pending = false;
+		ble_save_done = NULL;
+		ble_save_context = NULL;
+		save_complete(result, err, commit_mask);
 	}
-	err = zf_settings_save_prepare(record);
-	if (err > 0) {
-		/* Set before queueing: the completion owns the result once the work item runs. */
-		save_result = result;
-		save_commit_mask = commit_mask;
-		finish(result, ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
-		err = zf_settings_flash_write_async(record, sizeof(record), save_written);
-		memset(record, 0, sizeof(record));
-		if (!err) {
-			return;
-		}
-		save_result = NULL;
-		err = zf_settings_save_finish(err);
-	}
-	save_complete(result, err, commit_mask);
 }
 
 static void stage_value(const request_t *request, result_t *result, int64_t now_ms)
@@ -314,6 +350,10 @@ static void stage_value(const request_t *request, result_t *result, int64_t now_
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
 		return;
 	}
+	if (reset_blocked()) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
+		return;
+	}
 	if (request->opcode == ZF_OP_STAGE_SSID) {
 		zf_control_stage_ssid(&stage, request->args, now_ms);
 	} else if (request->opcode == ZF_OP_STAGE_PASSWORD) {
@@ -334,6 +374,10 @@ static void test_wifi(result_t *result)
 
 	if (zf_wifi_test_active()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
+		return;
+	}
+	if (reset_blocked()) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 		return;
 	}
 	if (zf_wifi_scan_active()) {
@@ -382,13 +426,7 @@ static void scan_entry(const request_t *request, result_t *result)
 		return;
 	}
 	finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
-	result->data[0] = (uint8_t)generation;
-	result->data[1] = (uint8_t)(generation >> 8);
-	result->data[2] = request->args[0];
-	result->data[3] = length <= ZF_SSID_MAX_BYTES ? length : ZF_SSID_MAX_BYTES;
-	memcpy(result->data + 4, ssid, result->data[3]);
-	result->data[36] = (uint8_t)rssi;
-	result->data[37] = security & 0x07u;
+	zf_report_scan_entry_result(result->data, generation, request->args[0], ssid, length, rssi, security);
 }
 
 static bool args_clear(const request_t *request, size_t from)
@@ -410,7 +448,7 @@ static void msc(const request_t *request, result_t *result)
 	} else if (action == 0 && !(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
 	} else if (reset_blocked()) {
-		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 	} else {
 		err = zf_storage_request(action == 1, request->transaction_id);
 		if (err == -ENOMEDIUM) {
@@ -428,13 +466,11 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 	result->transaction_id = request->transaction_id;
 	result->opcode = request->opcode;
 
-	if (request->opcode == 0 || request->opcode > ZF_OP_TCP_PROOF) {
+	if (request->opcode == 0 || request->opcode > ZF_OP_SCAN_ENTRY) {
 		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
 		return;
 	}
-	if (!capable(request->opcode) ||
-	    (request->ble && request->opcode != ZF_OP_LED && request->opcode != ZF_OP_REBOOT &&
-	     request->opcode != ZF_OP_SAVE)) {
+	if (!capable(request)) {
 		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 		return;
 	}
@@ -449,7 +485,6 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	case ZF_OP_BENCHMARK:
-#if ZF_ENABLE_STORAGE_BENCHMARK
 		if (!args_clear(request, 5) || request->args[0] > 1) {
 			finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 		} else {
@@ -463,7 +498,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 				break;
 			}
 			if (reset_blocked()) {
-				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 				break;
 			}
 			detail = zf_benchmark_request(start, size);
@@ -475,9 +510,6 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 				finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, (uint8_t)detail);
 			}
 		}
-#else
-		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
-#endif
 		break;
 	case ZF_OP_MSC:
 		msc(request, result);
@@ -505,6 +537,10 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 			finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 			break;
 		}
+		if (reset_blocked()) {
+			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
+			break;
+		}
 		zf_control_stage_reset(&stage);
 		zf_wifi_test_cancel();
 		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
@@ -512,6 +548,8 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 	case ZF_OP_SCAN:
 		if (!args_clear(request, 0)) {
 			finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
+		} else if (reset_blocked()) {
+			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, reset_block_detail());
 		} else if (zf_wifi_test_active()) {
 			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
 		} else if (zf_wifi_scan_active()) {
@@ -536,8 +574,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	default:
-		/* Opcode 13, the reserved TCP CLI proof: the diagnostic TCP shell has no management switch. */
-		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
+		finish(result, ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
 		break;
 	}
 }
@@ -547,6 +584,9 @@ bool zf_control_usb_set(const uint8_t *payload, size_t size, int64_t now_ms)
 	request_t request = {0};
 
 	if (size != ZF_CONTROL_SIZE || payload[0] != 1 || payload[1] == 0) {
+		return false;
+	}
+	if (save_pending || usb_save_result_unread) {
 		return false;
 	}
 	zf_control_tick(now_ms);
@@ -571,6 +611,11 @@ static void encode(const result_t *result, uint8_t *out, size_t data_size)
 
 void zf_control_usb_get(uint8_t out[ZF_CONTROL_SIZE])
 {
+	if (usb_save_result_unread) {
+		encode(&save_result, out, sizeof(save_result.data));
+		usb_save_result_unread = false;
+		return;
+	}
 	encode(&usb_result, out, sizeof(usb_result.data));
 }
 
@@ -579,10 +624,18 @@ bool zf_control_ble_envelope(const uint8_t *request, size_t size)
 	return size == ZF_BLE_CONTROL_SIZE && request[0] == 1 && request[1] != 0;
 }
 
-void zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t now_ms)
+bool zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t now_ms,
+			    zf_control_save_done_t save_done, void *save_context)
 {
-	request_t normalized = {.ble = true};
+	request_t normalized = {
+		.ble = true,
+		.save_done = save_done,
+		.save_context = save_context,
+	};
 
+	if (save_pending && save_ble) {
+		return false;
+	}
 	zf_control_tick(now_ms);
 	normalized.transaction_id = request[1];
 	normalized.opcode = request[2];
@@ -591,11 +644,12 @@ void zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t 
 	execute(&normalized, &ble_result, now_ms);
 	/* The BLE result carries only four data bytes. */
 	memset(ble_result.data + 4, 0, sizeof(ble_result.data) - 4);
+	return true;
 }
 
 bool zf_control_ble_pending(void)
 {
-	return ble_result.status == ZF_STATUS_PENDING;
+	return save_pending && save_ble;
 }
 
 void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE])

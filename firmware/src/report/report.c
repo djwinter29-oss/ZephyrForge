@@ -1,3 +1,4 @@
+#include "capabilities.h"
 #include "report/report.h"
 #include "settings/settings.h"
 
@@ -185,6 +186,19 @@ void zf_report_wireless(const zf_wireless_t *wireless, uint8_t out[ZF_WIRELESS_S
 	out[45] = wireless->scan_count;
 	out[46] = wireless->test_generation;
 	out[47] = wireless->staged_state;
+}
+
+void zf_report_scan_entry_result(uint8_t out[ZF_SCAN_ENTRY_RESULT_SIZE], uint16_t generation, uint8_t index,
+				 const uint8_t ssid[ZF_SSID_MAX_BYTES], uint8_t ssid_length, int8_t rssi,
+				 uint8_t security)
+{
+	memset(out, 0, ZF_SCAN_ENTRY_RESULT_SIZE);
+	put16(out, generation);
+	out[2] = index;
+	out[3] = ssid_length < ZF_SSID_MAX_BYTES ? ssid_length : ZF_SSID_MAX_BYTES;
+	memcpy(out + 4, ssid, out[3]);
+	out[36] = (uint8_t)rssi;
+	out[37] = security & 0x07u;
 }
 
 void zf_uid_hex(const uint8_t uid[ZF_UID_SIZE], char out[2 * ZF_UID_SIZE + 1])

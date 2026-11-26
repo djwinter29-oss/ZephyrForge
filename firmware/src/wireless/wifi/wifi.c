@@ -1,8 +1,8 @@
 /*
  * Wi-Fi station: saved-network join with paced retries, candidate tests and scans (Report 12, opcodes 9-12).
  *
- * Uses Zephyr net_mgmt. Driver events are queued by the callback and applied in zf_wifi_poll().
- * AIROC requests run on a dedicated queue because scans and joins block; no request holds the application lock.
+ * Uses Zephyr net_mgmt. Driver events are queued by the callback and applied in zf_wifi_poll(); driver requests
+ * run on a dedicated queue so scans and joins never block the application loop or hold its lock.
  */
 #include "wireless/wifi/wifi.h"
 #include "report/report.h"
@@ -100,6 +100,7 @@ static struct net_mgmt_event_callback interface_cb;
 static struct net_mgmt_event_callback dhcp_cb;
 #endif
 static struct net_if *iface;
+K_MUTEX_DEFINE(wifi_lock);
 
 static bool saved_enabled;
 static zf_wifi_network_t saved;
@@ -290,18 +291,21 @@ static void post(uint8_t type, int status, uint32_t generation)
 		atomic_set(&event_overflow_pending, 1);
 		LOG_ERR("Wi-Fi event queue full");
 	}
+	zf_poll_wakeup();
 }
 
 static void post_scan_done(int status)
 {
 	atomic_set(&scan_done_status, status);
 	atomic_set(&scan_done_pending, 1);
+	zf_poll_wakeup();
 }
 
 #if defined(CONFIG_WIFI_AIROC) || defined(ZF_WIFI_TEST_AIROC_IF_DOWN)
 static void post_interface_down(void)
 {
 	atomic_set(&interface_down_pending, 1);
+	zf_poll_wakeup();
 }
 #endif
 
@@ -344,9 +348,9 @@ static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_even
 		break;
 	case NET_EVENT_WIFI_SCAN_RESULT:
 		if (cb->info != NULL && cb->info_length >= sizeof(struct wifi_scan_result)) {
-			zf_lock();
+			k_mutex_lock(&wifi_lock, K_FOREVER);
 			add_scan_result(cb->info);
-			zf_unlock();
+			k_mutex_unlock(&wifi_lock);
 		}
 		break;
 	case NET_EVENT_WIFI_SCAN_DONE:
@@ -581,16 +585,11 @@ static enum action next_action(int64_t now, zf_wifi_network_t *network)
 	return ACTION_NONE;
 }
 
-#ifdef CONFIG_WIFI_AIROC
 static struct k_work_q request_queue;
 K_THREAD_STACK_DEFINE(request_stack, 4096);
 static enum action request_action;
 static zf_wifi_network_t request_network;
 static uint32_t request_generation;
-#else
-static uint32_t verify_request_generation;
-static enum action verify_request_action;
-#endif
 
 static void perform_request(enum action action, zf_wifi_network_t *network, uint32_t generation)
 {
@@ -623,17 +622,14 @@ static void perform_request(enum action action, zf_wifi_network_t *network, uint
 	}
 
 	LOG_ERR("Wi-Fi request %d failed: %d", action, err);
-	zf_lock();
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	if (action == ACTION_DISCONNECT) {
 		disconnect_verify_pending = true;
 		leave_deadline = k_uptime_get() + LEAVE_TIMEOUT_MS;
 	} else if (action == ACTION_CONNECT) {
 		link = LINK_DOWN;
-		if (owner == OWNER_TEST && command == COMMAND_TESTING
-#ifdef CONFIG_WIFI_AIROC
-		    && test_generation == (uint8_t)request_generation
-#endif
-		) {
+		if (owner == OWNER_TEST && command == COMMAND_TESTING &&
+		    test_generation == (uint8_t)generation) {
 			fail_test(DETAIL_TIMEOUT, k_uptime_get());
 		} else if (owner == OWNER_SAVED) {
 			saved_failed(DETAIL_NONE, k_uptime_get());
@@ -643,10 +639,10 @@ static void perform_request(enum action action, zf_wifi_network_t *network, uint
 		scan_state = ZF_SCAN_FAILED;
 		scan.count = 0;
 	}
-	zf_unlock();
+	k_mutex_unlock(&wifi_lock);
+	zf_poll_wakeup();
 }
 
-#ifdef CONFIG_WIFI_AIROC
 static void request_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
@@ -654,15 +650,6 @@ static void request_handler(struct k_work *work)
 }
 
 K_WORK_DEFINE(request_work, request_handler);
-#else
-static void verify_handler(struct k_work *work)
-{
-	ARG_UNUSED(work);
-	perform_request(verify_request_action, NULL, verify_request_generation);
-}
-
-K_WORK_DEFINE(verify_work, verify_handler);
-#endif
 
 void zf_wifi_poll(void)
 {
@@ -670,18 +657,15 @@ void zf_wifi_poll(void)
 	zf_wifi_network_t network;
 	enum action action;
 
-	zf_lock();
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	apply_events(now);
 	reconcile_event_overflow();
 	apply_timeouts(now);
-#ifdef CONFIG_WIFI_AIROC
 	if (k_work_busy_get(&request_work) != 0) {
-		zf_unlock();
+		k_mutex_unlock(&wifi_lock);
 		return;
 	}
-#endif
 	action = iface != NULL ? next_action(now, &network) : ACTION_NONE;
-#ifdef CONFIG_WIFI_AIROC
 	if (action != ACTION_NONE) {
 		request_action = action;
 		if (action == ACTION_CONNECT) {
@@ -692,6 +676,8 @@ void zf_wifi_poll(void)
 			request_generation = verification_generation;
 		} else if (action == ACTION_VERIFY_DISCONNECT) {
 			request_generation = disconnect_generation;
+		} else {
+			request_generation = 0;
 		}
 		if (k_work_submit_to_queue(&request_queue, &request_work) < 0) {
 			LOG_ERR("Wi-Fi request queue unavailable");
@@ -717,42 +703,13 @@ void zf_wifi_poll(void)
 			}
 		}
 	}
-	zf_unlock();
-#else
-	if (action == ACTION_VERIFY || action == ACTION_VERIFY_DISCONNECT) {
-		if (k_work_busy_get(&verify_work) != 0) {
-			if (action == ACTION_VERIFY) {
-				link_verify_pending = true;
-				link_verify_at = now;
-			} else {
-				disconnect_verify_pending = true;
-			}
-		} else {
-			verify_request_action = action;
-			verify_request_generation = verification_generation;
-			if (action == ACTION_VERIFY_DISCONNECT) {
-				verify_request_generation = disconnect_generation;
-			}
-			if (k_work_submit(&verify_work) < 0) {
-				if (action == ACTION_VERIFY) {
-					link_verify_pending = true;
-				} else {
-					disconnect_verify_pending = true;
-				}
-				LOG_ERR("Wi-Fi verification work unavailable");
-			}
-		}
-	}
-	zf_unlock();
-	if (action != ACTION_VERIFY && action != ACTION_VERIFY_DISCONNECT) {
-		perform_request(action, &network, test_generation);
-	}
-#endif
+	k_mutex_unlock(&wifi_lock);
 }
 
 void zf_wifi_init(bool enabled)
 {
 	zf_lock();
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	atomic_clear(&event_overflow_pending);
 	atomic_clear(&scan_done_pending);
 #if defined(CONFIG_WIFI_AIROC) || defined(ZF_WIFI_TEST_AIROC_IF_DOWN)
@@ -765,6 +722,7 @@ void zf_wifi_init(bool enabled)
 	if (iface == NULL) {
 		wifi_state = enabled ? STATE_FAILED : STATE_OFF;
 		saved_detail = enabled ? DETAIL_RADIO : DETAIL_NONE;
+		k_mutex_unlock(&wifi_lock);
 		zf_unlock();
 		LOG_ERR("No Wi-Fi interface");
 		return;
@@ -783,30 +741,46 @@ void zf_wifi_init(bool enabled)
 		wifi_state = STATE_CONNECTING;
 		retry_at = k_uptime_get();
 	}
+	k_mutex_unlock(&wifi_lock);
 	zf_unlock();
-#ifdef CONFIG_WIFI_AIROC
 	k_work_queue_start(&request_queue, request_stack, K_THREAD_STACK_SIZEOF(request_stack), 5, NULL);
-#endif
 }
 
 bool zf_wifi_test_active(void)
 {
-	return command == COMMAND_TESTING;
+	bool active;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	active = command == COMMAND_TESTING;
+	k_mutex_unlock(&wifi_lock);
+	return active;
 }
 
 bool zf_wifi_test_joined(void)
 {
-	return command == COMMAND_JOINED;
+	bool joined;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	joined = command == COMMAND_JOINED;
+	k_mutex_unlock(&wifi_lock);
+	return joined;
 }
 
 bool zf_wifi_scan_active(void)
 {
-	return scan_state == ZF_SCAN_RUNNING || scan_driver_active;
+	bool active;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	active = scan_state == ZF_SCAN_RUNNING || scan_driver_active;
+	k_mutex_unlock(&wifi_lock);
+	return active;
 }
 
 int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *password)
 {
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	if (!zf_wifi_policy_driver_operation_available(scan_driver_active, connect_quarantined)) {
+		k_mutex_unlock(&wifi_lock);
 		return -EBUSY;
 	}
 	if (++test_generation == 0) {
@@ -820,6 +794,7 @@ int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 		command = COMMAND_FAILED;
 		join_detail = DETAIL_RADIO;
 		memset(test.password, 0, sizeof(test.password));
+		k_mutex_unlock(&wifi_lock);
 		return -ENODEV;
 	}
 	command = COMMAND_TESTING;
@@ -827,11 +802,13 @@ int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 	test_join_pending = true;
 	retry_at = 0;
 	connect_deadline = k_uptime_get() + CONNECT_TIMEOUT_MS;
+	k_mutex_unlock(&wifi_lock);
 	return 0;
 }
 
 void zf_wifi_test_cancel(void)
 {
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	if (owner == OWNER_TEST && link != LINK_DOWN) {
 		connect_quarantined = true;
 		if (link != LINK_LEAVING) {
@@ -849,14 +826,18 @@ void zf_wifi_test_cancel(void)
 		retry_delay = RETRY_DELAY_MS;
 		retry_at = saved_enabled ? k_uptime_get() : 0;
 	}
+	k_mutex_unlock(&wifi_lock);
 }
 
 int zf_wifi_scan_start(void)
 {
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	if (iface == NULL) {
+		k_mutex_unlock(&wifi_lock);
 		return -ENODEV;
 	}
 	if (!zf_wifi_policy_driver_operation_available(scan_driver_active, connect_quarantined)) {
+		k_mutex_unlock(&wifi_lock);
 		return -EBUSY;
 	}
 	if (++scan_generation == 0) {
@@ -866,29 +847,47 @@ int zf_wifi_scan_start(void)
 	scan_state = ZF_SCAN_RUNNING;
 	scan_pending = true;
 	scan_deadline = k_uptime_get() + SCAN_TIMEOUT_MS;
+	k_mutex_unlock(&wifi_lock);
 	return 0;
 }
 
 uint8_t zf_wifi_scan_state(void)
 {
-	return scan_state;
+	uint8_t state;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	state = scan_state;
+	k_mutex_unlock(&wifi_lock);
+	return state;
 }
 
 uint16_t zf_wifi_scan_generation(void)
 {
-	return scan_generation;
+	uint16_t generation;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	generation = scan_generation;
+	k_mutex_unlock(&wifi_lock);
+	return generation;
 }
 
 uint8_t zf_wifi_scan_count(void)
 {
-	return scan_state == ZF_SCAN_COMPLETE ? scan.count : 0;
+	uint8_t count;
+
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	count = scan_state == ZF_SCAN_COMPLETE ? scan.count : 0;
+	k_mutex_unlock(&wifi_lock);
+	return count;
 }
 
 int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi, uint8_t *security)
 {
 	const zf_wifi_scan_entry_t *entry;
 
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	if (scan_state != ZF_SCAN_COMPLETE || index >= scan.count) {
+		k_mutex_unlock(&wifi_lock);
 		return -EINVAL;
 	}
 	entry = &scan.entries[index];
@@ -896,6 +895,7 @@ int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_
 	*ssid_length = entry->ssid_length;
 	*rssi = entry->rssi;
 	*security = entry->security;
+	k_mutex_unlock(&wifi_lock);
 	return 0;
 }
 
@@ -910,6 +910,7 @@ static void ipv4_address(uint8_t out[4])
 
 bool zf_wifi_status(zf_wireless_t *status)
 {
+	k_mutex_lock(&wifi_lock, K_FOREVER);
 	const zf_wifi_network_t *shown = test.ssid_length ? &test : &saved;
 
 	switch (command) {
@@ -939,7 +940,10 @@ bool zf_wifi_status(zf_wireless_t *status)
 	memcpy(status->ssid, shown->ssid, shown->ssid_length);
 	status->scan_state = scan_state;
 	status->scan_generation = scan_generation;
-	status->scan_count = zf_wifi_scan_count();
+	status->scan_count = scan_state == ZF_SCAN_COMPLETE ? scan.count : 0;
 	status->test_generation = test_generation;
-	return saved.ssid_length != 0;
+	bool configured = saved.ssid_length != 0;
+
+	k_mutex_unlock(&wifi_lock);
+	return configured;
 }

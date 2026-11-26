@@ -396,6 +396,19 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(report=malformed), self.assertRaises(ValueError):
                 parse_control_result_report(malformed, self.identity)
 
+    def test_control_result_accepts_save_pending_and_saved_reboot_failure_details(self):
+        for opcode in (2, 3, 5, 6, 8, 9, 10, 11):
+            with self.subTest(opcode=opcode):
+                result = parse_control_result_report(
+                    control_result(opcode, 5, 5, data=bytes([30]) + bytes(62)), self.identity)
+                self.assertEqual(result["detail"], 30)
+        failed = parse_control_result_report(control_result(5, 6, 6, data=bytes([31]) + bytes(62)), self.identity)
+        self.assertEqual(failed["detail"], 31)
+        flash_failure = parse_control_result_report(control_result(5, 6, 6), self.identity)
+        self.assertEqual(flash_failure["detail"], 0)
+        with self.assertRaises(ValueError):
+            parse_control_result_report(control_result(4, 6, 6, data=bytes([31]) + bytes(62)), self.identity)
+
     def test_profile_unsupported_results_do_not_contradict_capabilities(self):
         for opcode in (1, 3, 4, 5, 13):
             with self.subTest(opcode=opcode):

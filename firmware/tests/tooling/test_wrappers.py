@@ -301,6 +301,13 @@ esac
         self.assertIn("-DCONFIG_ZF_USB_MSC=n", commands)
         self.assertIn("-DCONFIG_ZF_STORAGE_BENCHMARK=n", commands)
 
+    def test_build_can_disable_usb_hid_when_ble_remains_available(self):
+        result = self.run_script("build.sh", "--without", "usb-hid")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-DCONFIG_ZF_USB_HID=n", commands)
+        self.assertIn("-d " + str(self.root / "build/firmware-no-usb-hid"), commands)
+
     def test_build_without_pico_wifi_disables_the_wifi_module(self):
         result = self.run_script("build.sh", "--board", "pico_w", "--without", "wifi")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -311,7 +318,9 @@ esac
 
     def test_build_rejects_unknown_modules_and_removing_the_c6_management_transport(self):
         for args in (("--without",), ("--without", "unknown"),
-                     ("--board", "esp32c6", "--without", "bluetooth")):
+                     ("--board", "esp32c6", "--without", "bluetooth"),
+                     ("--without", "usb-hid", "--without", "bluetooth"),
+                     ("--board", "pico", "--without", "usb-hid")):
             with self.subTest(args=args):
                 result = self.run_script("build.sh", *args)
                 self.assertNotEqual(result.returncode, 0)

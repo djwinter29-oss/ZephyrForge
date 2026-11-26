@@ -16,14 +16,14 @@ while (($#)); do
 		--without)
 			(($# >= 2)) || { printf 'Error: --without requires a module name.\n' >&2; exit 1; }
 			case "$2" in
-				wifi|bluetooth|tcp-shell|usb-msc|benchmark) disabled+=("$2") ;;
+				wifi|bluetooth|tcp-shell|usb-hid|usb-msc|benchmark) disabled+=("$2") ;;
 				*) printf 'Error: unknown optional module: %s\n' "$2" >&2; exit 1 ;;
 			esac
 			shift 2 ;;
 		-h|--help)
 			printf '%s\n' \
 				'Usage: bash tools/firmware/build.sh [--board esp32s3|esp32c6|pico|pico_w|pico2|pico2_w] [--storage sdmmc|sd-spi|none]' \
-				'       [--without wifi|bluetooth|tcp-shell|usb-msc|benchmark] (repeatable)'
+				'       [--without wifi|bluetooth|tcp-shell|usb-hid|usb-msc|benchmark] (repeatable)'
 			exit 0 ;;
 		*) printf 'Error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
 	esac
@@ -74,14 +74,25 @@ if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
 		exit 1
 	}
 fi
+if [[ " ${disabled[*]} " == *" usb-hid "* ]]; then
+	[[ "$family" != rpi_pico ]] || {
+		printf 'Error: Raspberry Pi Pico boards require USB HID management.\n' >&2
+		exit 1
+	}
+	[[ " ${disabled[*]} " != *" bluetooth "* ]] || {
+		printf 'Error: firmware needs USB HID or Bluetooth management.\n' >&2
+		exit 1
+	}
+fi
 kconfig=()
 # Keep customized images separate from the default directories used by flashing and release wrappers.
-for feature in wifi bluetooth tcp-shell usb-msc benchmark; do
+for feature in wifi bluetooth tcp-shell usb-hid usb-msc benchmark; do
 	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
 		case "$feature" in
 			wifi) symbol=WIFI ;;
 			bluetooth) symbol=BLUETOOTH ;;
 			tcp-shell) symbol=TCP_SHELL ;;
+			usb-hid) symbol=USB_HID ;;
 			usb-msc) symbol=USB_MSC ;;
 			benchmark) symbol=STORAGE_BENCHMARK ;;
 		esac

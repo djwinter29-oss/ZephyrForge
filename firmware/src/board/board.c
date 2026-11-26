@@ -8,6 +8,8 @@
 #endif
 
 #include "board/board.h"
+#include "capabilities.h"
+#include "module_config.h"
 #include "report/report.h"
 #include "settings/settings.h"
 #include "zephyrforge.h"

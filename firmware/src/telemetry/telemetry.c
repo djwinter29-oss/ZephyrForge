@@ -1,8 +1,6 @@
 #include "telemetry/telemetry.h"
-#include "led/led.h"
 #include "sysclk/sysclk.h"
 #include "report/report.h"
-#include "usb/usb.h"
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/sensor.h>
@@ -17,11 +15,14 @@ static bool temperature_valid;
 static int16_t temperature_centi_c;
 static int64_t temperature_at;
 static uint16_t core0_load = ZF_LOAD_UNAVAILABLE;
+#if CONFIG_ZF_CPU_LOAD
 static uint64_t window_busy;
 static uint64_t window_total;
 static int64_t window_at;
+#endif
 K_MUTEX_DEFINE(telemetry_lock);
 
+#if CONFIG_ZF_CPU_LOAD
 static bool cpu_cycles(uint64_t *busy, uint64_t *total)
 {
 	k_thread_runtime_stats_t stats;
@@ -33,6 +34,7 @@ static bool cpu_cycles(uint64_t *busy, uint64_t *total)
 	*total = stats.execution_cycles;
 	return true;
 }
+#endif
 
 static void read_temperature(void)
 {
@@ -56,15 +58,22 @@ static void read_temperature(void)
 
 void zf_telemetry_init(void)
 {
+#if CONFIG_ZF_CPU_LOAD
 	window_at = k_uptime_get();
 	(void)cpu_cycles(&window_busy, &window_total);
+#endif
 	read_temperature();
+#if CONFIG_ZF_CPU_LOAD
 	temperature_at = window_at;
+#else
+	temperature_at = k_uptime_get();
+#endif
 }
 
 void zf_telemetry_poll(void)
 {
 	int64_t now = k_uptime_get();
+#if CONFIG_ZF_CPU_LOAD
 	uint64_t busy;
 	uint64_t total;
 
@@ -78,19 +87,23 @@ void zf_telemetry_poll(void)
 		window_total = total;
 		window_at = now;
 	}
+#endif
 	if (now - temperature_at >= TEMPERATURE_PERIOD_MS) {
 		read_temperature();
 		temperature_at = now;
 	}
 }
 
-void zf_telemetry_report(uint8_t sequence, uint8_t *out)
+void zf_telemetry_report(uint8_t sequence, bool usb_configured, bool led_available, uint8_t led_colour,
+			 uint8_t *out)
 {
 	zf_telemetry_t telemetry = {
 		.uptime_ms = (uint64_t)k_uptime_get(),
 		.system_clock_hz = zf_sysclk_hz(),
 		.sequence = sequence,
-		.usb_configured = zf_usb_configured(),
+		.usb_configured = usb_configured,
+		.led_available = led_available,
+		.led_colour = led_colour,
 	};
 
 	k_mutex_lock(&telemetry_lock, K_FOREVER);
@@ -98,6 +111,5 @@ void zf_telemetry_report(uint8_t sequence, uint8_t *out)
 	telemetry.temperature_centi_c = temperature_centi_c;
 	telemetry.core0_load = core0_load;
 	k_mutex_unlock(&telemetry_lock);
-	zf_led_status(&telemetry.led_colour, &telemetry.led_available);
 	zf_report_telemetry(&telemetry, out);
 }

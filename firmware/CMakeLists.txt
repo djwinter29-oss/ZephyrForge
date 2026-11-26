@@ -16,6 +16,7 @@ if(NOT CONFIG_ZF_USB_HID AND NOT CONFIG_ZF_BLUETOOTH)
 endif()
 # Module switches are Kconfig symbols; these definitions let native unit tests select the same variants.
 target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>
+  ZF_ENABLE_USB_HID=$<BOOL:${CONFIG_ZF_USB_HID}>
   ZF_ENABLE_STORAGE=$<BOOL:${CONFIG_ZF_STORAGE}>
   ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_ZF_USB_MSC}>
   ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${CONFIG_ZF_STORAGE_BENCHMARK}>)
@@ -94,9 +95,13 @@ target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_boar
 if(CONFIG_ZF_STORAGE)
   target_sources(app PRIVATE src/storage/storage.c src/storage/storage_policy.c)
   target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/storage/storage_msc.c)
-  target_sources_ifdef(CONFIG_ZF_STORAGE_BENCHMARK app PRIVATE src/benchmark/benchmark.c)
 else()
   target_sources(app PRIVATE src/storage/storage_none.c)
+endif()
+if(CONFIG_ZF_STORAGE AND CONFIG_ZF_STORAGE_BENCHMARK)
+  target_sources(app PRIVATE src/benchmark/benchmark.c)
+elseif(NOT CONFIG_ZF_STORAGE)
+  target_sources(app PRIVATE src/benchmark/benchmark_none.c)
 endif()
 target_sources(app PRIVATE
   src/main.c
@@ -108,8 +113,12 @@ target_sources(app PRIVATE
   src/settings/settings.c
   src/settings/settings_flash.c
   src/telemetry/telemetry.c
-  src/usb/usb.c
   src/wireless/wireless.c)
+if(CONFIG_ZF_USB_HID)
+  target_sources(app PRIVATE src/usb/usb.c)
+else()
+  target_sources(app PRIVATE src/usb/usb_none.c)
+endif()
 target_include_directories(app PRIVATE src)
 # The pinned ESP32-S3 HAL leaves the PHY library's weak sensor-power hooks linked. They power the die-temperature
 # sensor off during Wi-Fi modem sleep, and the next telemetry read then spins with interrupts locked. The HAL

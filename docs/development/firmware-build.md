@@ -53,13 +53,19 @@ Every module is a symbol in the `ZephyrForge modules` Kconfig menu. A module is 
 devicetree describes its hardware, and it selects the Zephyr subsystems it needs. Pass `--without MODULE`
 (repeatable) to omit a module the board would otherwise include; the wrapper sets the matching symbol to `n`:
 
-| Module | Kconfig symbol | Default | Effect when omitted |
+| Module/feature | Kconfig symbol | Default | Effect when omitted |
 | --- | --- | --- | --- |
 | `wifi` | `CONFIG_ZF_WIFI` | ESP32 and W boards | No Wi-Fi stack; also omits `tcp-shell` |
 | `bluetooth` | `CONFIG_ZF_BLUETOOTH` | ESP32 boards | No BLE peripheral or Control-key authentication; rejected on ESP32-C6, whose only management link is BLE |
-| `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | ESP32-S3 | No Wi-Fi diagnostic shell |
+| `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | Off | No unauthenticated plaintext TCP diagnostic shell |
+| UART shell | `CONFIG_ZF_UART_SHELL` | Off | No UART diagnostic shell |
+| CPU load | `CONFIG_ZF_CPU_LOAD` | On | Runtime accounting is disabled and telemetry reports load unavailable |
+| `usb-hid` | `CONFIG_ZF_USB_HID` | Boards with a HID node | No native USB HID management; Bluetooth must remain enabled |
 | `usb-msc` | `CONFIG_ZF_USB_MSC` | Storage with USB HID | Keeps storage but cannot export the card over USB; card-export commands report unsupported |
 | `benchmark` | `CONFIG_ZF_STORAGE_BENCHMARK` | Storage with USB HID | No storage benchmark |
+
+Set other symbols such as `CONFIG_ZF_UART_SHELL` and `CONFIG_ZF_CPU_LOAD` through the Zephyr Kconfig interface
+or a configuration fragment. Diagnostic shells are disabled by default.
 
 USB HID management (`CONFIG_ZF_USB_HID`) follows the board overlay's HID node, and SD storage
 (`CONFIG_ZF_STORAGE`) follows the storage overlay selected by `--storage`. Storage never enables FAT formatting;

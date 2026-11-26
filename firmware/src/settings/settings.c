@@ -1,6 +1,6 @@
 #include "settings/settings.h"
-#include "report/report.h"
 #include "settings/settings_flash.h"
+#include "zephyrforge.h"
 
 #include <errno.h>
 #include <string.h>
@@ -26,9 +26,31 @@ struct settings {
 static struct settings staged;
 static struct settings saved;
 static struct settings boot;
-/* Values whose record is being written; readers keep seeing the last confirmed record until it verifies. */
-static struct settings writing;
+static bool saving;
 static zf_settings_source_t source;
+static uint8_t save_record[ZF_SETTINGS_RECORD_SIZE];
+static zf_settings_save_done_t save_done;
+
+static int save_prepare(uint8_t record[ZF_SETTINGS_RECORD_SIZE]);
+static int save_finish(int err);
+
+static void save_written(int err)
+{
+	zf_settings_save_done_t done;
+
+	zf_lock();
+	done = save_done;
+	err = save_finish(err);
+	memset(save_record, 0, sizeof(save_record));
+	save_done = NULL;
+	zf_unlock();
+	done(err);
+}
+
+static const struct settings *visible(void)
+{
+	return saving ? &saved : &staged;
+}
 
 uint32_t zf_settings_crc32(const uint8_t *data, size_t size)
 {
@@ -146,6 +168,9 @@ void zf_settings_load(void)
 	saved = loaded;
 	staged = loaded;
 	boot = loaded;
+	saving = false;
+	save_done = NULL;
+	memset(save_record, 0, sizeof(save_record));
 	memset(record, 0, sizeof(record));
 	memset(&loaded, 0, sizeof(loaded));
 }
@@ -157,12 +182,12 @@ zf_settings_source_t zf_settings_source(void)
 
 zf_sysclk_profile_t zf_settings_sysclk(void)
 {
-	return (zf_sysclk_profile_t)staged.sysclk;
+	return (zf_sysclk_profile_t)visible()->sysclk;
 }
 
 bool zf_settings_set_sysclk(zf_sysclk_profile_t profile)
 {
-	if ((unsigned)profile > ZF_SYSCLK_MAX_PROFILE) {
+	if (saving || (unsigned)profile > ZF_SYSCLK_MAX_PROFILE) {
 		return false;
 	}
 	staged.sysclk = (uint8_t)profile;
@@ -176,12 +201,12 @@ zf_sysclk_profile_t zf_settings_boot_sysclk(void)
 
 uint8_t zf_settings_radios(void)
 {
-	return (uint8_t)(~staged.disabled & SERVICE_BITS);
+	return (uint8_t)(~visible()->disabled & SERVICE_BITS);
 }
 
 bool zf_settings_set_radios(uint8_t radios)
 {
-	if (radios & ~SERVICE_BITS) {
+	if (saving || (radios & ~SERVICE_BITS)) {
 		return false;
 	}
 	staged.disabled = (uint8_t)(~radios & SERVICE_BITS);
@@ -195,7 +220,7 @@ uint8_t zf_settings_boot_radios(void)
 
 void zf_settings_wifi_ssid(char ssid[ZF_SSID_BUFFER_SIZE])
 {
-	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
+	memcpy(ssid, visible()->ssid, sizeof(staged.ssid));
 	ssid[ZF_SSID_BUFFER_SIZE - 1] = '\0';
 }
 
@@ -215,13 +240,15 @@ bool zf_settings_set_wifi_ssid(const char *ssid)
 
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t ssid[ZF_SSID_MAX_BYTES])
 {
-	memcpy(ssid, staged.ssid, sizeof(staged.ssid));
-	return staged.ssid_length;
+	const struct settings *current = visible();
+
+	memcpy(ssid, current->ssid, sizeof(current->ssid));
+	return current->ssid_length;
 }
 
 bool zf_settings_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length)
 {
-	if (length > sizeof(staged.ssid) || (!ssid && length)) {
+	if (saving || length > sizeof(staged.ssid) || (!ssid && length)) {
 		return false;
 	}
 	memset(staged.ssid, 0, sizeof(staged.ssid));
@@ -234,12 +261,12 @@ bool zf_settings_set_wifi_ssid_bytes(const uint8_t *ssid, uint8_t length)
 
 void zf_settings_wifi_password(char password[ZF_WIFI_PASSWORD_SIZE])
 {
-	memcpy(password, staged.password, sizeof(staged.password));
+	memcpy(password, visible()->password, sizeof(staged.password));
 }
 
 bool zf_settings_set_wifi_password(const char *password)
 {
-	if (!password || !password_valid(password, ZF_WIFI_PASSWORD_SIZE)) {
+	if (saving || !password || !password_valid(password, ZF_WIFI_PASSWORD_SIZE)) {
 		return false;
 	}
 	memset(staged.password, 0, sizeof(staged.password));
@@ -249,17 +276,17 @@ bool zf_settings_set_wifi_password(const char *password)
 
 bool zf_settings_wifi_password_configured(void)
 {
-	return staged.password[0] != '\0';
+	return visible()->password[0] != '\0';
 }
 
 zf_wifi_auth_state_t zf_settings_wifi_auth_state(void)
 {
-	return (zf_wifi_auth_state_t)staged.auth;
+	return (zf_wifi_auth_state_t)visible()->auth;
 }
 
 bool zf_settings_set_wifi_auth_state(zf_wifi_auth_state_t state)
 {
-	if ((unsigned)state > ZF_WIFI_AUTH_SAE) {
+	if (saving || (unsigned)state > ZF_WIFI_AUTH_SAE) {
 		return false;
 	}
 	staged.auth = (uint8_t)state;
@@ -268,11 +295,14 @@ bool zf_settings_set_wifi_auth_state(zf_wifi_auth_state_t state)
 
 void zf_settings_ble_key(uint8_t key[ZF_BLE_KEY_SIZE])
 {
-	memcpy(key, staged.key, sizeof(staged.key));
+	memcpy(key, visible()->key, sizeof(staged.key));
 }
 
-void zf_settings_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE])
+bool zf_settings_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE])
 {
+	if (saving) {
+		return false;
+	}
 	if (key) {
 		memcpy(staged.key, key, sizeof(staged.key));
 		staged.flags |= KEY_PRESENT;
@@ -280,11 +310,12 @@ void zf_settings_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE])
 		memset(staged.key, 0, sizeof(staged.key));
 		staged.flags &= (uint8_t)~KEY_PRESENT;
 	}
+	return true;
 }
 
 bool zf_settings_ble_key_configured(void)
 {
-	return (staged.flags & KEY_PRESENT) != 0;
+	return (visible()->flags & KEY_PRESENT) != 0;
 }
 
 bool zf_settings_wireless_restart_required(void)
@@ -300,44 +331,66 @@ bool zf_settings_restart_required(void)
 	return saved.sysclk != boot.sysclk || zf_settings_wireless_restart_required();
 }
 
-int zf_settings_save_prepare(uint8_t record[ZF_SETTINGS_RECORD_SIZE])
+static int save_prepare(uint8_t record[ZF_SETTINGS_RECORD_SIZE])
 {
+	if (saving) {
+		return -EBUSY;
+	}
 	if (memcmp(&staged, &saved, sizeof(staged)) == 0) {
 		return 0;
 	}
 	encode(&staged, record);
-	writing = staged;
-	staged = saved;
+	saving = true;
 	return 1;
 }
 
-int zf_settings_save_finish(int err)
+static int save_finish(int err)
 {
+	if (!saving) {
+		return -EINVAL;
+	}
 	if (err) {
 		staged = saved;
 		err = err < 0 ? err : -EIO;
 	} else {
-		saved = writing;
-		staged = writing;
+		saved = staged;
 		source = ZF_SETTINGS_SAVED;
 	}
-	memset(&writing, 0, sizeof(writing));
+	saving = false;
 	return err;
 }
 
-int zf_settings_save(void)
+int zf_settings_save_async(zf_settings_save_done_t done)
 {
-	uint8_t record[ZF_SETTINGS_RECORD_SIZE];
-	int err = zf_settings_save_prepare(record);
+	int err;
 
-	if (err > 0) {
-		err = zf_settings_save_finish(zf_settings_flash_write(record, sizeof(record)));
+	if (done == NULL || save_done != NULL) {
+		return done == NULL ? -EINVAL : -EBUSY;
 	}
-	memset(record, 0, sizeof(record));
+	err = save_prepare(save_record);
+	if (err < 0) {
+		memset(save_record, 0, sizeof(save_record));
+		return err;
+	}
+	save_done = done;
+	if (err == 0) {
+		save_done = NULL;
+		done(0);
+		return 0;
+	}
+	err = zf_settings_flash_write_async(save_record, sizeof(save_record), save_written);
+	if (err != 0) {
+		(void)save_finish(err);
+		memset(save_record, 0, sizeof(save_record));
+		save_done = NULL;
+	}
 	return err;
 }
 
 void zf_settings_discard(void)
 {
+	if (saving) {
+		return;
+	}
 	staged = saved;
 }

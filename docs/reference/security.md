@@ -11,8 +11,9 @@ USB HID uses physical access. BLE authenticates commands with the Control key, b
 encrypted. Unlocked BLE status can expose the saved SSID and IP address to a nearby radio observer. See the
 [Bluetooth security properties](bluetooth-le.md#security-properties).
 
-The ESP32-S3 raw TCP diagnostic shell is unauthenticated plaintext on port 2323. Use it only on a trusted, isolated
-network; never port-forward it or enter secrets. See [diagnostic shells](../guides/console.md#raw-tcp).
+Optional UART and ESP32-S3 raw TCP diagnostic shells are unauthenticated. They are disabled by default; enabling
+the TCP shell exposes plaintext access on port 2323. Use diagnostic shells only in trusted environments, never
+port-forward the TCP shell, and do not enter secrets. See [diagnostic shells](../guides/console.md).
 
 Python and .NET bridge hosts bind to loopback. Do not expose or reverse-proxy them to a network without a separate
 authentication design. See the [host API](http-api.md#routes).

@@ -3,12 +3,15 @@
  */
 #include "wireless/ble/ble.h"
 #include "board/board.h"
+#include "module_config.h"
 #include "control/control.h"
 #include "report/report.h"
 #include "settings/settings.h"
 #include "benchmark/benchmark.h"
 #include "storage/storage.h"
 #include "telemetry/telemetry.h"
+#include "led/led.h"
+#include "usb/usb.h"
 #include "wireless/ble/ble_auth.h"
 #include "wireless/wireless.h"
 #include "zephyrforge.h"
@@ -28,6 +31,7 @@ LOG_MODULE_REGISTER(zf_ble, LOG_LEVEL_INF);
 #define FAST_INTERVAL 96   /* 60 ms */
 #define SLOW_INTERVAL 800  /* 500 ms */
 #define FAST_PERIOD_MS 30000
+#define SETTINGS_SAVE_WAIT_MS 30000
 
 #define CHR_IDENTITY 0x0001u
 #define CHR_CONFIG 0x0002u
@@ -48,7 +52,7 @@ LOG_MODULE_REGISTER(zf_ble, LOG_LEVEL_INF);
 
 /* The complete name must fit the device-name buffer and one legacy 31-byte scan-response AD element. */
 BUILD_ASSERT(NAME_SIZE <= CONFIG_BT_DEVICE_NAME_MAX && NAME_SIZE + 2 <= 31);
-/* A BLE save waits in the GATT write for the settings work item, which runs on the system work queue. */
+/* A synchronous GATT save must not occupy the system work queue needed by unrelated application work. */
 BUILD_ASSERT(!IS_ENABLED(CONFIG_BT_RECV_WORKQ_SYS));
 
 static atomic_t state = ATOMIC_INIT(ZF_BLE_OFF);
@@ -64,6 +68,13 @@ static const struct bt_gatt_attr *snapshot_attr;
 static uint8_t snapshot[SNAPSHOT_SIZE];
 static uint16_t snapshot_length;
 static uint8_t sequence;
+K_SEM_DEFINE(settings_save_done, 0, 1);
+
+static void save_done(void *context)
+{
+	ARG_UNUSED(context);
+	k_sem_give(&settings_save_done);
+}
 
 static const struct bt_data advertising[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
@@ -193,18 +204,21 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 		zf_board_memory_report(out);
 		return ZF_MEMORY_SIZE;
 	case CHR_TELEMETRY:
-		zf_telemetry_report(++sequence, out);
+	{
+		uint8_t led_colour;
+		bool led_available;
+
+		zf_led_status(&led_colour, &led_available);
+		zf_telemetry_report(++sequence, zf_usb_configured(), led_available, led_colour, out);
 		return ZF_TELEMETRY_SIZE;
+	}
 	case CHR_STORAGE:
 		zf_storage_report(++sequence, out);
 		return ZF_STORAGE_SIZE;
-	case CHR_BENCHMARK:
 #if ZF_ENABLE_STORAGE_BENCHMARK
+	case CHR_BENCHMARK:
 		zf_benchmark_report(++sequence, out);
 		return ZF_BENCHMARK_SIZE;
-#else
-		++sequence;
-		return 0;
 #endif
 	case CHR_WIRELESS:
 		zf_wireless_report(out);
@@ -298,25 +312,31 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 			result = BT_GATT_ERR(err);
 		} else {
 			save_request = request[2] == ZF_OP_SAVE;
-			zf_control_ble_execute(request, now);
+			if (save_request) {
+				k_sem_reset(&settings_save_done);
+			}
+			if (!zf_control_ble_execute(request, now, save_done, NULL)) {
+				result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+			}
 		}
 	}
 	zf_unlock();
-	if (save_request) {
+	if (save_request && result == len) {
 		bool pending;
 
-		LOG_INF("BLE settings request lock wait %lld ms, hold %lld ms",
+		LOG_DBG("BLE settings request lock wait %lld ms, hold %lld ms",
 			(long long)(lock_acquired - lock_started),
 			(long long)(k_uptime_get() - lock_acquired));
 		/* The write response must carry a terminal result; the bounded flash write runs on the work item. */
-		do {
-			zf_lock();
-			pending = zf_control_ble_pending();
-			zf_unlock();
-			if (pending) {
-				k_msleep(5);
+		zf_lock();
+		pending = zf_control_ble_pending();
+		zf_unlock();
+		if (pending) {
+			if (k_sem_take(&settings_save_done, K_MSEC(SETTINGS_SAVE_WAIT_MS)) != 0) {
+				LOG_ERR("BLE settings save did not finish within %d ms", SETTINGS_SAVE_WAIT_MS);
+				result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 			}
-		} while (pending);
+		}
 	}
 	return result;
 }
@@ -340,7 +360,9 @@ BT_GATT_SERVICE_DEFINE(zephyrforge_service,
 	REPORT_CHR(CHR_MEMORY),
 	REPORT_CHR(CHR_TELEMETRY),
 	REPORT_CHR(CHR_STORAGE),
+#if ZF_ENABLE_STORAGE_BENCHMARK
 	REPORT_CHR(CHR_BENCHMARK),
+#endif
 	REPORT_CHR(CHR_WIRELESS),
 	BT_GATT_CHARACTERISTIC(ZF_UUID_DECLARE(CHR_CONTROL), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_report, write_control,

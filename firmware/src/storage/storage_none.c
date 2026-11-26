@@ -1,5 +1,4 @@
 #include "report/report.h"
-#include "benchmark/benchmark.h"
 #include "storage/storage.h"
 
 #include <errno.h>
@@ -13,13 +12,6 @@ void zf_storage_report(uint8_t sequence, uint8_t *out)
 	zf_storage_t storage = {.sequence = sequence};
 
 	zf_report_storage(&storage, out);
-}
-
-void zf_benchmark_report(uint8_t sequence, uint8_t *out)
-{
-	zf_benchmark_t benchmark = {.sequence = sequence};
-
-	zf_report_benchmark(&benchmark, out);
 }
 
 void zf_storage_result_read(uint8_t transaction)

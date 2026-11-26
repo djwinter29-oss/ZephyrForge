@@ -560,8 +560,10 @@ internal static partial class HidProtocol
             Opcode.StageSsid or Opcode.StagePassword or Opcode.StageKey or Opcode.WifiEntry =>
                 result.Status is ControlStatus.Completed or ControlStatus.Invalid or ControlStatus.Unsupported
                     or ControlStatus.Busy or ControlStatus.Failed,
-            Opcode.WifiCancel or Opcode.TcpProof => result.Status is ControlStatus.Completed
-                or ControlStatus.Invalid or ControlStatus.Unsupported or ControlStatus.Failed,
+            Opcode.WifiCancel => result.Status is ControlStatus.Completed or ControlStatus.Invalid
+                or ControlStatus.Unsupported or ControlStatus.Busy or ControlStatus.Failed,
+            Opcode.TcpProof => result.Status is ControlStatus.Completed or ControlStatus.Invalid
+                or ControlStatus.Unsupported or ControlStatus.Failed,
             _ => result.Status == ControlStatus.Unsupported && result.ErrorReason == ControlError.Opcode
         }, "control result status is invalid for its opcode");
         Require(!assigned || result.Status != ControlStatus.Unsupported ||
@@ -617,13 +619,18 @@ internal static partial class HidProtocol
             return detail switch
             {
                 1 or 2 => op is Opcode.Reboot or Opcode.Msc or Opcode.SelfTest or Opcode.SaveSettings,
-                29 => op is Opcode.Reboot or Opcode.Msc or Opcode.SelfTest or Opcode.SaveSettings,
+                28 => op is Opcode.Reboot or Opcode.SaveSettings,
+                29 or 30 => op is Opcode.Reboot or Opcode.Msc or Opcode.SelfTest or Opcode.SaveSettings
+                    or Opcode.StageSsid or Opcode.StagePassword or Opcode.StageKey or Opcode.WifiTest
+                    or Opcode.WifiCancel or Opcode.WifiScan,
                 25 => op is Opcode.SaveSettings or Opcode.StageSsid or Opcode.StagePassword or Opcode.StageKey
                     or Opcode.WifiTest or Opcode.WifiScan,
                 26 => op is Opcode.SaveSettings or Opcode.WifiTest or Opcode.WifiScan or Opcode.WifiEntry,
                 _ => false
             };
-        return result.Status == ControlStatus.Failed && op == Opcode.SelfTest && detail is 4 or 5 or 6 or 7;
+        return result.Status == ControlStatus.Failed &&
+            (op == Opcode.SelfTest && detail is 4 or 5 or 6 or 7 ||
+             op == Opcode.SaveSettings && detail == 31);
     }
 
     public static void RequireCompleted(ControlResult result, byte transactionId, Opcode opcode)
@@ -650,7 +657,8 @@ internal static partial class HidProtocol
                 21 => "no eligible staged wireless values", 22 => "scan generation is stale",
                 23 => "scan index is out of range", 24 => "no Control key is saved",
                 25 => "a Wi-Fi test is active", 26 => "a Wi-Fi scan is active",
-                27 => "staged wireless values require explicit commit", _ => description
+                27 => "staged wireless values require explicit commit",
+                31 => "settings were saved, but the device could not schedule the reboot", _ => description
             };
         throw new BoardStateException(
             $"HID command rejected ({(byte)result.Status}/{(byte)result.ErrorReason}): {description}");

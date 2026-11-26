@@ -43,7 +43,5 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage);
 int64_t zf_storage_media_time(void);
 /** Unmount and deinitialize the medium; failures must be logged and returned. */
 int zf_storage_media_close(void);
-/** Provided by USB HID: restart native USB before a new export so an OS-ejected LUN can be loaded again. */
-int zf_storage_usb_refresh(void);
 
 #endif

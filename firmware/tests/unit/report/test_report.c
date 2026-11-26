@@ -1,7 +1,16 @@
 #include "unity.h"
+#include "module_config.h"
 #include "report.h"
 
 #include <string.h>
+
+void zf_lock(void)
+{
+}
+
+void zf_unlock(void)
+{
+}
 
 void test_benchmark_layout_and_nonterminal_error_suppression(void)
 {
@@ -289,6 +298,22 @@ void test_storage_report_clamps_unknown_filesystem_format(void)
 
 	zf_report_storage(&storage, out);
 	TEST_ASSERT_EQUAL_UINT8(0, out[30]);
+}
+
+void test_scan_entry_result_encodes_generation_and_bounds_ssid_length(void)
+{
+	uint8_t ssid[ZF_SSID_MAX_BYTES] = {0};
+	uint8_t out[ZF_SCAN_ENTRY_RESULT_SIZE];
+
+	memcpy(ssid, "network", 7);
+	zf_report_scan_entry_result(out, 0x1234, 5, ssid, ZF_SSID_MAX_BYTES + 1, -42, 0xFF);
+	TEST_ASSERT_EQUAL_HEX8(0x34, out[0]);
+	TEST_ASSERT_EQUAL_HEX8(0x12, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(5, out[2]);
+	TEST_ASSERT_EQUAL_HEX8(ZF_SSID_MAX_BYTES, out[3]);
+	TEST_ASSERT_EQUAL_MEMORY(ssid, out + 4, sizeof(ssid));
+	TEST_ASSERT_EQUAL_HEX8((uint8_t)-42, out[36]);
+	TEST_ASSERT_EQUAL_HEX8(0x07, out[37]);
 }
 
 void test_helpers(void)

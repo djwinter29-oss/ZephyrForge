@@ -45,7 +45,6 @@
 #define ZF_OP_CANCEL_TEST 10u
 #define ZF_OP_SCAN 11u
 #define ZF_OP_SCAN_ENTRY 12u
-#define ZF_OP_TCP_PROOF 13u
 
 /*
  * Dispatcher-owned result details. Staging owns details 16-21; benchmark admission returns its own
@@ -58,7 +57,12 @@
 #define ZF_DETAIL_SCAN_ACTIVE 26u /**< A Wi-Fi scan is active. */
 #define ZF_DETAIL_COMMIT_FLAG 27u /**< Staged values exist but the save commit flag is clear. */
 #define ZF_DETAIL_USB_STAGED 28u /**< Unexpired USB staging blocks a BLE save or reboot. */
-#define ZF_DETAIL_REBOOT_PENDING 29u /**< A scheduled reset or settings write blocks reboot, save and storage. */
+#define ZF_DETAIL_REBOOT_PENDING 29u /**< A scheduled reset blocks reboot, save and storage. */
+#define ZF_DETAIL_SAVE_PENDING 30u /**< An asynchronous settings write is still in progress. */
+#define ZF_DETAIL_SAVED_REBOOT_FAILED 31u /**< Settings were saved, but scheduling their reboot failed. */
+
+/** Notifier called when an accepted BLE settings save reaches its final result. */
+typedef void (*zf_control_save_done_t)(void *context);
 
 /** Initialize result slots, staging and reboot reservation before transports start. */
 void zf_control_init(void);
@@ -70,8 +74,12 @@ void zf_control_usb_get(uint8_t out[ZF_CONTROL_SIZE]);
 /** True when a 9-byte BLE request has a valid envelope (length, version, nonzero transaction ID). */
 bool zf_control_ble_envelope(const uint8_t *request, size_t size);
 
-/** Execute an authorized BLE request with a valid envelope; replaces the BLE result slot. */
-void zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t now_ms);
+/**
+ * Execute an authorized BLE request with a valid envelope; replaces the BLE result slot.
+ * @return False when another BLE settings save is still pending.
+ */
+bool zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t now_ms,
+			    zf_control_save_done_t save_done, void *save_context);
 /** True while a BLE settings save waits for its flash write; the GATT write must not respond until false. */
 bool zf_control_ble_pending(void);
 void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE]);

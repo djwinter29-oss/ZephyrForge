@@ -34,6 +34,7 @@ NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_IN
 
 void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
 void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
+void zf_poll_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES])
 {
 	memcpy(out, "saved", 5);
@@ -107,7 +108,10 @@ ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 	zassert_not_null(wifi_iface);
 	k_sleep(K_MSEC(1));
 	zf_wifi_init(true);
-	zf_wifi_poll();
+	for (int i = 0; i < 100 && connect_requests == 0; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
 	zassert_equal(connect_requests, 1, "saved network should start before recovery");
 	station_status.state = WIFI_STATE_ASSOCIATED;
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_DISCONNECT_RESULT, wifi_iface, &failed_disconnect,

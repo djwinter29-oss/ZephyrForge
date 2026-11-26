@@ -18,6 +18,7 @@
 
 K_MUTEX_DEFINE(app_mutex);
 static struct wifi_iface_status station_status;
+static unsigned int connect_requests;
 static unsigned int disconnect_requests;
 static unsigned int status_queries;
 static int disconnect_state = WIFI_STATE_DISCONNECTED;
@@ -59,6 +60,7 @@ NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_IN
 
 void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
 void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
+void zf_poll_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
 void zf_settings_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0; }
 bool zf_settings_ble_key_configured(void) { return false; }
@@ -74,6 +76,7 @@ int net_mgmt_NET_REQUEST_WIFI_CONNECT(uint64_t request, struct net_if *iface, vo
 	ARG_UNUSED(iface);
 	zassert_equal(size, sizeof(struct wifi_connect_req_params));
 	zassert_not_null(data);
+	++connect_requests;
 	station_status.state = WIFI_STATE_ASSOCIATING;
 	return 0;
 }
@@ -124,12 +127,21 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	zassert_ok(zf_wifi_test_start((const uint8_t *)"candidate", 9, "password"));
 	zf_unlock();
 	zf_wifi_poll();
+	for (int i = 0; i < 100 && connect_requests == 0; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_equal(connect_requests, 1, "candidate join should queue a driver connect");
 
 	disconnect_state = WIFI_STATE_ASSOCIATED;
 	zf_lock();
 	zf_wifi_test_cancel();
 	zf_unlock();
 	zf_wifi_poll();
+	for (int i = 0; i < 100 && disconnect_requests == 0; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
 	zassert_equal(disconnect_requests, 1);
 
 	for (int i = 0; i < 100 && status_queries == 0; ++i) {
@@ -178,7 +190,13 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	zf_lock();
 	zassert_ok(zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password"));
 	zf_unlock();
+	unsigned int connects_before_join = connect_requests;
 	zf_wifi_poll();
+	for (int i = 0; i < 100 && connect_requests == connects_before_join; ++i) {
+		zf_wifi_poll();
+		k_sleep(K_MSEC(5));
+	}
+	zassert_equal(connect_requests, connects_before_join + 1, "replacement should queue a driver connect");
 	station_status.state = WIFI_STATE_COMPLETED;
 	zassert_ok(net_addr_pton(AF_INET, "192.0.2.1", &address));
 	zassert_not_null(net_if_ipv4_addr_add(wifi_iface, &address, NET_ADDR_MANUAL, 0));

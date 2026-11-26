@@ -2,8 +2,9 @@
 
 [Documentation](../README.md) / Guides / Diagnostic shells
 
-ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and, on the ESP32-S3, as a raw TCP stream
-on port **2323**.
+ZephyrForge can enable Zephyr's native diagnostic shell on the UART connector or, on the ESP32-S3, as a raw TCP
+stream on port **2323**. Both are disabled by default.
+Enable `CONFIG_ZF_UART_SHELL` or `CONFIG_ZF_TCP_SHELL` in the firmware Kconfig configuration only when needed.
 Neither shell carries dashboard commands or changes saved settings, wireless credentials or SD ownership.
 USB HID and authenticated BLE remain the management interfaces.
 

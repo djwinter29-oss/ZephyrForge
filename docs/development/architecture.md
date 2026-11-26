@@ -52,7 +52,7 @@ their driver integration.
 
 | Layer | Responsibility |
 | --- | --- |
-| Application lifecycle | Boot order and periodic servicing of control, Wi-Fi, telemetry, and USB |
+| Application lifecycle | Boot order, event wakeups and bounded servicing of Wi-Fi, telemetry, and USB |
 | Board integration | Shared state locking, UID/serial, reset cause, board facts and delayed reboot |
 | Control dispatcher | Command validation and execution shared by USB and BLE, with separate result slots |
 | Report encoding | Shared identity, configuration, telemetry, storage, and wireless payloads |
@@ -104,16 +104,18 @@ time, and initial SD setup/mount duration. No card self-test or file write runs 
 ### Threads and locking
 
 USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thread. Both call the same control
-dispatcher. After boot initialization, every access to settings, staging, and wireless state holds one application
-mutex.
+dispatcher. After boot initialization, shared control, settings, staging and BLE session state use the recursive
+application mutex. Wi-Fi owns a separate mutex; callers do not access its state directly.
 
-- **Settings saves** encode the record under the mutex, then erase, write, and verify flash on a system work-queue
-  item without it. USB reports Pending until the item finishes; the BLE write handler waits, unlocked, so its
-  result stays terminal. The nominal 20 ms main-loop period is not a response-time guarantee. The
+- **Settings saves** are owned by the settings service. It prepares the record under the application mutex, then
+  erases, writes, and verifies flash on a dedicated low-priority work queue without it. USB reports Pending until
+  completion and holds the final result until read. The BLE write handler waits unlocked for at most 30 seconds;
+  timeout does not cancel the save. Wi-Fi events wake the main loop, which has a 100 ms maximum service wait.
+  This is not a response-time guarantee. The
   [flash-operation timing log](../reference/boot-settings.md#saving) excludes lock wait and full callback latency;
   save responsiveness and contention have not been hardware-qualified.
-- **Wi-Fi events** are queued and applied by the main loop. Connect, disconnect, and scan requests run outside
-  the lock.
+- **Wi-Fi events** are queued and wake the main loop; module state is guarded by its own mutex. Connect, disconnect,
+  and scan requests run on a dedicated queue outside that mutex.
 - **Storage** runs in a worker outside the application lock. Native MSC block I/O runs in its own USB class thread.
 
 ### Command completion and recovery

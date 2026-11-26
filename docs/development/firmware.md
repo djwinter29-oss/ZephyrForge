@@ -24,7 +24,9 @@ Wi-Fi, Bluetooth and storage build the module's `*_none.c` file against the same
 it needs and the owning module implements them: the benchmark declares `zf_benchmark_media_*` for storage to
 provide. `report/report.h` also defines the decoded content of each report, named after the report
 (`zf_storage_t`), so modules and transports share one layout. Smaller features, such as USB mass storage and the
-benchmark, use the `ZF_ENABLE_*` values that `report/report.h` derives from Kconfig.
+benchmark, use `ZF_ENABLE_*` values from `module_config.h`; `capabilities.h` combines these with the selected
+board and radio configuration for report identity and command admission. Shared radio and SSID values live in
+`wireless/wireless_types.h`, independently of saved settings and report encoding.
 
 `lib/` and `drivers/` are not modules. `lib/` holds portable helpers named after their subject (`sha256.h`,
 `zf_sha256_*`). `drivers/` holds implementations of Zephyr APIs, grouped by Zephyr subsystem.

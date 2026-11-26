@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "control.h"
+#include "module_config.h"
 #include "settings.h"
 #include "report.h"
 #include "control_stage.h"
@@ -21,6 +22,7 @@ static uint8_t queued[ZF_SETTINGS_RECORD_SIZE];
 static zf_settings_done_t queued_done;
 static bool defer_writes;
 static bool locked;
+static int settings_save_result;
 
 static int flash_read(uint8_t *record, size_t size, int calls)
 {
@@ -76,23 +78,38 @@ static int settings_write(const uint8_t *record, size_t size, zf_settings_done_t
 	return 0;
 }
 
+static void settings_saved(int err)
+{
+	settings_save_result = err;
+}
+
+static int save_settings(void)
+{
+	settings_save_result = -EINPROGRESS;
+	int err = zf_settings_save_async(settings_saved);
+
+	return err != 0 ? err : settings_save_result;
+}
+
 void setUp(void)
 {
 	zf_settings_flash_read_Stub(flash_read);
 	zf_settings_flash_write_Stub(flash_write);
+	zf_settings_flash_write_async_Stub(settings_write);
 	memset(flash, 0xFF, sizeof(flash));
 	write_result = 0;
 	write_calls = 0;
 	txn = 0;
+	queued_done = NULL;
+	defer_writes = false;
 	zf_settings_load();
 	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid("home"));
 	TEST_ASSERT_TRUE(zf_settings_set_wifi_password("saved-password"));
-	TEST_ASSERT_EQUAL_INT(0, zf_settings_save());
+	TEST_ASSERT_EQUAL_INT(0, save_settings());
 	write_calls = 0;
 	queued_done = NULL;
 	defer_writes = false;
 	zf_control_init();
-	zf_settings_flash_write_async_Stub(settings_write);
 	zf_wifi_test_active_IgnoreAndReturn(false);
 	zf_wifi_scan_active_IgnoreAndReturn(false);
 	zf_storage_busy_IgnoreAndReturn(false);
@@ -128,7 +145,7 @@ static const uint8_t *ble(uint8_t opcode, uint8_t flags, const uint8_t *args, in
 		memcpy(request + 4, args, 5);
 	}
 	TEST_ASSERT_TRUE(zf_control_ble_envelope(request, sizeof(request)));
-	zf_control_ble_execute(request, now);
+	TEST_ASSERT_TRUE(zf_control_ble_execute(request, now, NULL, NULL));
 	zf_control_ble_get(result);
 	TEST_ASSERT_EQUAL_UINT8(request[1], result[1]);
 	return result;
@@ -176,10 +193,10 @@ void test_unassigned_and_unsupported_opcodes(void)
 {
 	assert_result(usb(0, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
 	assert_result(usb(14, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
+	assert_result(usb(ZF_OP_SCAN_ENTRY + 1, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_OPCODE, 0);
 #if !ZF_ENABLE_STORAGE_BENCHMARK
 	assert_result(usb(ZF_OP_BENCHMARK, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 #endif
-	assert_result(usb(ZF_OP_TCP_PROOF, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
 void test_msc_is_unsupported_when_storage_or_usb_export_is_not_built(void)
@@ -388,6 +405,16 @@ void test_save_flash_failure_discards(void)
 	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 }
 
+void test_save_reports_persisted_settings_when_reboot_scheduling_fails(void)
+{
+	const uint8_t args[4] = {80, 0, 0, 3};
+
+	zf_board_schedule_reboot_ExpectAndReturn(-EIO);
+	assert_result(usb(ZF_OP_SAVE, 0, args, sizeof(args), 0),
+		      ZF_STATUS_FAILED, ZF_ERROR_FAILED, ZF_DETAIL_SAVED_REBOOT_FAILED);
+	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_80MHZ, zf_settings_sysclk());
+}
+
 void test_usb_save_is_pending_without_the_lock_and_blocks_reset_class_commands(void)
 {
 	const uint8_t args[5] = {80, 0, 0, 3, 0};
@@ -397,8 +424,8 @@ void test_usb_save_is_pending_without_the_lock_and_blocks_reset_class_commands(v
 	assert_result(usb(ZF_OP_SAVE, 0, args, 4, 0), ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
 	TEST_ASSERT_EQUAL_INT(0, write_calls);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_sysclk());
-	assert_result(ble(ZF_OP_SAVE, 0, args, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
-	assert_result(ble(ZF_OP_REBOOT, 1, NULL, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	assert_result(ble(ZF_OP_SAVE, 0, args, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SAVE_PENDING);
+	assert_result(ble(ZF_OP_REBOOT, 1, NULL, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SAVE_PENDING);
 	zf_board_schedule_reboot_ExpectAndReturn(0);
 	complete_write();
 	TEST_ASSERT_EQUAL_INT(1, write_calls);
@@ -426,21 +453,42 @@ void test_ble_save_stays_pending_until_the_write_fails_and_discards(void)
 	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 10), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 }
 
-void test_completed_save_keeps_a_later_usb_result_and_still_reserves_reset(void)
+void test_completed_save_result_survives_later_usb_commands(void)
 {
 	const uint8_t args[4] = {80, 0, 0, 3};
 	uint8_t result[ZF_CONTROL_SIZE];
+	uint8_t payload[ZF_CONTROL_SIZE] = {1, 0x7Fu, ZF_OP_REBOOT, 1};
 
 	defer_writes = true;
 	assert_result(usb(ZF_OP_SAVE, 0, args, 4, 0), ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
-	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	TEST_ASSERT_FALSE(zf_control_usb_set(payload, sizeof(payload), 0));
 	zf_board_schedule_reboot_ExpectAndReturn(0);
 	complete_write();
 	zf_control_usb_get(result);
-	TEST_ASSERT_EQUAL_UINT8(ZF_OP_REBOOT, result[2]);
-	assert_result(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+	TEST_ASSERT_EQUAL_UINT8(ZF_OP_SAVE, result[2]);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
+	zf_control_usb_get(result);
+	TEST_ASSERT_EQUAL_UINT8(ZF_OP_SAVE, result[2]);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_80MHZ, zf_settings_sysclk());
 	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
+}
+
+void test_staging_is_blocked_while_save_is_in_flight(void)
+{
+	const uint8_t args[4] = {80, 0, 0, 3};
+	uint8_t result[ZF_CONTROL_SIZE];
+	uint8_t payload[ZF_CONTROL_SIZE] = {1, 0x7Fu, ZF_OP_STAGE_SSID, 0};
+
+	defer_writes = true;
+	assert_result(usb(ZF_OP_SAVE, 0, args, sizeof(args), 0), ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
+	TEST_ASSERT_FALSE(zf_control_usb_set(payload, sizeof(payload), 0));
+	zf_board_schedule_reboot_ExpectAndReturn(0);
+	complete_write();
+	zf_control_usb_get(result);
+	assert_result(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
+	assert_result(usb(ZF_OP_STAGE_SSID, 0, (const uint8_t[64]){0}, 64, 0),
+		      ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 }
 
 void test_save_queue_failure_discards_without_a_write(void)
@@ -675,7 +723,8 @@ void test_save_reports_failed_but_keeps_committed_settings_when_reboot_fails(voi
 
 	assert_result(stage(ZF_OP_STAGE_PASSWORD, "password", 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 	zf_board_schedule_reboot_ExpectAndReturn(-EIO);
-	assert_result(usb(ZF_OP_SAVE, 2, args, sizeof(args), 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+	assert_result(usb(ZF_OP_SAVE, 2, args, sizeof(args), 0), ZF_STATUS_FAILED, ZF_ERROR_FAILED,
+		      ZF_DETAIL_SAVED_REBOOT_FAILED);
 	/* The record is already persisted; only the reboot scheduling failed. */
 	TEST_ASSERT_EQUAL_INT(1, write_calls);
 	zf_settings_load();

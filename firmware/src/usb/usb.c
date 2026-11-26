@@ -3,6 +3,8 @@
  */
 #include "usb/usb.h"
 #include "board/board.h"
+#include "module_config.h"
+#include "led/led.h"
 #include "control/control.h"
 #include "report/report.h"
 #include "benchmark/benchmark.h"
@@ -11,8 +13,6 @@
 #include "telemetry/telemetry.h"
 #include "wireless/wireless.h"
 #include "zephyrforge.h"
-
-#if CONFIG_ZF_USB_HID
 
 #include <errno.h>
 #include <string.h>
@@ -82,6 +82,15 @@ static atomic_t in_flight;
 static uint8_t input[1 + MAX(ZF_STORAGE_SIZE, MAX(ZF_TELEMETRY_SIZE, ZF_BENCHMARK_SIZE))] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
+
+static void telemetry_report(uint8_t sequence, uint8_t *out)
+{
+	uint8_t led_colour;
+	bool led_available;
+
+	zf_led_status(&led_colour, &led_available);
+	zf_telemetry_report(sequence, zf_usb_configured(), led_available, led_colour, out);
+}
 static uint8_t benchmark_sequence;
 static int64_t telemetry_at;
 static int64_t storage_at;
@@ -143,7 +152,7 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		break;
 	case ZF_REPORT_TELEMETRY:
 		/* GET_REPORT samples carry sequence 0; only published Input reports advance the sequence. */
-		zf_telemetry_report(0, buf + 1);
+		telemetry_report(0, buf + 1);
 		break;
 	case ZF_REPORT_BENCHMARK:
 		zf_benchmark_report(0, buf + 1);
@@ -173,7 +182,7 @@ static int set_report(const struct device *dev, const uint8_t type, const uint8_
 	accepted = zf_control_usb_set(buf + 1, ZF_CONTROL_SIZE, k_uptime_get());
 	zf_unlock();
 	if (accepted && buf[3] == ZF_OP_SAVE) {
-		LOG_INF("USB settings request lock wait %lld ms, hold %lld ms",
+		LOG_DBG("USB settings request lock wait %lld ms, hold %lld ms",
 			(long long)(lock_acquired - lock_started),
 			(long long)(k_uptime_get() - lock_acquired));
 	}
@@ -204,7 +213,7 @@ static bool submit(uint8_t id)
 	}
 	input[0] = id;
 	if (id == ZF_REPORT_TELEMETRY) {
-		zf_telemetry_report(++telemetry_sequence, input + 1);
+		telemetry_report(++telemetry_sequence, input + 1);
 		size = 1 + ZF_TELEMETRY_SIZE;
 	} else if (id == ZF_REPORT_BENCHMARK) {
 		zf_benchmark_report(++benchmark_sequence, input + 1);
@@ -242,7 +251,7 @@ bool zf_usb_configured(void)
 }
 
 #if ZF_ENABLE_STORAGE
-int zf_storage_usb_refresh(void)
+int zf_usb_refresh_for_storage(void)
 {
 	int err = usbd_disable(&zephyrforge_usbd);
 
@@ -289,20 +298,3 @@ int zf_usb_init(void)
 	}
 	return err;
 }
-#else
-#if ZF_ENABLE_STORAGE
-
-#include <errno.h>
-#endif
-
-bool zf_usb_configured(void)
-{
-	return false;
-}
-#if ZF_ENABLE_STORAGE
-int zf_storage_usb_refresh(void)
-{
-	return -ENOTSUP;
-}
-#endif
-#endif

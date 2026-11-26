@@ -35,6 +35,7 @@ NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_IN
 
 void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
 void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
+void zf_poll_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
 void zf_settings_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0; }
 bool zf_settings_ble_key_configured(void) { return false; }

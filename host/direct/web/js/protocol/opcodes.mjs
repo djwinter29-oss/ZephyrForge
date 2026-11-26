@@ -86,14 +86,15 @@ export const OPCODES = Object.freeze({
     facts: { keys: ["led_colour"], read: r => ({ led_colour: r[4] }),
       valid: facts => facts.led_colour !== undefined && inRange(facts.led_colour, 0, 7) } },
   [OP.REBOOT]: { capability: CAP.REBOOT, ble: { proof: true, flags: true }, reboots: true, excluded: [4],
-    rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5, 29: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
-  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3], details: { 1: 5, 2: 5, 29: 5 },
+    rejections: [1, 2], details: { 1: 5, 2: 5, 28: 5, 29: 5, 30: 5 }, request: (r, unused) => r[3] === 1 && unused(4) },
+  [OP.MSC]: { capability: CAP.SPI | CAP.SDMMC, ble: null, rejections: [1, 2, 3],
+    details: { 1: 5, 2: 5, 29: 5, 30: 5 },
     invalidates: [REPORT.STORAGE],
     request: (r, unused) => [0, 1].includes(r[4]) && r[3] === (r[4] === 0 ? 1 : 0) && unused(5),
     facts: { keys: ["msc_enabled"], read: r => ({ msc_enabled: r[4] === 1 }),
       valid: facts => typeof facts.msc_enabled === "boolean" } },
   [OP.BENCHMARK]: { capability: CAP.SELF_TEST, ble: null, excluded: [1],
-    details: { 1: 5, 2: 5, 3: 3, 4: 6, 29: 5 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
+    details: { 1: 5, 2: 5, 3: 3, 4: 6, 29: 5, 30: 5 }, invalidates: [REPORT.BENCHMARK, REPORT.STORAGE],
     request: (r, unused) => {
       const size = new DataView(r.buffer, r.byteOffset, r.byteLength).getUint32(5, true);
       return r[3] === 0 && [0, 1].includes(r[4]) && unused(9)
@@ -106,7 +107,8 @@ export const OPCODES = Object.freeze({
         ? facts.benchmark_size_mib !== undefined && inRange(facts.benchmark_size_mib, 1, 1024)
         : facts.benchmark_size_mib === 0) } },
   [OP.SAVE_SETTINGS]: { capability: CAP.SETTINGS, ble: { proof: true, flags: false }, reboots: true,
-    details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5, 29: 5 }, returnsSettings: true,
+    details: { 1: 5, 2: 5, 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 27: 3, 28: 5,
+      29: 5, 30: 5, 31: 6 }, returnsSettings: true,
     request: (r, unused) => (r[3] & ~SAVE_SETTINGS_COMMIT) === 0 && CLOCKS_MHZ.includes(r[4] | r[5] << 8)
       && r[6] === 0 && r[7] <= 3 && unused(8),
     completed: (data, zero) => validSettings(decodeSettings(data)) && data[3] <= 3 && data[4] <= 7
@@ -118,18 +120,19 @@ export const OPCODES = Object.freeze({
         && facts.commit_mask !== undefined && inRange(facts.commit_mask, 0, 7) },
     confirms: (result, request) => sameSettings(result.settings, request.settings)
       && result.commit_mask === request.commit_mask },
-  [OP.STAGE_SSID]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 16: 3, 25: 5 },
+  [OP.STAGE_SSID]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 16: 3, 25: 5, 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && r[4] <= 32 && unused(5 + r[4]) },
-  [OP.STAGE_PASSWORD]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 17: 3, 25: 5 },
+  [OP.STAGE_PASSWORD]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 17: 3, 25: 5, 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && (r[4] === 0 || r[4] >= 8 && r[4] <= 63)
       && printable(r.subarray(5, 5 + r[4])) && unused(5 + r[4]) },
-  [OP.STAGE_KEY]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 18: 3, 25: 5 },
+  [OP.STAGE_KEY]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 18: 3, 25: 5, 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && [0, 32].includes(r[4]) && unused(5 + r[4]) },
-  [OP.TEST_WIFI]: { capability: CAP.WIRELESS, ble: null, details: { 19: 3, 20: 3, 21: 3, 25: 5, 26: 5 },
+  [OP.TEST_WIFI]: { capability: CAP.WIRELESS, ble: null,
+    details: { 19: 3, 20: 3, 21: 3, 25: 5, 26: 5, 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && unused(4), lifecycle: { generationMax: 255, timeoutMs: 35000 } },
-  [OP.CANCEL_TEST]: { capability: CAP.WIRELESS, ble: null, excluded: [1, 5],
+  [OP.CANCEL_TEST]: { capability: CAP.WIRELESS, ble: null, excluded: [1], details: { 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && unused(4) },
-  [OP.SCAN]: { capability: CAP.WIRELESS, ble: null, details: { 25: 5, 26: 5 },
+  [OP.SCAN]: { capability: CAP.WIRELESS, ble: null, details: { 25: 5, 26: 5, 29: 5, 30: 5 },
     request: (r, unused) => r[3] === 0 && unused(4), lifecycle: { generationMax: 65535, timeoutMs: 15000 } },
   [OP.SCAN_ENTRY]: { ...STAGED, capability: CAP.WIRELESS, ble: null, details: { 22: 3, 23: 3, 26: 5 },
     request: (r, unused) => r[3] === 0 && r[4] < 18 && (r[5] | r[6] << 8) !== 0 && unused(7),

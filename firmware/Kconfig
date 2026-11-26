@@ -61,11 +61,29 @@ config ZF_WIFI
 
 config ZF_TCP_SHELL
 	bool "Wi-Fi diagnostic shell"
-	default y if SOC_ESP32S3
+	default n
 	depends on ZF_WIFI
+	select SHELL
 	select SHELL_BACKEND_TELNET
 	help
 	  Diagnostic shell on TCP port 2323. It is unauthenticated plaintext for trusted networks only.
+
+config ZF_UART_SHELL
+	bool "UART diagnostic shell"
+	default n
+	select SHELL
+	select SHELL_BACKEND_SERIAL
+	help
+	  Diagnostic shell on the monitor UART. The shell is unauthenticated and should only be enabled on trusted
+	  physical connections.
+
+config ZF_CPU_LOAD
+	bool "CPU load telemetry"
+	default y
+	select THREAD_RUNTIME_STATS
+	select SCHED_THREAD_USAGE_ALL
+	help
+	  Include per-core runtime accounting in telemetry. Disable to reduce scheduler accounting overhead.
 
 config ZF_BLUETOOTH
 	bool "Bluetooth LE management"
@@ -173,6 +191,29 @@ config SHELL_TELNET_SUPPORT_COMMAND
 config SHELL_TELNET_INIT_LOG_LEVEL
 	default 0
 endif
+
+if ZF_UART_SHELL
+config SHELL_PROMPT_UART
+	default "ZephyrForge> "
+endif
+
+# Keep optional diagnostic shells from exposing broad system or storage controls.
+config SHELL_LOG_BACKEND
+	default n
+config SHELL_HISTORY
+	default n
+config DEVICE_SHELL_INIT_CMD
+	default n
+config DATE_SHELL
+	default n
+config DEVMEM_SHELL
+	default n
+config KERNEL_SHELL
+	default n
+config FILE_SYSTEM_SHELL
+	default n
+config FLASH_SHELL
+	default n
 
 if ZF_BLUETOOTH
 config BT_MAX_CONN

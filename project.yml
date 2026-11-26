@@ -22,10 +22,12 @@
     - -:firmware/src/led/*.c
     - -:firmware/src/sysclk/*.c
     - -:firmware/src/settings/settings_flash.c
+    - -:firmware/src/benchmark/benchmark_none.c
     - -:firmware/src/telemetry/telemetry.c
     - -:firmware/src/storage/storage.c
     - -:firmware/src/storage/storage_msc.c
     - -:firmware/src/usb/usb.c
+    - -:firmware/src/usb/usb_none.c
     - -:firmware/src/wireless/ble/ble.c
     - -:firmware/src/wireless/wifi/wifi.c
     - -:firmware/src/drivers/random/*.c

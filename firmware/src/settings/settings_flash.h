@@ -26,7 +26,8 @@ typedef void (*zf_settings_done_t)(int err);
 /**
  * @brief Erase, program and verify a settings record on a work item, outside the application lock.
  *
- * Callers allow one write at a time. The record is copied before return.
+ * The backend admits one write at a time and returns -EBUSY while that write is queued or running. The caller
+ * must keep the record unchanged and available until @p done runs.
  * @param done Called once from the work item, without the application lock.
  * @return 0 when queued, otherwise a negative errno and @p done is not called.
  */

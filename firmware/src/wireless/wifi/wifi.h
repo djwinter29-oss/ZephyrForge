@@ -20,11 +20,11 @@
 
 /** Start the Wi-Fi state machine when the saved radio switch is on. */
 void zf_wifi_init(bool enabled);
-/** Advance connects, tests and scans; call from the main loop. */
+/** Advance connects, tests and scans; call from the main service loop. */
 void zf_wifi_poll(void);
 
 /**
- * @brief Fill the Wi-Fi fields of a Feature 12 snapshot; called with the application lock held.
+ * @brief Fill the Wi-Fi fields of a Feature 12 snapshot; state access is serialized by the Wi-Fi module.
  * @param status Snapshot whose ble_state and Bluetooth-failure detail are already set. The Wi-Fi image may
  *        replace detail with a Wi-Fi join detail; it fills wifi_state, SSID, IPv4 and scan fields.
  * @return True when a saved network is configured (Feature 12 flags bit 0).

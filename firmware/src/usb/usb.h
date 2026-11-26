@@ -13,5 +13,7 @@ int zf_usb_init(void);
 bool zf_usb_configured(void);
 /** Publish due Input reports; call from the main loop. */
 void zf_usb_poll(void);
+/** Restart the USB device after a storage ownership handoff so the host can remount its LUN. */
+int zf_usb_refresh_for_storage(void);
 
 #endif

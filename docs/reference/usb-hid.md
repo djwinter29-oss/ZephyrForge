@@ -675,8 +675,9 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `26` | Wi-Fi scan active | Busy/error `5`, wireless commit `5` or opcodes `9`, `11`, `12` |
 | `27` | Staging exists but commit flag is clear | Invalid/error `3`, opcode `5` |
 | `28` | USB staging blocks BLE save/reboot | Busy/error `5`, BLE opcodes `2`, `5` |
-| `29` | Settings write running or reset already scheduled | Busy/error `5`, opcodes `2`-`5` |
-| `30`-`255` | Reserved | - |
+| `29` | Reset already scheduled | Busy/error `5`, opcodes `2`-`5` |
+| `30` | Settings write still in progress | Busy/error `5`, opcodes `2`-`11` |
+| `31`-`255` | Reserved | - |
 
 Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a separate Wi-Fi detail namespace.
 Report `11` separately uses execution error `10` for an unavailable firmware filesystem mount.
@@ -711,21 +712,23 @@ Validation follows these rules:
 5. Validate operation state, including staged credential pairs, commit requirements and scan generation/index.
 6. Execute the operation; failures return Failed/error `6`.
 
-Every valid-envelope request updates the USB result slot, including invalid and unsupported operations.
-Later SET requests are not suppressed while a save is pending. One that replaces the result slot hides the save's
-final result; a successful write still schedules the reset.
+Every valid-envelope request updates the USB result slot, including invalid and unsupported operations, except
+while a settings save is pending or its completed result has not yet been read. In those two states, SET is
+rejected at the USB transfer and leaves the result slot unchanged. GET continues to return Pending while writing;
+after completion it returns the final save result. That result remains in the slot until a later SET is accepted.
 BLE adds its own lock/proof checks and restrictions; see [BLE validation order](bluetooth-le.md#validation-order).
 Hosts MUST reject unknown status/error values and impossible status/error/opcode combinations, not interpret
 them as success.
 
-For opcode `5`, Completed means settings passed flash readback verification and reset was scheduled.
-A failure scheduling reset after a verified save can report Failed even though flash changed.
-Hosts MUST reconcile saved settings after an uncertain or failed save; they MUST NOT assume no side effects.
+For opcode `5`, Completed means settings passed flash readback verification and reset was scheduled. Failed/detail
+`31` means the settings were persisted but reset scheduling failed. Hosts MUST reconcile saved settings after an
+uncertain or failed save and MUST NOT replay opcode `5` when detail `31` is returned.
 For opcode `2`, Completed means reset was scheduled, not that the host observed reboot.
-While an opcode `5` write is Pending, and after a successful opcode `2` or `5` until reset, further reboot,
-settings-save, MSC and benchmark requests return Busy/detail `29`. Arguments and confirmation are still validated first. Diagnostic reads, including opcode `12`,
-remain available, and the reset deadline is not extended. Failed scheduling leaves normal admission available;
-a failed save can still have changed flash as described above.
+While an opcode `5` write is Pending, commands blocked by that write return Busy/detail `30`. After a successful
+opcode `2` or `5` until reset, reset-blocked commands return Busy/detail `29`. Arguments and confirmation are still
+validated first. Diagnostic reads, including opcode `12`, remain available, and the reset deadline is not extended.
+Failed reset scheduling leaves normal admission available; a failed flash write may still have changed flash as
+described in [boot settings](boot-settings.md#transactional-staging).
 For opcodes `9` and `11`, Completed means a test/scan was admitted; Feature `12` owns its outcome.
 
 USB and BLE have separate result slots and transaction IDs; neither replaces the other's result.

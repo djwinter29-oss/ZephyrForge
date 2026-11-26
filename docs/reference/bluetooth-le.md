@@ -114,7 +114,7 @@ return ATT error `0x80`.
 | `0002` | Read | Denied (`0x80`) | 17 | [Report `2`](usb-hid.md#report-id-2-board-configuration) board configuration. |
 | `0003` | Read | Denied (`0x80`) | 22 | [Report `3`](usb-hid.md#report-id-3-board-telemetry) telemetry. |
 | `000a` | Read | Denied (`0x80`) | 34 | [Report `10`](usb-hid.md#report-id-10-storage-status) storage status. |
-| `000b` | Read | Denied (`0x80`) | 32 or 0 | Report `11` benchmark snapshot when capability bit 5 is set; otherwise empty. |
+| `000b` | Read | Denied (`0x80`) | 32 | Report `11` benchmark snapshot when capability bit 5 is set; characteristic is omitted otherwise. |
 | `000c` | Read | Denied (`0x80`) | 48 | [Report `12`](usb-hid.md#report-id-12-wireless-status) wireless status, including saved SSID and IPv4 address. |
 | `000d` | Read | Denied (`0x80`) | 16 | [Report `13`](usb-hid.md#report-id-13-module-memory-inventory) boot-sampled module memory inventory, advertised by identity extension bit 0. |
 | `0014` | Read, Write | Denied (`0x80`) | 9 | [Control request/result](#control-characteristic). |
@@ -123,7 +123,8 @@ return ATT error `0x80`.
 
 Reports `0002` and `000a` mirror the USB card-detect/MSC flag and live ownership status.
 MSC opcode `3` remains USB-only and returns Unsupported/error `4` over BLE. Reboot/save return Busy/detail `1`
-while storage is busy or USB-owned; see [USB storage arbitration](usb-hid.md#cross-interface-resource-arbitration).
+while storage is busy or USB-owned, or detail `30` while another settings write is running; see
+[USB storage arbitration](usb-hid.md#cross-interface-resource-arbitration).
 
 `0014` is also Write Request only; Write Without Response is not advertised for `0014` or `0101`. Such commands
 are rejected by the stack before the application callback, and Write Without Response has no ATT response for a
@@ -197,8 +198,10 @@ Proof consumption and retry-delay behavior are defined in [proof rules](#proof-r
 disconnects after a rejected session proof.
 
 The board does not enforce transaction-ID uniqueness; clients MUST advance the nonzero ID for every command and
-serialize writes. The result is synchronous: `Pending` is not a BLE command outcome. A save delays its write
-response until the flash write finishes.
+serialize writes. A successful ATT Write Response means the command is admitted and the BLE result is terminal.
+For opcode `5`, the server waits up to 30 seconds for the flash operation. If that limit expires, it returns ATT
+error `0x0E`; the accepted save may still finish later, so clients MUST NOT replay it and MUST read `0014` again
+until its result is terminal.
 
 ## Proof rules
 
@@ -319,6 +322,8 @@ prove which connection produced it.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
    detail `28` in that case, after validating its arguments and confirmation flag.
+   Detail `31` with Failed/error `6` means a save was verified but reset scheduling failed; clients MUST reconcile
+   settings and MUST NOT replay the save.
 
 USB and BLE keep separate result slots and transaction sequences; a request on one never replaces the other's result,
 and BLE authentication state is separate from USB staging.
@@ -335,8 +340,9 @@ Clients MUST abandon the transaction and reconnect after an ATT transaction time
 Accepted reboot and save-and-reboot commands are followed by a reset after a 1000 ms
 grace period, intended to allow the result read. This is not a guarantee that a slow
 connection can finish reading before reset.
-During that period, and while either transport's save is writing flash, further reboot/save requests on either
-transport and USB MSC/benchmark commands return Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling does not reserve the reset.
+While a settings write is running, reset-blocked commands return Busy/error `5`, detail `30`. After a successful
+reboot/save until reset, they return detail `29`. Reads remain available; failed reset scheduling does not reserve
+the reset.
 
 ## ATT errors
 

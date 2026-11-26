@@ -94,9 +94,6 @@ void zf_storage_policy_poll(int present, int64_t now_ms, int request)
 			publish(true);
 			int err = zf_storage_media_open(request == 1, &state);
 
-			if (err == 0 && request == 1) {
-				err = zf_storage_usb_refresh();
-			}
 			state.msc_request_rejected = err != 0;
 			state.capacity_valid = state.initialized && state.block_count != 0;
 			state.msc_enabled = err == 0 && state.initialized && request == 1;

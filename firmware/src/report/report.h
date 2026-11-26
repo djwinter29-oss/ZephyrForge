@@ -10,10 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/** Maximum Wi-Fi SSID length in bytes, excluding a string terminator. */
-#define ZF_SSID_MAX_BYTES 32u
-/** Buffer size for a NUL-terminated Wi-Fi SSID. */
-#define ZF_SSID_BUFFER_SIZE (ZF_SSID_MAX_BYTES + 1u)
+#include "wireless/wireless_types.h"
 
 /** Feature report IDs on the ZephyrForge HID collection. */
 #define ZF_REPORT_IDENTITY 1u /**< Report 1: identity and capabilities. */
@@ -40,6 +37,8 @@
 #define ZF_CONTROL_SIZE 68u
 /** BLE control characteristic request/result size; only four result data bytes ride the long path. */
 #define ZF_BLE_CONTROL_SIZE 9u
+/** Wi-Fi scan-entry bytes embedded in a control result. */
+#define ZF_SCAN_ENTRY_RESULT_SIZE 38u
 
 /** Identity extension flag: Report 13 memory inventory is available. */
 #define ZF_EXT_MEMORY 0x01u
@@ -58,14 +57,6 @@
 #define ZF_BOARD_PICO2 4u /**< Raspberry Pi Pico 2 (RP2350). */
 #define ZF_BOARD_PICO2_W 5u /**< Raspberry Pi Pico 2 W (RP2350). */
 #define ZF_BOARD_ESP32C6_DEVKITC 6u /**< Espressif ESP32-C6-DevKitC-1 N8. */
-/** Report 1 MCU and board model of the build target; board builds override the DevKitC defaults. */
-#ifndef ZF_MCU
-#define ZF_MCU ZF_MCU_ESP32S3
-#endif
-#ifndef ZF_BOARD_MODEL
-#define ZF_BOARD_MODEL ZF_BOARD_DEVKITC
-#endif
-
 /** Report 1 capabilities bits. */
 #define ZF_CAP_LED 0x01u /**< RGB LED control is available. */
 #define ZF_CAP_REBOOT 0x02u /**< The reboot opcode is supported. */
@@ -74,37 +65,10 @@
 #define ZF_CAP_SPI 0x08u
 /** Native SDMMC card transport. */
 #define ZF_CAP_SDMMC 0x10u
-/** Whether the image includes removable-card storage services. */
-#ifndef ZF_ENABLE_STORAGE
-#define ZF_ENABLE_STORAGE 1
-#endif
-/** Whether the image includes USB card export; portable tests default to the storage setting. */
-#ifndef ZF_ENABLE_USB_MSC
-#define ZF_ENABLE_USB_MSC ZF_ENABLE_STORAGE
-#endif
-/** Build-selected storage transport; portable tests default to native SDMMC. */
-#ifndef ZF_STORAGE_SPI
-#define ZF_STORAGE_SPI 0
-#endif
-/** Storage transport capability, or zero when removable-card support is omitted. */
-#define ZF_CAP_STORAGE (ZF_ENABLE_STORAGE ? (ZF_STORAGE_SPI ? ZF_CAP_SPI : ZF_CAP_SDMMC) : 0u)
 /** Optional temporary-file benchmark capability. */
 #define ZF_CAP_BENCHMARK 0x20u
 /** Wireless management (staging, tests, scans, BLE) is supported. */
 #define ZF_CAP_WIRELESS 0x80u
-/** Supported radio switches: bit 0 Wi-Fi, bit 1 BLE; board builds override the DevKitC defaults. */
-#ifndef ZF_RADIO_MASK
-#define ZF_RADIO_MASK 0x03u
-#endif
-/** Board-dependent capabilities; the DevKitC has the RGB LED, saved boot settings and radios. */
-#ifndef ZF_BOARD_CAPS
-#define ZF_BOARD_CAPS (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
-#endif
-#define ZF_BOARD_CAPS_ESP32S3 (ZF_CAP_LED | ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
-#define ZF_BOARD_CAPS_ESP32C6 (ZF_CAP_SETTINGS | ZF_CAP_WIRELESS)
-/** Union of advertised capability bits; board builds override the DevKitC defaults. */
-#define ZF_CAPABILITIES (ZF_BOARD_CAPS | ZF_CAP_REBOOT | ZF_CAP_STORAGE | \
-			 (ZF_ENABLE_STORAGE && ZF_ENABLE_STORAGE_BENCHMARK ? ZF_CAP_BENCHMARK : 0))
 
 /** Board unique-identity length in bytes. */
 #define ZF_UID_SIZE 8u
@@ -195,11 +159,6 @@ typedef struct {
 	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
 } zf_storage_t;
 
-#ifndef ZF_ENABLE_STORAGE_BENCHMARK
-/** Optional firmware feature; enabled explicitly by the build. */
-#define ZF_ENABLE_STORAGE_BENCHMARK 0
-#endif
-
 /** Retained benchmark lifecycle, encoded in Report 11. */
 typedef enum {
 	ZF_BENCHMARK_IDLE = 0, /**< No admitted run. */
@@ -262,6 +221,20 @@ void zf_report_storage(const zf_storage_t *storage, uint8_t out[ZF_STORAGE_SIZE]
 void zf_report_benchmark(const zf_benchmark_t *status, uint8_t out[ZF_BENCHMARK_SIZE]);
 /** Encode Feature 12 from a wireless state snapshot. */
 void zf_report_wireless(const zf_wireless_t *wireless, uint8_t out[ZF_WIRELESS_SIZE]);
+
+/**
+ * @brief Encode one validated Wi-Fi scan entry in the control-result data layout.
+ * @param out Receives generation, index, SSID, RSSI and security fields.
+ * @param generation Scan-table generation.
+ * @param index Entry index in that generation.
+ * @param ssid Zero-padded SSID bytes.
+ * @param ssid_length SSID byte length, clamped to ZF_SSID_MAX_BYTES.
+ * @param rssi Signal strength in dBm.
+ * @param security ZF scan security bits.
+ */
+void zf_report_scan_entry_result(uint8_t out[ZF_SCAN_ENTRY_RESULT_SIZE], uint16_t generation, uint8_t index,
+				 const uint8_t ssid[ZF_SSID_MAX_BYTES], uint8_t ssid_length, int8_t rssi,
+				 uint8_t security);
 
 /** Format the UID as the 16-character uppercase hex USB serial string, NUL-terminated. */
 void zf_uid_hex(const uint8_t uid[ZF_UID_SIZE], char out[2 * ZF_UID_SIZE + 1]);

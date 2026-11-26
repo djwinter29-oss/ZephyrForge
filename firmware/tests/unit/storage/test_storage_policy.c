@@ -33,7 +33,12 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage)
 	memset(storage->cid, storage->initialized ? 0x1b : 0, sizeof(storage->cid));
 	storage->bus_clock_hz = storage->initialized ? 25000000 : 0;
 	storage->filesystem_format = storage->initialized && !usb && !mount_failed ? 3 : 0;
-	return open_result != 0 ? open_result : mount_failed && !usb ? -ENODEV : 0;
+	if (usb) {
+		TEST_ASSERT_TRUE(published.msc_transition_pending);
+		TEST_ASSERT_FALSE(published.msc_enabled);
+		++refreshes;
+	}
+	return open_result != 0 ? open_result : mount_failed && !usb ? -ENODEV : usb ? refresh_result : 0;
 }
 
 int64_t zf_storage_media_time(void)
@@ -47,14 +52,6 @@ int zf_storage_media_close(void)
 	TEST_ASSERT_FALSE(published.msc_enabled);
 	++closes;
 	return close_result;
-}
-
-int zf_storage_usb_refresh(void)
-{
-	TEST_ASSERT_TRUE(published.msc_transition_pending);
-	TEST_ASSERT_FALSE(published.msc_enabled);
-	++refreshes;
-	return refresh_result;
 }
 
 void setUp(void)

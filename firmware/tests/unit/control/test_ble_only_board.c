@@ -132,7 +132,7 @@ void test_ble_save_accepts_reported_radios_and_preserves_omitted_radio_settings(
 	uint8_t result[ZF_BLE_CONTROL_SIZE];
 
 	zf_board_schedule_reboot_ExpectAndReturn(0);
-	zf_control_ble_execute(request, 0);
+	TEST_ASSERT_TRUE(zf_control_ble_execute(request, 0, NULL, NULL));
 	zf_control_ble_get(result);
 	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_settings_radios());

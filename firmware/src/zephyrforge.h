@@ -10,9 +10,10 @@
 #define ZEPHYRFORGE_VERSION "0.1.0"
 #endif
 
-/** One recursive lock serializes the control dispatcher, staging and wireless state across threads. */
+/** Recursive lock for shared control, settings, staging and BLE session state. */
 void zf_lock(void);
 /** Release the recursive application lock taken by zf_lock(). */
 void zf_unlock(void);
-
+/** Wake the main service loop after a queued module event. */
+void zf_poll_wakeup(void);
 #endif

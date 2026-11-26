@@ -66,9 +66,9 @@ a failed save restores the last confirmed RAM values:
 
 A failed save does not prove that flash is unchanged: an erase can complete before programming fails. The staged
 copy then returns to the last confirmed values, while the next boot loads whatever flash actually contains
-(complete defaults if the record is damaged). If flash verification succeeds but scheduling reboot fails,
-opcode `5` reports Failed even though settings were persisted. Hosts MUST reconcile saved state rather than
-assuming every failed command left flash unchanged. Failed commands do not schedule an automatic retry or reboot.
+(complete defaults if the record is damaged). If flash verification succeeds but scheduling reboot fails, opcode `5` reports Failed/detail `31`: settings were
+persisted, but the reboot was not scheduled. Hosts MUST reconcile saved state and MUST NOT replay the save merely
+because the command status is Failed. Failed commands do not schedule an automatic retry or reboot.
 
 ## Boot sequence
 
@@ -87,35 +87,35 @@ key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NO
 
 ## Saving
 
-`zf_settings_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
+`zf_settings_save_async()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
 key-only record before application boot; the procedure is in the
 [first-key commissioning guide](../guides/esp32c6-commissioning.md).
 
-For a changed record, save encodes the fields and CRC, erases the first 4 KiB sector, writes one 256-byte page
-padded with `0xFF`, and reads it back. Success updates the saved RAM copy and returns zero. Failure returns a
-negative errno; RAM rollback and flash uncertainty follow [transactional staging](#transactional-staging).
+For a changed record, settings encodes the fields and CRC into a retained buffer, erases the first 4 KiB sector,
+writes the 148-byte record, and verifies it in 32-byte readback chunks. The completion callback commits the saved
+RAM copy or rolls back staged values.
 
 The Zephyr ESP32 flash driver suspends the cache and serializes SPI-flash access while erasing and programming, so
 other threads and radio interrupts may be delayed briefly. A management save encodes the record under the
-application mutex, then erases, writes and verifies it on the system work queue without the mutex, so USB, BLE and
-Wi-Fi management continue meanwhile. Reboot, save and storage commands report Busy until the write finishes.
-Buffers holding the encoded record and padded page are cleared after use.
+application mutex, then erases, writes and verifies it on a dedicated work queue without the mutex, so USB, BLE and
+Wi-Fi management continue meanwhile. Reboot, save and storage commands report Busy/detail `30` until the write
+finishes. USB holds the completed save result until it is read; new USB SET requests are rejected while the write
+is pending or that result is unread. The retained encoded record and verification scratch buffer are cleared after
+use.
 
-Changed saves log `Settings flash operation: N ms, result E` on the UART console. The duration spans erase,
-programming, verification and flash-area closure; `E` is zero on success or a negative errno. It excludes mutex
-acquisition, flash-area opening and transport response delivery. Unchanged saves and failures to open the flash area
-do not emit this timing entry. This is observability, not a response-time guarantee; measure complete host response
-and concurrent read delay using the [qualification procedure](../validation/firmware-qualification.md).
+Changed saves emit a debug-level flash duration entry. It spans erase, programming, verification and flash-area
+closure; it excludes lock acquisition, flash-area opening and transport response delivery. This is observability,
+not a response-time guarantee; measure complete host response and concurrent read delay using the
+[qualification procedure](../validation/firmware-qualification.md).
 
-If staged settings equal the last confirmed RAM copy, save returns success without reading or writing flash.
-This does not repair an erased/invalid record or detect external changes to flash. The source indicator remains
-unchanged for such a no-op; a verified write sets it to SAVED.
-After a changed save, success requires a successful erase, write, readback and byte-for-byte match of the
-148-byte record. The implementation reads the full 256-byte page but compares only the record bytes.
+If staged settings equal the last confirmed RAM copy, the callback reports success without reading or writing
+flash. This does not repair an erased/invalid record or detect external changes to flash. The source indicator
+remains unchanged for such a no-op; a verified write sets it to SAVED. After a changed save, success requires a
+successful erase, write, readback and byte-for-byte match of the 148-byte record.
 
 ## Record format
 
-Little-endian, 148 bytes, padded with `0xFF` to one 256-byte page at the start of the settings sector.
+Little-endian, 148 bytes at the start of the settings sector.
 Encoders MUST produce the fixed layout below; decoders MUST reject an unsupported version, invalid field,
 incorrect size or CRC mismatch and load complete defaults.
 

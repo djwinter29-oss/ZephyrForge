@@ -1,6 +1,7 @@
 #include "unity.h"
 #include "control.h"
 #include "settings.h"
+#include "module_config.h"
 #include "report.h"
 #include "control_stage.h"
 #include "mock_benchmark.h"

@@ -1,9 +1,11 @@
 #include "storage/storage.h"
 #include "board/board.h"
+#include "module_config.h"
 #include "report/report.h"
 #include "benchmark/benchmark.h"
 #include "storage/storage_msc.h"
 #include "storage/storage_policy.h"
+#include "usb/usb.h"
 
 #include <errno.h>
 #include <ff.h>
@@ -28,8 +30,11 @@ LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 K_MUTEX_DEFINE(media_lock);
 K_MUTEX_DEFINE(snapshot_lock);
 K_MSGQ_DEFINE(requests, sizeof(int), 1, sizeof(int));
+K_SEM_DEFINE(storage_wakeup, 0, 1);
 
 static const struct gpio_dt_spec detect = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), sd_detect_gpios);
+static struct gpio_callback detect_callback;
+static bool detect_irq;
 static FATFS fatfs;
 static struct fs_mount_t mount = {
 	.type = FS_FATFS,
@@ -46,6 +51,14 @@ static int64_t request_ready_at;
 static uint32_t media_generation;
 static uint32_t request_generation;
 static bool last_presence;
+
+static void detect_changed(const struct device *port, struct gpio_callback *callback, gpio_port_pins_t pins)
+{
+	ARG_UNUSED(port);
+	ARG_UNUSED(callback);
+	ARG_UNUSED(pins);
+	k_sem_give(&storage_wakeup);
+}
 
 #if ZF_ENABLE_STORAGE_BENCHMARK
 /** Queue action reserved for the optional file benchmark. */
@@ -205,6 +218,8 @@ int zf_benchmark_request(bool start, uint32_t size_mib)
 			benchmark = previous_benchmark;
 			snapshot = previous;
 			detail = ZF_BENCHMARK_ERROR_BUSY;
+		} else {
+			k_sem_give(&storage_wakeup);
 		}
 	}
 	k_mutex_unlock(&snapshot_lock);
@@ -328,6 +343,11 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage)
 		}
 		mounted = true;
 		storage->filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
+	} else {
+		err = zf_usb_refresh_for_storage();
+		if (err != 0) {
+			return err;
+		}
 	}
 	LOG_INF("SD %s: %u sectors", usb ? "export ready" : "mounted", storage->block_count);
 	return 0;
@@ -365,6 +385,8 @@ int zf_storage_request(bool usb, uint8_t transaction)
 			LOG_ERR("SD ownership queue failed: %d", err);
 			request_pending = false;
 			snapshot = previous;
+		} else {
+			k_sem_give(&storage_wakeup);
 		}
 	}
 	k_mutex_unlock(&snapshot_lock);
@@ -379,6 +401,7 @@ void zf_storage_result_read(uint8_t transaction)
 
 		if (ready_at < request_ready_at) {
 			request_ready_at = ready_at;
+			k_sem_give(&storage_wakeup);
 		}
 	}
 	k_mutex_unlock(&snapshot_lock);
@@ -444,6 +467,9 @@ void zf_storage_export_unlock(void)
 
 static void storage_worker(void *a, void *b, void *c)
 {
+	int last_sample = last_presence ? 1 : 0;
+	int64_t debounce_until = 0;
+
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
@@ -457,6 +483,12 @@ static void storage_worker(void *a, void *b, void *c)
 
 		if (present < 0) {
 			LOG_ERR("SD card-detect read failed: %d", present);
+		} else {
+			present = present != 0;
+			if (last_sample >= 0 && present != last_sample) {
+				debounce_until = now + ZF_STORAGE_DEBOUNCE_MS;
+			}
+			last_sample = present;
 		}
 		k_mutex_lock(&snapshot_lock, K_FOREVER);
 		if (present < 0 || (present != 0) != last_presence) {
@@ -493,7 +525,29 @@ static void storage_worker(void *a, void *b, void *c)
 #endif
 		zf_storage_policy_poll(present, now, action);
 		k_mutex_unlock(&media_lock);
-		k_sleep(K_MSEC(present < 0 ? ZF_STORAGE_RETRY_MS : STORAGE_POLL_MS));
+		int64_t wait_now = k_uptime_get();
+		int64_t wake_at = INT64_MAX;
+
+		if (!detect_irq) {
+			wake_at = wait_now + STORAGE_POLL_MS;
+		} else if (present < 0) {
+			wake_at = wait_now + ZF_STORAGE_RETRY_MS;
+		} else if (debounce_until > wait_now) {
+			wake_at = debounce_until;
+		}
+		k_mutex_lock(&snapshot_lock, K_FOREVER);
+		if (request_pending && request_ready_at < wake_at) {
+			wake_at = request_ready_at;
+		}
+		if (present > 0 && !snapshot.msc_enabled &&
+		    (!snapshot.initialized || snapshot.filesystem_format == 0) &&
+		    wait_now + ZF_STORAGE_RETRY_MS < wake_at) {
+			wake_at = wait_now + ZF_STORAGE_RETRY_MS;
+		}
+		k_mutex_unlock(&snapshot_lock);
+		k_timeout_t timeout = wake_at == INT64_MAX ? K_FOREVER : K_MSEC(MAX(0, wake_at - wait_now));
+
+		(void)k_sem_take(&storage_wakeup, timeout);
 	}
 }
 
@@ -508,6 +562,20 @@ void zf_storage_init(void)
 
 	if (err == 0) {
 		err = present < 0 ? present : 0;
+		if (err == 0) {
+			gpio_init_callback(&detect_callback, detect_changed, BIT(detect.pin));
+			err = gpio_add_callback(detect.port, &detect_callback);
+			if (err == 0) {
+				err = gpio_pin_interrupt_configure_dt(&detect, GPIO_INT_EDGE_BOTH);
+			}
+			if (err == 0) {
+				detect_irq = true;
+			} else {
+				LOG_WRN("SD card-detect interrupt unavailable; polling every %d ms", STORAGE_POLL_MS);
+				detect_irq = false;
+				err = 0;
+			}
+		}
 #if ZF_ENABLE_USB_MSC
 		if (err == 0) {
 			err = zf_storage_msc_register();
