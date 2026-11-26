@@ -81,6 +81,8 @@ RP2040 and RP2350 images are not interchangeable.
 2. Copy `zephyr.uf2` to the drive that appears: `RPI-RP2` for Pico/Pico W, `RP2350` for Pico 2/Pico 2 W.
 3. Wait for the board to restart. The same connector now carries USB HID management.
 
+With a debug probe or `picotool`, you can flash the package's `zephyr.elf` instead; it is the same build.
+
 For console logs, use a 3.3 V USB-UART adapter wired as shown in the
 [Pico hardware guide](../hardware/README.md#raspberry-pi-pico-targets). Leave the adapter's supply output disconnected.
 

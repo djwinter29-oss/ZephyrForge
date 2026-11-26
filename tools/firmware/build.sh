@@ -185,9 +185,11 @@ python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware"
   -DZF_ENABLE_STORAGE="$storage_enabled" \
   -DZF_ENABLE_STORAGE_BENCHMARK="$benchmark"
 image_hash="$(sha256sum "$build_dir/zephyr/$image_file" | awk '{print $1}')"
+elf_hash="$(sha256sum "$build_dir/zephyr/zephyr.elf" | awk '{print $1}')"
 {
 	printf 'FIRMWARE_VERSION=%s\nSOURCE_COMMIT=%s\nSOURCE_DIRTY=%s\nBOARD=%s\nTARGET=%s\nSTORAGE=%s\nIMAGE_SHA256=%s\n' \
 		"$firmware_version" "$source_commit" "$source_dirty" "$board" "$target" "$storage" "$image_hash"
+	printf 'ELF_SHA256=%s\n' "$elf_hash"
 	if [[ -n "$radio_firmware_hash" ]]; then
 		printf 'RADIO_FIRMWARE_SHA256=%s\nRADIO_CLM_SHA256=%s\n' "$radio_firmware_hash" "$radio_clm_hash"
 	fi

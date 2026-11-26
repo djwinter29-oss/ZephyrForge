@@ -31,8 +31,9 @@ stable-tag checklist below.
    flashing, wiring, and qualification documentation at its source tag. Check
    [Direct Pages and PyPI](#direct-pages-pypi-and-retries) if those channels are configured.
 
-Tagged builds use the validated version for firmware (`ZEPHYRFORGE_VERSION`), the .NET packages, Direct, and the
-Python wheel.
+Release and preflight builds use the validated version for firmware (`ZEPHYRFORGE_VERSION`), the .NET packages,
+Direct, and the Python wheel. Package smoke checks verify the resulting identity before publication.
+For source-checkout version derivation, see [host development](host-tools.md).
 
 ## Direct Pages, PyPI and retries
 
@@ -74,11 +75,13 @@ the separately completed GitHub release.
 | `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
 | `SHA256SUMS.txt` | SHA-256 of every package |
 
-Firmware packages contain only the flashable image, `BUILD-INFO.txt`, `LICENSE` and `licenses/`.
-They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree, and runner/dependency YAML
+Firmware packages contain the flashable image, `zephyr.elf` from the same build, `BUILD-INFO.txt`, `LICENSE` and
+`licenses/`. The ELF carries symbols and load addresses: use it with a debug probe, `picotool`, GDB or to decode
+crash addresses. ESP32 boards are flashed from `zephyr.bin`, not the ELF.
+Packages omit `FLASHING.txt`, the documentation tree, Zephyr configuration, devicetree, and runner/dependency YAML
 files.
-`BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board and storage
-variant. W firmware packages include Infineon HAL and blob license notices.
+`BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board, storage
+variant, and the SHA-256 of the image and ELF. W firmware packages include Infineon HAL and blob license notices.
 `BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
 These images provide Wi-Fi only; a release build does not qualify the radio hardware.
 
@@ -142,19 +145,3 @@ VERSION=$(bash tools/firmware/release-version.sh v0.1.0)
 SETUPTOOLS_SCM_PRETEND_VERSION="$VERSION" bash tools/release/build-wheel.sh
 VERSION="$VERSION" bash tools/release/check-wheel.sh
 ```
-
-## Package identities
-
-Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`zephyrforge` wheel. Ordinary package versions come from Git tags. Releases use the validated tag version
-through `SETUPTOOLS_SCM_PRETEND_VERSION`. [Build and check the wheel locally](#reproduce-the-python-release-wheel)
-with the same helpers as CI.
-
-.NET uses MinVer to derive ordinary build versions from Git tags. Release publication uses the validated version
-through `MinVerVersionOverride`, including manual preflight builds that have no tag yet. The extracted-host check
-verifies both the package metadata and the dashboard display against that version.
-
-Direct packages stamp a static copy with the validated release version and record its source commit and dirty
-state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages checks the
-page and build identity against the published tag before deployment.
-See [Direct development](host-tools.md#direct-versions-and-local-serving) for checkout version rules.

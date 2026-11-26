@@ -170,7 +170,7 @@ jobs:
             Software-only ESP32-S3-DevKitC-1 N16R8, ESP32-C6-DevKitC-1 N8, and Raspberry Pi Pico-family release, built with pinned Zephyr dependencies.
             Firmware and host packages include source provenance and license notices.
             Images are provided for each supported storage profile; ESP32-C6 supports SD-over-SPI or no storage, not SDMMC.
-            Each firmware ZIP includes only the flashable image, BUILD-INFO.txt, and licenses; instructions stay in the repository.
+            Each firmware ZIP includes the flashable image, the matching zephyr.elf, BUILD-INFO.txt, and licenses; instructions stay in the repository.
             The Direct archive is standalone; the Python wheel bundles the shared dashboard; .NET hosts are self-contained.
 
             ### Flashing and SD wiring

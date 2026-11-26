@@ -41,7 +41,7 @@ class FirmwarePackageTests(unittest.TestCase):
     def run_package(self, board, target, storage="sdmmc", config_storage=None, identity_storage=None,
                     package_version=None, c6_simple_boot=True, c6_flash_size=8388608,
                     c6_app_address="0x0", replace_image_after_snapshot=False, identity_version="0.1.0",
-                    clear_package=True):
+                    clear_package=True, replace_elf_after_snapshot=False):
         package = self.repo / "build/firmware-package"
         if clear_package and package.exists():
             shutil.rmtree(package)
@@ -83,12 +83,13 @@ class FirmwarePackageTests(unittest.TestCase):
         identity_storage = storage if identity_storage is None else identity_storage
         image_name = "zephyr.bin" if board.startswith("esp32") else "zephyr.uf2"
         image_hash = hashlib.sha256((self.build / "zephyr" / image_name).read_bytes()).hexdigest()
+        elf_hash = hashlib.sha256((self.build / "zephyr/zephyr.elf").read_bytes()).hexdigest()
         identity = (
             f"FIRMWARE_VERSION={identity_version}\n"
             "SOURCE_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
             "SOURCE_DIRTY=false\n"
             f"BOARD={board}\nTARGET={target}\nSTORAGE={identity_storage}\n"
-            f"IMAGE_SHA256={image_hash}\n"
+            f"IMAGE_SHA256={image_hash}\nELF_SHA256={elf_hash}\n"
         )
         if board in ("pico_w", "pico2_w"):
             resources = "modules/hal/infineon/zephyr/blobs/img/whd/resources"
@@ -101,6 +102,8 @@ class FirmwarePackageTests(unittest.TestCase):
         self.write("firmware-build/zephyrforge-build-info.txt", identity)
         if replace_image_after_snapshot:
             self.write(f"firmware-build/zephyr/{image_name}", "replaced")
+        if replace_elf_after_snapshot:
+            self.write("firmware-build/zephyr/zephyr.elf", "replaced")
         env = {**os.environ, "BOARD": board, "STORAGE": storage, "FIRMWARE_BUILD": str(self.build),
                "PATH": f"{self.workspace / 'bin'}:{os.environ['PATH']}"}
         if package_version is not None:
@@ -134,8 +137,9 @@ class FirmwarePackageTests(unittest.TestCase):
                     package = self.package(board, target, storage)
                     image = "zephyr.bin" if board in ("esp32s3", "esp32c6") else "zephyr.uf2"
                     self.assertEqual({path.name for path in package.iterdir()},
-                                     {image, "BUILD-INFO.txt", "LICENSE", "licenses"})
+                                     {image, "zephyr.elf", "BUILD-INFO.txt", "LICENSE", "licenses"})
                     self.assertEqual((package / image).read_text(), "fixture")
+                    self.assertEqual((package / "zephyr.elf").read_text(), "fixture")
                     info = (package / "BUILD-INFO.txt").read_text()
                     for value in (target, storage, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "0.1.0"):
                         self.assertIn(value, info)
@@ -181,6 +185,13 @@ class FirmwarePackageTests(unittest.TestCase):
         self.assertIn("firmware image does not match build identity snapshot", result.stderr)
         self.assertFalse(package.exists())
 
+    def test_package_rejects_elf_replaced_after_build_snapshot(self):
+        result, package = self.run_package(
+            "esp32s3", "esp32s3_devkitc/esp32s3/procpu", storage="none", replace_elf_after_snapshot=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("firmware ELF does not match build identity snapshot", result.stderr)
+        self.assertFalse(package.exists())
+
     def test_repackaging_replaces_previous_target_image(self):
         result, package = self.run_package("esp32s3", "esp32s3_devkitc/esp32s3/procpu", storage="none")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -190,7 +201,7 @@ class FirmwarePackageTests(unittest.TestCase):
             "pico2", "rpi_pico2/rp2350a/m33", storage="none", clear_package=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual({path.name for path in package.iterdir()},
-                         {"zephyr.uf2", "BUILD-INFO.txt", "LICENSE", "licenses"})
+                         {"zephyr.uf2", "zephyr.elf", "BUILD-INFO.txt", "LICENSE", "licenses"})
 
     def test_c6_package_rejects_incompatible_flash_layout(self):
         target = "esp32c6_devkitc/esp32c6/hpcore"
@@ -241,6 +252,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                     image = "zephyr.bin" if board in ("esp32s3", "esp32c6") else "zephyr.uf2"
                     contents = {
                         image: f"{board}-{storage}".encode(),
+                        "zephyr.elf": f"{board}-{storage}-elf".encode(),
                         "BUILD-INFO.txt": b"build identity",
                         "LICENSE": b"project license",
                         "licenses/dependency/LICENSE": b"dependency license",

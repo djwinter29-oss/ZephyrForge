@@ -132,13 +132,14 @@ build_board="$(build_value BOARD)"
 build_target="$(build_value TARGET)"
 build_storage="$(build_value STORAGE)"
 image_hash="$(build_value IMAGE_SHA256)"
+elf_hash="$(build_value ELF_SHA256)"
 version_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")/../firmware" && pwd)/release-version.sh"
 if ! bash "$version_helper" "v$firmware_version" >/dev/null 2>&1; then
   printf 'Error: unsupported firmware version in build identity snapshot: %s.\n' "$build_identity" >&2
   exit 1
 fi
 if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ || "$source_dirty" != true && "$source_dirty" != false ||
-  ! "$image_hash" =~ ^[0-9a-f]{64}$ ]]; then
+  ! "$image_hash" =~ ^[0-9a-f]{64}$ || ! "$elf_hash" =~ ^[0-9a-f]{64}$ ]]; then
   printf 'Error: malformed build identity snapshot: %s.\n' "$build_identity" >&2
   exit 1
 fi
@@ -149,6 +150,11 @@ fi
 actual_image_hash="$(sha256sum "$FIRMWARE_BUILD/zephyr/$image" | awk '{print $1}')"
 if [[ "$actual_image_hash" != "$image_hash" ]]; then
   printf 'Error: firmware image does not match build identity snapshot: %s.\n' "$build_identity" >&2
+  exit 1
+fi
+actual_elf_hash="$(sha256sum "$FIRMWARE_BUILD/zephyr/zephyr.elf" | awk '{print $1}')"
+if [[ "$actual_elf_hash" != "$elf_hash" ]]; then
+  printf 'Error: firmware ELF does not match build identity snapshot: %s.\n' "$build_identity" >&2
   exit 1
 fi
 if [[ "$board" == pico_w || "$board" == pico2_w ]]; then
@@ -165,7 +171,7 @@ mkdir -p "$package_root"
 staging="$(mktemp -d "$package_root/.firmware-package.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 cp zephyrforge/LICENSE "$staging/LICENSE"
-cp "$FIRMWARE_BUILD/zephyr/$image" "$staging/"
+cp "$FIRMWARE_BUILD/zephyr/$image" "$FIRMWARE_BUILD/zephyr/zephyr.elf" "$staging/"
 for component in "${components[@]}"; do
   find "$component" -name .git -prune -o -type f \
     \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \
@@ -182,6 +188,7 @@ sed -n '1,/\*\//p' modules/fs/fatfs/ff.c > "$staging/licenses/fatfs-LICENSE"
   printf 'Firmware version: %s\n' "$firmware_version"
   printf 'Source commit: %s\nSource tree dirty: %s\n' "$source_commit" "$source_dirty"
   printf 'Storage image: %s\n' "$STORAGE"
+  printf '%s SHA-256: %s\nzephyr.elf SHA-256: %s\n' "$image" "$image_hash" "$elf_hash"
   if [[ "$board" == esp32s3 ]]; then
     printf 'Board: esp32s3_devkitc/esp32s3/procpu\nModule: ESP32-S3-WROOM-1-N16R8\nZephyr SDK: 0.17.4\n'
   elif [[ "$board" == esp32c6 ]]; then

@@ -1,5 +1,6 @@
 """Firmware wrapper checks with mocked downloads, installers and device access."""
 
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -679,6 +680,9 @@ esac
     def test_no_storage_esp_image_is_flashable_and_profile_checked(self):
         result = self.run_script("build.sh", "--storage", "none")
         self.assertEqual(result.returncode, 0, result.stderr)
+        identity = (self.root / "build/firmware-no-storage/zephyrforge-build-info.txt").read_text()
+        elf = (self.root / "build/firmware-no-storage/zephyr/zephyr.elf").read_bytes()
+        self.assertIn(f"ELF_SHA256={hashlib.sha256(elf).hexdigest()}\n", identity)
         self.log.write_text("")
         result = self.run_script("flash.sh", "--storage", "none", "--port", "/dev/mock", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
