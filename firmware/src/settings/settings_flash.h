@@ -1,0 +1,35 @@
+/**
+ * @file settings_flash.h
+ * @brief Settings record backend: the first page of the `storage_partition` flash area.
+ */
+
+#ifndef ZEPHYRFORGE_SETTINGS_FLASH_H
+#define ZEPHYRFORGE_SETTINGS_FLASH_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/**
+ * @brief Read the start of the settings sector.
+ * @return 0 on success, otherwise a negative errno.
+ */
+int zf_settings_flash_read(uint8_t *record, size_t size);
+
+/**
+ * @brief Erase the settings sector, program the record and verify it by readback.
+ * @return 0 when readback matched, otherwise a negative errno.
+ */
+int zf_settings_flash_write(const uint8_t *record, size_t size);
+
+/** Settings write completion: 0 after readback matched, otherwise a negative errno. */
+typedef void (*zf_settings_done_t)(int err);
+/**
+ * @brief Erase, program and verify a settings record on a work item, outside the application lock.
+ *
+ * Callers allow one write at a time. The record is copied before return.
+ * @param done Called once from the work item, without the application lock.
+ * @return 0 when queued, otherwise a negative errno and @p done is not called.
+ */
+int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_done_t done);
+
+#endif

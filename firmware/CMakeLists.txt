@@ -19,7 +19,6 @@ target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>
   ZF_ENABLE_STORAGE=$<BOOL:${CONFIG_ZF_STORAGE}>
   ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_ZF_USB_MSC}>
   ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${CONFIG_ZF_STORAGE_BENCHMARK}>)
-target_sources_ifdef(CONFIG_ZF_STORAGE_BENCHMARK app PRIVATE src/app/storage/benchmark.c)
 if(CONFIG_SOC_FAMILY_RPI_PICO)
   # Report 1 identity: MCU 1 RP2040 or 2 RP2350. Report 2 monitor UART pins are read from the
   # console devicetree pinctrl in board.c.
@@ -39,7 +38,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   endif()
   if(CONFIG_ZF_WIFI)
     set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
-    target_sources(app PRIVATE src/platform/rpi_pico/random.c ${zf_pico_rand}/rand.c)
+    target_sources(app PRIVATE src/drivers/random/random_rpi_pico.c ${zf_pico_rand}/rand.c)
     target_include_directories(app PRIVATE ${zf_pico_rand}/include
       ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/common/pico_time/include)
     target_compile_definitions(app PRIVATE PICO_RAND_SEED_ENTROPY_SRC_BOARD_ID=0
@@ -50,10 +49,9 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
     zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/random/random.h)
   endif()
   set(zf_board_caps 0)
-  list(APPEND zf_board_sources src/platform/rpi_pico/platform.c)
-  if(CONFIG_ZF_SDHC_RPI_PICO_PIO)
-    list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)
-  endif()
+  target_sources(app PRIVATE src/sysclk/sysclk_rpi_pico.c)
+  target_sources_ifdef(CONFIG_ZF_SDHC_RPI_PICO_PIO app PRIVATE src/drivers/sdhc/sdhc_rpi_pico_pio.c
+    src/drivers/sdhc/sdio_codec.c)
 else()
   if(CONFIG_SOC_ESP32S3)
     set(zf_mcu ZF_MCU_ESP32S3)
@@ -67,8 +65,7 @@ else()
   else()
     message(FATAL_ERROR "Unsupported Espressif SoC")
   endif()
-  set(zf_clock_source src/platform/espressif/system_clock.c)
-  set(zf_led_source src/platform/led.c)
+  target_sources(app PRIVATE src/sysclk/sysclk_espressif.c)
   if(DEFINED zf_sysclk_max_profile)
     target_compile_definitions(app PRIVATE ZF_SYSCLK_MAX_PROFILE=${zf_sysclk_max_profile})
   endif()
@@ -77,17 +74,16 @@ endif()
 set(zf_radio_mask 0)
 if(CONFIG_ZF_WIFI)
   math(EXPR zf_radio_mask "${zf_radio_mask} | 1")
-  target_sources(app PRIVATE src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c
-    src/app/wireless/wifi/wifi_policy.c src/app/wireless/wifi/scan_table.c)
+  target_sources(app PRIVATE src/wireless/wifi/wifi.c src/wireless/wifi/wifi_driver.c
+    src/wireless/wifi/wifi_policy.c src/wireless/wifi/wifi_scan_table.c)
 else()
-  target_sources(app PRIVATE src/app/wireless/wifi/wifi_none.c)
+  target_sources(app PRIVATE src/wireless/wifi/wifi_none.c)
 endif()
 if(CONFIG_ZF_BLUETOOTH)
   math(EXPR zf_radio_mask "${zf_radio_mask} | 2")
-  target_sources(app PRIVATE src/app/wireless/bluetooth/ble.c src/app/wireless/wireless_auth.c
-    src/app/wireless/sha256.c)
+  target_sources(app PRIVATE src/wireless/ble/ble.c src/wireless/ble/ble_auth.c src/lib/sha256.c)
 else()
-  target_sources(app PRIVATE src/app/wireless/bluetooth/ble_none.c)
+  target_sources(app PRIVATE src/wireless/ble/ble_none.c)
 endif()
 if(zf_radio_mask)
   string(APPEND zf_board_caps "|ZF_CAP_WIRELESS")
@@ -96,28 +92,24 @@ target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_boar
   "ZF_BOARD_CAPS=(${zf_board_caps})" ZF_RADIO_MASK=${zf_radio_mask})
 
 if(CONFIG_ZF_STORAGE)
-  set(zf_storage_sources src/app/storage/storage.c src/platform/storage.c)
-  if(CONFIG_ZF_USB_MSC)
-    list(APPEND zf_storage_sources src/platform/storage_msc.c)
-  endif()
+  target_sources(app PRIVATE src/storage/storage.c src/storage/storage_policy.c)
+  target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/storage/storage_msc.c)
+  target_sources_ifdef(CONFIG_ZF_STORAGE_BENCHMARK app PRIVATE src/benchmark/benchmark.c)
 else()
-  set(zf_storage_sources src/platform/storage_none.c)
+  target_sources(app PRIVATE src/storage/storage_none.c)
 endif()
 target_sources(app PRIVATE
   src/main.c
-  src/platform/board.c
-  src/platform/boot_config.c
-  src/platform/boot_flash.c
-  ${zf_clock_source}
-  src/app/telemetry.c
-  src/app/control/control.c
-  ${zf_storage_sources}
-  ${zf_led_source}
-  src/app/protocol/hid_reports.c
-  src/app/usb/usb_hid.c
-  src/app/wireless/wireless_stage.c
-  src/app/wireless/wireless_status.c
-  ${zf_board_sources})
+  src/board/board.c
+  src/control/control.c
+  src/control/control_stage.c
+  src/led/led.c
+  src/report/report.c
+  src/settings/settings.c
+  src/settings/settings_flash.c
+  src/telemetry/telemetry.c
+  src/usb/usb.c
+  src/wireless/wireless.c)
 target_include_directories(app PRIVATE src)
 # The pinned ESP32-S3 HAL leaves the PHY library's weak sensor-power hooks linked. They power the die-temperature
 # sensor off during Wi-Fi modem sleep, and the next telemetry read then spins with interrupts locked. The HAL

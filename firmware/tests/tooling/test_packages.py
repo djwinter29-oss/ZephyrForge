@@ -22,7 +22,7 @@ class FirmwarePackageTests(unittest.TestCase):
         self.build = self.workspace / "firmware-build"
         self.write("zephyrforge/LICENSE", "project license")
         self.write("zephyrforge/docs/README.md", "package documentation")
-        self.write("zephyrforge/firmware/src/app/zephyrforge.h", '#define ZEPHYRFORGE_VERSION "0.1.0"\n')
+        self.write("zephyrforge/firmware/src/zephyrforge.h", '#define ZEPHYRFORGE_VERSION "0.1.0"\n')
         self.write("bin/git", "#!/bin/sh\nprintf '%s\\n' fixture-commit\n")
         (self.workspace / "bin/git").chmod(0o755)
         for component in ("zephyr", "modules/hal/rpi_pico", "modules/hal/cmsis_6",

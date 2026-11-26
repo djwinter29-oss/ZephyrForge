@@ -58,28 +58,28 @@ int main(void)
 {
     bool available;
     uint8_t colour;
-    zf_platform_led_init();
-    zf_platform_led_status(&colour, &available);
+    zf_led_init();
+    zf_led_status(&colour, &available);
     assert(available && colour == 0);
     assert(latched.r == 0 && latched.g == 0 && latched.b == 0);
-    assert(zf_platform_led_request(4) == 0);
-    zf_platform_led_status(&colour, &available);
+    assert(zf_led_request(4) == 0);
+    zf_led_status(&colour, &available);
     assert(available && colour == 4 && latched.b == 16);
 
     for (unsigned failure = 1; failure <= 2; ++failure) {
         reset();
         fail_at = failure;
-        zf_platform_led_init();
-        zf_platform_led_status(&colour, &available);
+        zf_led_init();
+        zf_led_status(&colour, &available);
         assert(!available && colour == 0 && logs == 1);
         assert(transfers == failure);
-        assert(zf_platform_led_request(4) == -ENODEV);
+        assert(zf_led_request(4) == -ENODEV);
     }
 
     reset();
     ready = false;
-    zf_platform_led_init();
-    zf_platform_led_status(&colour, &available);
+    zf_led_init();
+    zf_led_status(&colour, &available);
     assert(!available && colour == 0 && transfers == 0 && logs == 1);
     return 0;
 }
@@ -98,7 +98,7 @@ class LedStartupTests(unittest.TestCase):
                 else:
                     header.touch()
             source = temp / "test_led.c"
-            source.write_text(STUBS + '\n#include "platform/led.c"\n' + CHECKS)
+            source.write_text(STUBS + '\n#include "led/led.c"\n' + CHECKS)
             executable = temp / "test_led"
             subprocess.run(["gcc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             "-I", str(temp), "-I", str(ROOT / "firmware/src"),

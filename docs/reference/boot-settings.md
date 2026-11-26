@@ -44,7 +44,7 @@ succeeded.
 ```mermaid
 stateDiagram-v2
     [*] --> Defaults: static zero initialization
-    Defaults --> Loaded: zf_boot_config_load()
+    Defaults --> Loaded: zf_settings_load()
     Loaded --> Staged: setter accepts a value
     Staged --> Staged: further setters
     Staged --> Loaded: save verified, or record identical to saved copy
@@ -60,7 +60,7 @@ a failed save restores the last confirmed RAM values:
 
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
   by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
-  Flash-save failure calls `zf_boot_config_discard()`.
+  Flash-save failure calls `zf_settings_discard()`.
 - Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
 
@@ -75,7 +75,7 @@ assuming every failed command left flash unchanged. Failed commands do not sched
 Boot reads and validates the record before any settings consumer starts. Later consumers use the same RAM copies;
 the [architecture reference](../development/architecture.md#lifecycle-and-failure-handling) defines startup order.
 
-`zf_boot_config_load()` reads 148 bytes from the partition start. Read failure loads defaults with source
+`zf_settings_load()` reads 148 bytes from the partition start. Read failure loads defaults with source
 `READ_ERROR`; an invalid or erased record loads defaults with source `DEFAULTS`; a valid record uses source `SAVED`.
 Defaults include no credentials.
 
@@ -83,11 +83,11 @@ A record is valid only if all of these hold: magic `EFCF`, version `1`, size `14
 `0`–`3`, a zero byte 9, no unknown service bits, Wi-Fi auth state `0`–`3`, SSID length at most 32 with zero padding,
 an empty or 8–63 byte NUL-terminated passphrase with zero padding, zero reserved bits, and a zero key whenever the
 key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NOT write flash. An erased partition
-(`0xFF`) loads defaults. `zf_boot_config_source()` reports which case occurred.
+(`0xFF`) loads defaults. `zf_settings_source()` reports which case occurred.
 
 ## Saving
 
-`zf_boot_config_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
+`zf_settings_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
 key-only record before application boot; the procedure is in the
 [first-key commissioning guide](../guides/esp32c6-commissioning.md).
 
@@ -219,14 +219,14 @@ throughput and can increase radio latency.
 ## Using the API
 
 The settings API provides explicit load, stage, save, discard and next-boot snapshot operations.
-Call `zf_boot_config_load()` once during boot before settings consumers start.
+Call `zf_settings_load()` once during boot before settings consumers start.
 Later callers MUST acquire the application lock, check each setter's boolean result, discard staged values on
 rejection and handle the save return value explicitly. Release the lock after the transaction.
 The low-level save API does not schedule reboot; the control dispatcher does so after successful saving.
 
 The header also exposes SSID (string and opaque bytes), passphrase, auth-state and Control-key accessors. Unprefixed
 getters return the staged copy, `boot_` getters return the policy loaded for this boot, and
-`zf_boot_config_wireless_restart_required()` ignores clock-only changes. The inline `zf_sysclk_profile_mhz()` (`0`
+`zf_settings_wireless_restart_required()` ignores clock-only changes. The inline `zf_sysclk_profile_mhz()` (`0`
 for Default) and `zf_sysclk_profile_from_mhz()` convert between profile IDs and wire MHz.
 The MHz-to-profile conversion returns an out-of-range profile for unknown MHz; callers MUST reject it rather
 than convert it back into a default setting.

@@ -7,29 +7,29 @@
 
 :paths:
   :test:
-    - +:firmware/tests/**
+    - +:firmware/tests/unit/**
   :source:
     - firmware/src/**
   :include:
     - firmware/src
     - firmware/src/**
 
+# Zephyr glue: covered by target builds and native Zephyr tests, not by host unit tests.
 :files:
   :source:
     - -:firmware/src/main.c
-    - -:firmware/src/platform/board.c
-    - -:firmware/src/platform/boot_flash.c
-    - -:firmware/src/platform/espressif/system_clock.c
-    - -:firmware/src/app/telemetry.c
-    - -:firmware/src/platform/storage.c
-    - -:firmware/src/platform/storage_msc.c
-    - -:firmware/src/platform/led.c
-    - -:firmware/src/app/usb/usb_hid.c
-    - -:firmware/src/app/wireless/bluetooth/ble.c
-    - -:firmware/src/app/wireless/wifi/wifi.c
-    - -:firmware/src/platform/rpi_pico/platform.c
-    - -:firmware/src/platform/rpi_pico/sdhc_pio.c
-    - -:firmware/src/platform/rpi_pico/random.c
+    - -:firmware/src/board/*.c
+    - -:firmware/src/led/*.c
+    - -:firmware/src/sysclk/*.c
+    - -:firmware/src/settings/settings_flash.c
+    - -:firmware/src/telemetry/telemetry.c
+    - -:firmware/src/storage/storage.c
+    - -:firmware/src/storage/storage_msc.c
+    - -:firmware/src/usb/usb.c
+    - -:firmware/src/wireless/ble/ble.c
+    - -:firmware/src/wireless/wifi/wifi.c
+    - -:firmware/src/drivers/random/*.c
+    - -:firmware/src/drivers/sdhc/sdhc_rpi_pico_pio.c
 
 :defines:
   :test:

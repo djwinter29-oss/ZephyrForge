@@ -17,22 +17,42 @@ Keep portable policy separate from Zephyr drivers and callbacks. Product-specifi
 not in the management loop or under the application lock. Read the
 [architecture](architecture.md) before changing startup, concurrency, or resource ownership.
 
+A module is one folder under `src/` with a main header of the same name, such as `storage/storage.h`. Its other
+files add a suffix to that name (`storage_msc.c`), and every public function and type starts with the module prefix
+(`zf_storage_*`). A module may contain submodules that follow the same rule, such as `wireless/wifi/`. Disabled
+Wi-Fi, Bluetooth and storage build the module's `*_none.c` file against the same header. A module declares the hooks
+it needs and the owning module implements them: the benchmark declares `zf_benchmark_media_*` for storage to
+provide. `report/report.h` also defines the decoded content of each report, named after the report
+(`zf_storage_t`), so modules and transports share one layout. Smaller features, such as USB mass storage and the
+benchmark, use the `ZF_ENABLE_*` values that `report/report.h` derives from Kconfig.
+
+`lib/` and `drivers/` are not modules. `lib/` holds portable helpers named after their subject (`sha256.h`,
+`zf_sha256_*`). `drivers/` holds implementations of Zephyr APIs, grouped by Zephyr subsystem.
+
 | Directory under `firmware/` | Responsibility |
 | --- | --- |
 | `Kconfig` | Module switches and the Zephyr subsystem defaults each module needs |
 | `boards/` | Pin assignments, memory layout, and hardware overlays |
-| `src/platform/` | Runtime board facts, shared locking, delayed reboot, settings persistence and Zephyr integration |
-| `src/platform/espressif/` | ESP32 CPU clock profiles |
-| `src/platform/rpi_pico/` | Pico hooks, PIO SD host, and portable SDIO codec |
-| `src/app/protocol/` | Portable report layouts and encoders shared by USB, BLE and policy |
-| `src/app/control/` | Portable command validation, admission and results shared by transports |
-| `src/app/usb/` | Zephyr USB HID transport, descriptors and publication |
-| `src/app/storage/` | Portable media ownership/mount policy and benchmark engine |
-| `src/app/wireless/` | Staging, authentication, Wi-Fi, and BLE |
-| `tests/` | Portable suites, Zephyr native tests, tooling checks, and opt-in hardware tests |
+| `src/` | `main.c` startup and management loop; `zephyrforge.h` version and application lock |
+| `src/report/` | Portable report layouts and encoders shared by USB, BLE and policy |
+| `src/control/` | Portable command validation, admission and results; `control_stage` credential staging |
+| `src/settings/` | Portable boot-settings record; `settings_flash` persistence |
+| `src/board/` | Board identity, memory and configuration facts, and delayed reboot |
+| `src/sysclk/` | CPU clock profiles, applied by one implementation per SoC family |
+| `src/led/` | Status LED requests and state |
+| `src/telemetry/` | Runtime telemetry sampling |
+| `src/usb/` | Zephyr USB device stack, HID transport, descriptors and publication |
+| `src/storage/` | SD card service; `storage_policy` mount/export policy; `storage_msc` USB mass-storage export |
+| `src/benchmark/` | Storage benchmark engine |
+| `src/wireless/` | Wireless Status report; `wifi/` and `ble/` services with their disabled variants |
+| `src/lib/` | Portable helpers with no project dependencies |
+| `src/drivers/` | Zephyr API implementations: the Pico PIO SD host with its SDIO codec, and the Pico W random source |
+| `tests/unit/` | Portable Ceedling suites, mirroring `src/` |
+| `tests/native/` | Zephyr `native_sim` suites |
+| `tests/tooling/`, `tests/hardware/` | Build-tool checks and opt-in hardware tests |
 
-Add tests beside the relevant component. Mock narrow service interfaces rather than recreating Zephyr internals
-with fake headers. Changes to reports or commands also need matching host and specification updates.
+Add a unit test under the matching `tests/unit/` folder. Mock narrow service interfaces rather than recreating
+Zephyr internals with fake headers. Changes to reports or commands also need matching host and specification updates.
 Keep board wiring in overlays, not runtime board code. Portable modules must not depend on transport implementations;
 USB and BLE both consume the shared protocol. Disabled-service implementations belong with their service rather than
 inside a particular board's hooks. Add a module as one `CONFIG_ZF_*` symbol that selects its Zephyr subsystems,
@@ -42,18 +62,18 @@ must use a cryptographically secure source.
 
 ### Worked example: benchmark size guard
 
-The portable benchmark rejects a zero or oversized request before touching storage. Its focused `benchmark`
+The portable benchmark rejects a zero or oversized request before touching storage. Its focused `test_benchmark`
 suite checks the failure result and confirms that no files were opened or deleted:
 
 ```sh
-bundle exec ceedling test:benchmark
+bundle exec ceedling test:test_benchmark
 ```
 
 Images include this module when `CONFIG_ZF_STORAGE_BENCHMARK` is set, its default when storage and USB HID are
-built; the build wrapper can omit it with `--without benchmark`. In a disabled build, the `control` suite checks that the command
-returns unsupported, and `hid_reports` checks that the capability is not advertised. Run the enabled and disabled
-[feature-gate checks](#storage-feature-gates) as well. See [optional modules](firmware-build.md#optional-modules)
-for build selection.
+built; the build wrapper can omit it with `--without benchmark`. In a disabled build, the `test_control` suite
+checks that the command returns unsupported, and `test_report` checks that the capability is not advertised.
+Run the enabled and disabled [feature-gate checks](#storage-feature-gates) as well. See
+[optional modules](firmware-build.md#optional-modules) for build selection.
 
 ## Host-native unit tests
 
@@ -73,8 +93,8 @@ Generated mocks, runners, test binaries, and installed gems stay in ignored buil
 For a focused check or a clean rebuild:
 
 ```sh
-bundle exec ceedling test:control
-bundle exec ceedling test:wireless_auth
+bundle exec ceedling test:test_control
+bundle exec ceedling test:test_ble_auth
 bundle exec ceedling clobber test:all
 ```
 
@@ -88,9 +108,9 @@ the tests do not mount, format, or write a real card.
 Run the report and control suites with SPI, no storage, and storage without USB mass storage.
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_hid_reports test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_hid_reports test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_report test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_report test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_report test:test_control
 ```
 
 The no-MSC configuration retains storage while checking that card-export commands are unsupported.
@@ -102,12 +122,12 @@ These suites use the real application and Zephyr scheduling with a dummy interfa
 From the repository root in an initialized workspace with the native toolchain available:
 
 ```sh
-west build -b native_sim/native/64 firmware/tests/wifi/native -d build/wifi-native
-build/wifi-native/zephyr/zephyr.exe
-west build -b native_sim/native/64 firmware/tests/wifi/native-esp32 -d build/wifi-native-esp32
-build/wifi-native-esp32/zephyr/zephyr.exe
-west build -b native_sim/native/64 firmware/tests/wifi/native-recovery -d build/wifi-native-recovery
-build/wifi-native-recovery/zephyr/zephyr.exe
+west build -b native_sim/native/64 firmware/tests/native/wifi -d build/native-wifi
+build/native-wifi/zephyr/zephyr.exe
+west build -b native_sim/native/64 firmware/tests/native/wifi-esp32 -d build/native-wifi-esp32
+build/native-wifi-esp32/zephyr/zephyr.exe
+west build -b native_sim/native/64 firmware/tests/native/wifi-recovery -d build/native-wifi-recovery
+build/native-wifi-recovery/zephyr/zephyr.exe
 ```
 
 - The AIROC-style worker suite checks blocking request isolation, DHCP-bound completion, candidate replacement,

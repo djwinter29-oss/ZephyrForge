@@ -156,8 +156,8 @@ class WrapperTests(unittest.TestCase):
         shutil.copytree(TOOLS, self.root / "tools/firmware")
         shutil.copytree(TOOLS.parents[1] / "patches", self.root / "patches")
         shutil.copy(TOOLS.parents[1] / "west.yml", self.root / "west.yml")
-        (self.root / "firmware/src/app").mkdir(parents=True)
-        (self.root / "firmware/src/app/zephyrforge.h").write_text(
+        (self.root / "firmware/src").mkdir(parents=True)
+        (self.root / "firmware/src/zephyrforge.h").write_text(
             '#define ZEPHYRFORGE_VERSION "0.1.0"\n')
         self.bin = self.workspace / "mock-bin"
         self.bin.mkdir()

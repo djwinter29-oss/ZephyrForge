@@ -34,7 +34,7 @@ from zephyrforge_tests.support.report_fixtures import (
     telemetry_report,
 )
 
-FIRMWARE_HEADER = REPO_ROOT / "firmware/src/app/usb/hid_reports.h"
+FIRMWARE_HEADER = REPO_ROOT / "firmware/src/report/report.h"
 
 
 class ProtocolTests(unittest.TestCase):

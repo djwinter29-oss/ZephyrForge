@@ -133,7 +133,7 @@ if [[ -f "$cache" ]]; then
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
 	fi
 fi
-source_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$root/firmware/src/app/zephyrforge.h")"
+source_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$root/firmware/src/zephyrforge.h")"
 [[ -n "$source_version" ]] || {
 	printf 'Error: source firmware version is missing from zephyrforge.h.\n' >&2
 	exit 1

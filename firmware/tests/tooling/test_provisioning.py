@@ -47,25 +47,25 @@ esptool.main = check
 
     def test_key_record_is_accepted_by_the_actual_firmware_decoder(self):
         source = r"""
-#include "platform/boot_config.h"
-#include "platform/boot_flash.h"
+#include "settings/settings.h"
+#include "settings/settings_flash.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
-int boot_flash_read(uint8_t *record, size_t size) {
+int zf_settings_flash_read(uint8_t *record, size_t size) {
     return fread(record, 1, size, stdin) == size ? 0 : -EIO;
 }
-int boot_flash_write(const uint8_t *record, size_t size) {
+int zf_settings_flash_write(const uint8_t *record, size_t size) {
     (void)record; (void)size; return -ENOTSUP;
 }
 int main(void) {
     uint8_t key[ZF_BLE_KEY_SIZE];
-    zf_boot_config_load();
-    assert(zf_boot_config_source() == ZF_BOOT_CONFIG_SAVED);
-    assert(zf_boot_config_ble_key_configured());
-    assert(zf_boot_config_sysclk() == ZF_SYSCLK_DEFAULT);
-    assert(zf_boot_config_radios() == (ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE));
-    zf_boot_config_ble_key(key);
+    zf_settings_load();
+    assert(zf_settings_source() == ZF_SETTINGS_SAVED);
+    assert(zf_settings_ble_key_configured());
+    assert(zf_settings_sysclk() == ZF_SYSCLK_DEFAULT);
+    assert(zf_settings_radios() == (ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE));
+    zf_settings_ble_key(key);
     for (unsigned i = 0; i < sizeof(key); ++i) assert(key[i] == i);
     return 0;
 }
@@ -77,7 +77,7 @@ int main(void) {
             subprocess.run([
                 os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
                 "-I", str(ROOT / "firmware/src"), str(fixture),
-                str(ROOT / "firmware/src/platform/boot_config.c"), "-o", str(binary),
+                str(ROOT / "firmware/src/settings/settings.c"), "-o", str(binary),
             ], check=True, capture_output=True)
             subprocess.run([str(binary)], input=PROVISION.settings_page(bytes(range(32))), check=True)
 
