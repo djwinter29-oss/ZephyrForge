@@ -24,8 +24,9 @@ matters, state each limitation in its authoritative home, and avoid repeated clo
 Choose the content's home before adding a page:
 
 - `docs/getting-started.md`: one first-run path, not an inventory of every option.
-- `docs/hardware/`: board identity, connectors, wiring, and physical commissioning.
-- `docs/guides/`: operating tasks; dashboard guides share controls and recovery in their landing page.
+- `docs/hardware/`: board identity, connectors, and electrical wiring.
+- `docs/guides/`: operating tasks, including commissioning and card handling. Dashboard launch pages stay under
+  `dashboards/`; shared connection, controls, and recovery belong in [Use a dashboard](docs/guides/dashboard-use.md).
 - `docs/development/`: architecture, builds, extensions, software checks, and releases.
 - `docs/reference/`: exact protocol, API, persistence, storage, and security contracts.
 - `docs/validation/`: current coverage and test procedures; dated observations stay under `records/`.

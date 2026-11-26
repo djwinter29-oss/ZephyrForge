@@ -9,37 +9,37 @@
 ZephyrForge is a starting point for MCU applications built on Zephyr. It handles board diagnostics, boot settings,
 wireless setup, and optional SD storage. You add your application's peripherals and processing.
 
-The dashboards connect over USB HID or authenticated Bluetooth LE, depending on the board. UART is used for logs
-and a diagnostic shell, not dashboard management.
+The dashboards connect over USB HID or authenticated Bluetooth LE, depending on the board. UART carries console
+logs and a diagnostic shell, not dashboard management; Espressif boards also use it for flashing, while Pico boards
+flash UF2 over USB.
 
-## Get a board running
-
-Start with [Get a board running](docs/getting-started.md): choose an image, install it, and connect a dashboard.
 The primary target is ESP32-S3-DevKitC-1 N16R8; ESP32-C6 and Raspberry Pi Pico variants are also available.
 Check [boards and connections](docs/hardware/README.md) for exact models, memory requirements, and supported links.
-SD storage is optional.
 
-Already running firmware? [Choose a dashboard](docs/guides/dashboards/README.md) or use the
-[documentation index](docs/README.md) to find a task or contract.
+## Start here
+
+| What you want to do | Start with |
+| --- | --- |
+| Set up a new board | [Get a board running](docs/getting-started.md) |
+| Connect to installed firmware | [Choose a dashboard](docs/guides/dashboards/README.md) |
+| Read status, change settings, or recover a command | [Use a dashboard](docs/guides/dashboard-use.md) |
+| Build firmware or select optional modules | [Firmware builds](docs/development/firmware-build.md) |
+| Find a development guide, API, or test record | [Documentation](docs/README.md) |
 
 ## Build your application
 
-Fork the repository and pin the revision you validate. ZephyrForge uses one application core; keep blocking product
-work out of its management loop and application lock.
-
-- [Architecture](docs/development/architecture.md): service responsibilities, startup, and concurrency.
-- [Firmware builds](docs/development/firmware-build.md): workspace setup, board/storage selection, and outputs.
-- [Firmware development](docs/development/firmware.md): extension points and tests.
-- [Host development](docs/development/host-tools.md): dashboards, codecs, and software checks.
+Fork the repository and pin the revision you validate. Start with the [architecture](docs/development/architecture.md)
+for service boundaries and concurrency, then [firmware development](docs/development/firmware.md) for extension
+points and tests. ZephyrForge uses one application core.
 
 ZephyrForge shares [PicoForge](https://github.com/djwinter29-oss/PicoForge)'s purpose, but uses Zephyr rather than the
 Pico SDK. It is not a compatible firmware port.
 
 ## Safety and validation
 
-Review the [security boundaries](docs/reference/security.md) and
-[SD ownership and safety](docs/reference/sd-storage.md#safety-and-ownership) before connecting networks or using a
-card with data. [Validation and qualification](docs/validation/README.md) separates recorded hardware evidence
+Review the [security boundaries](docs/reference/security.md) before connecting networks and the
+[SD-card guide](docs/guides/sd-card.md) before using a card with data.
+[Validation and qualification](docs/validation/README.md) separates recorded hardware evidence
 from software checks and open gaps.
 
 ## Contributing

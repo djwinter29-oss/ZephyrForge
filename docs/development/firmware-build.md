@@ -45,7 +45,7 @@ those boards, then the profile suffix. The image filename is the same across pro
 By default, the wrapper enables the benchmark for storage-enabled ESP32-S3 and Pico builds. For a manual build,
 `ZF_ENABLE_STORAGE_BENCHMARK` defaults to `OFF`. The benchmark requires storage and USB HID control.
 See the [SD reference](../reference/sd-storage.md) for storage behavior and the
-[benchmark contract](../reference/sd-storage.md#optional-storage-benchmark) before running it.
+[benchmark safety](../guides/sd-card.md#run-a-benchmark) before running it.
 
 ### Optional modules
 
@@ -77,7 +77,7 @@ bash tools/firmware/build.sh --without usb-msc --without benchmark
 An image without Wi-Fi still reports BLE state and saved/staged credentials when BLE is included.
 
 After building, follow the [source upload steps](../guides/flashing.md#from-a-source-build). On a fresh ESP32-C6,
-retain the build directory for [first-key commissioning](../hardware/esp32c6-commissioning.md).
+retain the build directory for [first-key commissioning](../guides/esp32c6-commissioning.md).
 
 ## Build verification
 

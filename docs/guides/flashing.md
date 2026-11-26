@@ -11,13 +11,15 @@ Check the exact board and memory variant first; images for boards with the same 
 
 ## Flash a release image
 
-For first use on a factory-fresh ESP32-C6, start with [first-key commissioning](../hardware/esp32c6-commissioning.md).
+For first use on a factory-fresh ESP32-C6, start with [first-key commissioning](esp32c6-commissioning.md).
 It requires an initialized source build matching the flashed image.
 
 On [GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest), look for
 `zephyrforge-firmware-vVERSION-BOARD-STORAGE.zip`. Match both filename fields to your setup.
+The table below lists supported source-build combinations, not a promise that every combination is published.
+If the selected release has no matching archive, use the [source-build procedure](../development/firmware-build.md).
 
-| Board | `BOARD` in the filename | Available `STORAGE` values |
+| Board | `BOARD` in the filename | Source-build `STORAGE` values |
 | --- | --- | --- |
 | ESP32-S3-DevKitC-1 N16R8 | `esp32s3-devkitc` | `sdmmc`, `sd-spi`, `none` |
 | ESP32-C6-DevKitC-1 N8 | `esp32c6-devkitc` | `sd-spi`, `none` |
@@ -31,7 +33,7 @@ version, and source commit in `BUILD-INFO.txt`.
 Firmware ZIPs contain an image, build identity, and licenses, not a Zephyr build directory or offline documentation.
 Use the guides linked from the release **at its tag**, and save them before working offline.
 For SD-enabled images, check the matching [wiring guide](../hardware/sd-card-wiring.md). Before changing buses,
-follow the [card power-cycle instruction](../reference/sd-storage.md#safety-and-ownership).
+follow the [card power-cycle instruction](sd-card.md#before-you-start).
 
 ### ESP32-S3 release image
 
@@ -58,7 +60,7 @@ After flashing, use the **USB** connector for HID management and the **UART** co
 ### ESP32-C6 release image
 
 Use this path for an ESP32-C6 with a saved Control key. For a factory-fresh board, follow
-[first-key commissioning](../hardware/esp32c6-commissioning.md).
+[first-key commissioning](esp32c6-commissioning.md).
 
 Use only the ESP32-C6-DevKitC-1 N8 target named in `BUILD-INFO.txt`. Connect its serial flashing port, close other
 serial clients, and install esptool 5 as above. From the extracted ZIP directory:

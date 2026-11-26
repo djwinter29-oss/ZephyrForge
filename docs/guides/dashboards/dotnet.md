@@ -19,8 +19,8 @@ dotnet run --project host/dotnet/ZephyrForge/ZephyrForge.csproj
 ```
 
 Alternatively, run `bash tools/host/run-dotnet.sh` from the repository root; the wrapper also checks HID permissions.
-Open **http://127.0.0.1:8002/**, then [connect a board](README.md#connect-over-usb).
-On Linux, set up [HID permissions](README.md#linux-usb-permissions) if needed.
+Open **http://127.0.0.1:8002/**, then [connect a board](../dashboard-use.md#connect-over-usb).
+On Linux, set up [HID permissions](../dashboard-use.md#linux-usb-permissions) if needed.
 
 ## Select a board
 
@@ -32,7 +32,7 @@ When using `dotnet run`, put application options after `--`:
 dotnet run --project host/dotnet/ZephyrForge/ZephyrForge.csproj -- --serial SERIAL
 ```
 
-For board switching, controls, and uncertain command outcomes, use the [dashboard guide](README.md).
+For board switching, controls, and uncertain command outcomes, use the [dashboard guide](../dashboard-use.md).
 
 ## Development
 

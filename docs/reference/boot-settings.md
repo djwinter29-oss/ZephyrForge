@@ -89,7 +89,7 @@ key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NO
 
 `zf_boot_config_save()` is the only runtime firmware settings writer. Initial physical C6 commissioning writes a
 key-only record before application boot; the procedure is in the
-[first-key commissioning guide](../hardware/esp32c6-commissioning.md).
+[first-key commissioning guide](../guides/esp32c6-commissioning.md).
 
 For a changed record, save encodes the fields and CRC, erases the first 4 KiB sector, writes one 256-byte page
 padded with `0xFF`, and reads it back. Success updates the saved RAM copy and returns zero. Failure returns a

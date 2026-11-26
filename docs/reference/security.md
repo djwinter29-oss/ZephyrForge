@@ -26,4 +26,4 @@ can recover them. Reports and pending-operation journals do not contain credenti
 ## Storage safety
 
 Firmware mounts existing cards without formatting. Physical removal during writes and power loss can corrupt the
-filesystem; safely eject before returning USB ownership. See [SD storage safety](sd-storage.md#safety-and-ownership).
+filesystem; safely eject before returning USB ownership. See [card handling and handoff](../guides/sd-card.md).

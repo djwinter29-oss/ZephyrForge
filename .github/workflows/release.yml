@@ -177,7 +177,7 @@ jobs:
 
             Read the [release-image flashing procedure](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/flashing.md#flash-a-release-image).
             For a storage-enabled image, select your board and bus in the [SD-card wiring guide](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/hardware/sd-card-wiring.md).
-            A factory-fresh ESP32-C6 also needs [first-key commissioning](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/hardware/esp32c6-commissioning.md).
+            A factory-fresh ESP32-C6 also needs [first-key commissioning](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/guides/esp32c6-commissioning.md).
 
             These links use this release's source tag. Save the guides before working offline.
 

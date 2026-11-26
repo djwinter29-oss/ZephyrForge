@@ -8,11 +8,11 @@ every combination has passed physical tests; see [recorded coverage](../validati
 | Board | Dashboard connection | SD options |
 | --- | --- | --- |
 | [ESP32-S3-DevKitC-1 N16R8](#esp32-s3-devkitc-1-n16r8) | USB HID; authenticated BLE | Four-bit SDMMC, SPI, or none |
-| [ESP32-C6-DevKitC-1 N8](#esp32-c6-devkitc-1-n8) | Authenticated BLE after [commissioning](esp32c6-commissioning.md) | SPI or none |
+| [ESP32-C6-DevKitC-1 N8](#esp32-c6-devkitc-1-n8) | Authenticated BLE after [commissioning](../guides/esp32c6-commissioning.md) | SPI or none |
 | [Pico, Pico 2](#raspberry-pi-pico-targets) | USB HID | Four-bit SDMMC, SPI, or none |
 | [Pico W, Pico 2 W](#raspberry-pi-pico-targets) | USB HID | Four-bit SDMMC, SPI, or none |
 
-For an external card socket, use [SD-card wiring](sd-card-wiring.md).
+For storage, follow [SD-card wiring](sd-card-wiring.md), then [prepare and use the card](../guides/sd-card.md).
 
 ## ESP32-S3-DevKitC-1 N16R8
 
@@ -60,7 +60,7 @@ The software target is `esp32c6_devkitc/esp32c6/hpcore`, configured for the ESP3
 8 MB flash, no PSRAM, and a maximum CPU clock of 160 MHz. This project does not control the onboard LED.
 
 Use UART for flashing and console output. There is no native USB HID/MSC interface.
-Direct BLE management requires a saved Control key; follow [initial commissioning](esp32c6-commissioning.md).
+Direct BLE management requires a saved Control key; follow [initial commissioning](../guides/esp32c6-commissioning.md).
 Fresh images do not advertise before that key exists.
 
 Storage choices are `none` and SD-over-SPI, not SDMMC. The wiring guide lists its pin allocation.
@@ -96,8 +96,3 @@ Native SD uses PIO1.
 Pico images do not control the onboard LED or save settings. They keep the build clock: 125 MHz on RP2040,
 150 MHz on RP2350. SD-enabled images reserve GP2-GP8 and disable default I2C0 (GP4/GP5) and I2C1 (GP6/GP7)
 assignments. Card detect is active-high with no MCU pull; the breakout must drive or bias it.
-
-## SD-card wiring
-
-See the [SD-card wiring guide](sd-card-wiring.md) for pinouts, electrical requirements and card preparation.
-For runtime ownership and data safety, use the [SD storage reference](../reference/sd-storage.md#safety-and-ownership).

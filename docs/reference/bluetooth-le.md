@@ -77,7 +77,7 @@ application access. The default firmware does not enable a pairing or bonding wo
 or persist peer keys. Pairing is not an alternative to the Control key. BLE cannot provision credentials, but its
 settings-save command can write the settings record. On USB-HID boards the Control key is provisioned through USB
 and loaded from boot settings. The ESP32-C6 has no native USB HID,
-so use [initial physical commissioning](../hardware/esp32c6-commissioning.md).
+so use [initial physical commissioning](../guides/esp32c6-commissioning.md).
 A fresh C6 image leaves Bluetooth off until a Control key is saved; this requirement is not bypassed with
 unauthenticated access.
 

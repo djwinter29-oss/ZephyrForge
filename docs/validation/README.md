@@ -15,7 +15,7 @@ these targets has production qualification.
 | Target | Hardware evidence |
 | --- | --- |
 | ESP32-S3-DevKitC-1 N16R8 | Flashing and boot reported working in the [2026-11-14 report](records/2026-11-14-hardware-tests.md). That report lacks firmware revision, image hashes, and PSRAM memory-test output. The later [native SDMMC record](records/2026-11-20-sdmmc-performance.md) identifies its flashed image by hash. |
-| ESP32-C6-DevKitC-1 N8 | No recorded flashing, boot, BLE, Wi-Fi, or card checks on hardware. [First-key commissioning](../hardware/esp32c6-commissioning.md) has software tests only. |
+| ESP32-C6-DevKitC-1 N8 | No recorded flashing, boot, BLE, Wi-Fi, or card checks on hardware. [First-key commissioning](../guides/esp32c6-commissioning.md) has software tests only. |
 | Pico, Pico W, Pico 2, Pico 2 W | No recorded UF2 flashing, boot, USB HID/MSC, UART, PIO SD, SPI storage, or W-board Wi-Fi checks on hardware. |
 
 ## ESP32-S3 checks still needed

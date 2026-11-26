@@ -7,7 +7,7 @@ Wireless features depend on the board:
 | Board | Wi-Fi setup | Bluetooth LE |
 | --- | --- | --- |
 | ESP32-S3 | Scan, test, and save over USB | Provision a Control key over USB, then connect with Direct |
-| ESP32-C6 | No dashboard Wi-Fi provisioning path | [Commission the first key physically](../hardware/esp32c6-commissioning.md), then connect with Direct |
+| ESP32-C6 | No dashboard Wi-Fi provisioning path | [Commission the first key physically](esp32c6-commissioning.md), then connect with Direct |
 | Pico W / Pico 2 W | USB-controlled scans and temporary joins | Not supported |
 | Pico / Pico 2 | No radio | Not supported |
 
@@ -23,7 +23,7 @@ Use a locally built image configured for your regulatory region before enabling 
 
 On ESP32-S3 or Pico W, connect over USB and open **Boot configuration** in Python/.NET or **Board configuration**
 in Direct. Choose **Configure…** beside the radio. This opens provisioning without changing the next-boot switch.
-The C6 uses the [physical commissioning procedure](../hardware/esp32c6-commissioning.md) for its first BLE key.
+The C6 uses the [physical commissioning procedure](esp32c6-commissioning.md) for its first BLE key.
 
 ## Wi-Fi
 
@@ -48,7 +48,7 @@ before starting another. If a scan times out without a completion result, reboot
 
 On ESP32-S3, choose **Generate key** over USB, copy the Control key to a password manager, then choose
 **Save&Reboot**. The board never returns the key. On ESP32-C6, follow
-[first-key commissioning](../hardware/esp32c6-commissioning.md).
+[first-key commissioning](esp32c6-commissioning.md).
 
 Once the board is running with a saved key:
 
@@ -63,14 +63,12 @@ See the [BLE specification](../reference/bluetooth-le.md) for authentication and
 ## Save settings
 
 **Save&Reboot** commits boot settings and staged credentials, then reboots after a verified save.
-Safely eject and [return an exported SD card](../reference/sd-storage.md#usb-drive-handoff) before saving.
+Safely eject and [return an exported SD card](sd-card.md#export-or-return-a-card) before saving.
 Radio switches and saved credentials take effect at the next boot. If a radio has saved credentials, disabling it
 in a successful dashboard save clears those credentials; enabling it again requires provisioning them again.
 USB saves can change radio switches; BLE saves preserve the saved switches.
 
-For Direct's behavior after a failed test or key save, see
-[Direct provisioning](dashboards/direct.md#wireless-provisioning). The
-[boot settings reference](../reference/boot-settings.md) explains persistence and failure semantics.
+The [boot settings reference](../reference/boot-settings.md) explains persistence and failure semantics.
 
 ## Troubleshooting and recovery
 
@@ -78,7 +76,16 @@ The driver reports a generic connection failure for both a wrong password and a 
 network band, SSID, password, DHCP service, and [UART log](console.md#uart).
 
 For a timed-out command or dropped connection, follow
-[dashboard recovery](dashboards/README.md#recover-after-a-timeout).
+[dashboard recovery](dashboard-use.md#recover-after-a-timeout).
 
 On ESP32-S3, the [raw TCP diagnostic shell](console.md#raw-tcp) is reachable on a usable IPv4 connection, including
 a temporary test join.
+
+### Failed provisioning in Direct
+
+A failed replacement test invalidates the previous tested pair. Save stays blocked until another test succeeds
+or cancellation clears the temporary credentials. If cancellation fails, the dialog stays open until clearing is
+confirmed. A failed replacement-key save wipes submitted key text; regenerate it or disable Bluetooth to abandon
+the replacement, subject to the [credential-deletion policy](#save-settings).
+
+The form shows why Save is blocked. The same eligibility checks run again when confirming an action.

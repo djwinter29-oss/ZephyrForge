@@ -28,8 +28,8 @@ installs. Uninstalled source checkouts report `0.0.0-debug`.
 
 You can also install a wheel downloaded from
 [GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest).
-Then [connect a board](README.md#connect-over-usb). On Linux, set up
-[HID permissions](README.md#linux-usb-permissions) if needed.
+Then [connect a board](../dashboard-use.md#connect-over-usb). On Linux, set up
+[HID permissions](../dashboard-use.md#linux-usb-permissions) if needed.
 
 ### Run from a source checkout
 
@@ -61,7 +61,7 @@ All three commands accept either `--serial SERIAL` or `--device-path PATH` to se
 The server always binds to `127.0.0.1`.
 
 For board selection, controls, and uncertain command outcomes, use the
-[dashboard guide](README.md).
+[dashboard guide](../dashboard-use.md).
 
 ## Development
 

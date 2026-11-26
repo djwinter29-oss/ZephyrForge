@@ -44,7 +44,7 @@ the board, ports, card, network, and test interval; agreement on one action does
   Preserve 16 MB flash, 8 MB octal PSRAM, native USB pins and the native image's 10 mA SD pad drive.
 - Use a backed-up, dedicated card containing only expendable test data. Prepare FAT16, FAT32 or exFAT on a computer;
   no check may format or repair a card from firmware. Before changing buses, follow the
-  [card power-cycle instruction](../reference/sd-storage.md#safety-and-ownership).
+  [card power-cycle instruction](../guides/sd-card.md#before-you-start).
 - Provision any required Wi-Fi network and BLE Control key through the existing dashboards. Keep credentials out
   of logs, screenshots, command lines, and result records. Control-key authentication is not BLE link encryption.
 
@@ -100,7 +100,7 @@ to interpret the JSON and exit status.
 For an installed-image read-only check, use a running board with USB HID management and install the
 [Python host package](../guides/dashboards/python.md#install) in an active venv. Find the exact board serial in the
 dashboard, then close it and any other management clients. On Linux, check
-[HID permissions](../guides/dashboards/README.md#linux-usb-permissions) if needed. The read-only check works with
+[HID permissions](../guides/dashboard-use.md#linux-usb-permissions) if needed. The read-only check works with
 the installed firmware and can run with the card slot empty.
 
 ### Read-only checks
@@ -215,7 +215,7 @@ endurance, and RF, EMC, and regulatory qualification remain separate product wor
 These are prerequisites for a future board-specific procedure, not evidence that S3 results carry over.
 Select that board's image, pin allocation, and available commands before adapting the matrices.
 
-**ESP32-C6:** run [initial physical commissioning](../hardware/esp32c6-commissioning.md) separately and record
+**ESP32-C6:** run [initial physical commissioning](../guides/esp32c6-commissioning.md) separately and record
 its verified outcome before management testing. The USB runner cannot manage C6; BLE checks need a separate
 procedure. Keep keys out of logs and records, and follow the commissioning utility's no-replay rules.
 

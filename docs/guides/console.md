@@ -42,8 +42,13 @@ secrets. Logs are not forwarded to TCP, and command history is disabled on both 
 ### In-browser terminal
 
 With fresh connected Wi-Fi status, open the shell link in the dashboard. Python and .NET provide a relay.
-Direct needs its [local server](dashboards/direct.md#wi-fi-shell). The terminal uses the board's reported
+Direct needs its [local server](dashboards/direct.md#choose-how-to-run-it); static pages, including GitHub Pages,
+show Wi-Fi status without the shell link. The terminal uses the board's reported
 IPv4 address and shows an error if the shell is unreachable.
+
+For Direct, keep the originating dashboard tab open and connected. Its relay checks the board identity, address,
+and status freshness before each operation, and accepts only private LAN IPv4 targets on port `2323` through
+same-origin loopback requests.
 
 Apply the [TCP shell security limits](../reference/security.md#management-links) before opening a session.
 

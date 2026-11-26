@@ -1,5 +1,6 @@
 """Check local Markdown link targets without requesting external URLs."""
 
+import html
 import re
 import sys
 import unicodedata
@@ -33,7 +34,7 @@ def heading_anchors(markdown: str) -> set[str]:
         text = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", text)
         text = re.sub(r"`([^`]*)`", r"\1", text)
         text = re.sub(r"<[^>]*>", "", text)
-        text = unicodedata.normalize("NFC", text).lower()
+        text = unicodedata.normalize("NFC", html.unescape(text)).lower()
         slug = "".join(
             "-"
             if character.isspace()

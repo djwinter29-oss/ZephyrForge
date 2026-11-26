@@ -12,7 +12,11 @@ the required external resistors. Check the socket/module resistors meet the bus 
 pull-ups are not a substitute. Do not pull up CLK.
 
 Jump to [ESP32-S3](#esp32-s3-devkitc-1-n16r8), [ESP32-C6](#esp32-c6-devkitc-1-n8), or
-[Pico](#raspberry-pi-pico-family), then [prepare the card](#card-preparation-and-qualification).
+[Pico](#raspberry-pi-pico-family), then [prepare and use the card](../guides/sd-card.md).
+
+Requested bus ceilings below are configuration values, not measured runtime clocks or throughput.
+The [SD storage reference](../reference/sd-storage.md#driver-and-filesystem-configuration) explains controller limits;
+see [qualification coverage](../validation/README.md) for tested board/card combinations.
 
 ## ESP32-S3-DevKitC-1 N16R8
 
@@ -81,12 +85,3 @@ Both default I2C0 and I2C1 pin assignments are disabled because their default GP
 For custom native wiring, DAT0-DAT3 must be four ascending consecutive GPIOs below GPIO32, CLK must be two GPIOs
 below DAT0 (modulo 32), and CMD must be another GPIO below GPIO32. Custom SPI wiring must use the selected
 controller's SCK, MOSI and MISO functions; CS is an ordinary GPIO.
-
-## Card preparation and qualification
-
-Prepare a FAT16, FAT32 or exFAT volume on a computer. Firmware does not format or repair cards. Power-cycle a card
-before switching between SDMMC and SPI images.
-
-Requested bus ceilings are configuration values, not measured runtime clocks or throughput. Check
-[SD storage](../reference/sd-storage.md) for controller limits, mounting and ownership, and
-[qualification gaps](../validation/README.md) for tested board/card combinations.

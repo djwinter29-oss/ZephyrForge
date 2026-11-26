@@ -391,7 +391,7 @@ Idle counters are zero; Queued has zero counters except target. Passed requires 
 write/read, zero mismatches and no remaining-file flag. Hosts must reject contradictory snapshots.
 Progress is `(written + read) * 50 / target` (zero for zero target).
 Rates are bytes multiplied by 1000 divided by the corresponding elapsed milliseconds; zero elapsed means unavailable.
-See [benchmark safety and timing](sd-storage.md#optional-storage-benchmark) for cleanup and measurement boundaries.
+See [benchmark execution and timing](sd-storage.md#optional-storage-benchmark) for cleanup and measurement boundaries.
 
 ## Report ID 12: Wireless status
 
@@ -555,7 +555,7 @@ Completed with zero data means start/cancel admission, not a passing run. Busy d
 worker conflict and USB ownership; Failed/detail `4` identifies an unavailable card. File-existence and
 free-space preflight happen on the worker after admission and can produce Failed Report `11`.
 Never replay uncertain requests; explicitly reconcile Feature `20`, then obtain fresh Reports `10` and `11`.
-See [benchmark safety](sd-storage.md#optional-storage-benchmark) before confirming writes.
+See [benchmark safety](../guides/sd-card.md#run-a-benchmark) before confirming writes.
 
 ### Wireless command rules
 

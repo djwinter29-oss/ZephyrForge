@@ -2,11 +2,12 @@
 
 [Documentation](../README.md) / Reference / HTTP API
 
-The Python and .NET hosts implement this contract. Direct connects to devices without this management API.
-For dashboard operation, use the [dashboard guide](../guides/dashboards/README.md); for checks and asset packaging,
-use [host development](../development/host-tools.md).
+The Python and .NET hosts share these routes; status response differences are noted below. Direct connects to
+devices without this management API. For dashboard operation, use the
+[dashboard guide](../guides/dashboard-use.md); for checks and asset packaging, use
+[host development](../development/host-tools.md).
 
-- [Routes](#routes) and [status fields](#status-fields)
+- [Routes](#routes), [discover boards](#discover-boards), and [status fields](#status-fields)
 - [Settings](#settings) and [wireless](#wireless)
 - [Errors and recovery](#errors-and-recovery)
 - [USB storage](#usb-storage), [benchmark](#storage-benchmark), and [RGB LED](#rgb-led-control)
@@ -14,7 +15,8 @@ use [host development](../development/host-tools.md).
 
 ## Routes
 
-Both hosts serve the same routes and JSON field names, bind to loopback, and require local request origins.
+Both hosts serve the same routes and use snake_case JSON, bind to loopback, and require local request origins.
+Status response fields and some representations differ by host; those differences are specified below.
 Board-scoped routes take `?board=ID` from `/api/boards`. Commands are serialized per board; an uncertain result
 blocks further writes until [explicit reconciliation](#errors-and-recovery).
 
@@ -38,7 +40,7 @@ blocks further writes until [explicit reconciliation](#errors-and-recovery).
 | `POST /api/wireless/test` | Test candidate credentials |
 | `POST /api/wireless/cancel` | Cancel a test and clear temporary credentials |
 
-## Discover boards and read status
+## Discover boards
 
 `GET /api/boards` returns `{"boards":[...],"default_board_id":...}`. Each board has an opaque `id`,
 `product_name`, nullable `serial_number`, and host-specific `device_path`. `default_board_id` is the preferred
@@ -59,8 +61,10 @@ prevent safe selection. Use a listed ID as the `board` query parameter; do not c
 }
 ```
 
-`GET /api/status?board=ID` returns a status snapshot. Without `board`, it returns a disconnected snapshot. The
-top-level fields are always present:
+## Status fields
+
+`GET /api/status?board=ID` returns a status snapshot. Without `board`, it returns a disconnected snapshot.
+The Python response always contains these top-level fields:
 
 | Fields | Meaning |
 | --- | --- |
@@ -96,46 +100,61 @@ Unavailable report objects and values are `null`; nullable fields such as `error
 set connection state to false, report groups to `null`, and report groups stale. A non-null wireless object may
 include `stale:true` when its data is old. These rules distinguish unavailable, stale, and measured zero values.
 
-The HTTP response uses its own JSON names; it does not expose the USB report field names. Commonly consumed fields
-and their JSON types are:
+The Python HTTP response uses its own JSON names; it does not expose the USB report field names. This partial
+reference lists commonly consumed Python fields and their JSON types:
 
 | Object | Field | Type and meaning |
 | --- | --- | --- |
-| `hardware` | `product_name`, `mcu`, `board_model` | string |
-| `hardware` | `serial_number` | string or `null` |
-| `hardware` | `capabilities`, `ram_total_bytes`, `ram_reserved_bytes`, `psram_total_bytes`, `psram_reserved_bytes`, `flash_total_bytes` | integer; optional memory inventory values may be `null` |
-| `board_configuration` | `system_clock_mhz`, `sdcard_profile`, `radios`, `monitor_uart_index`, `monitor_uart_tx_gpio`, `monitor_uart_rx_gpio`, `led_gpio`, `card_detect_gpio` | integer |
+| `hardware` | `product_name` | string |
+| `hardware` | `mcu`, `board_model`, `serial_number` | string when `supported` is true; otherwise absent |
+| `hardware` | `capabilities` | integer; present on supported and unsupported identities |
+| `hardware` | `ram_total_bytes`, `ram_reserved_bytes` | integer when supported; absent when unsupported |
+| `hardware` | `psram_total_bytes`, `psram_reserved_bytes` | integer or `null`; supported identities only |
+| `hardware` | `flash_total_bytes` | integer or `null`; supported identities only |
+| `board_configuration` | `system_clock_mhz`, `sdcard_profile`, `radios`, `monitor_uart_index` | integer |
+| `board_configuration` | `monitor_uart_tx_gpio`, `monitor_uart_rx_gpio`, `led_gpio`, `card_detect_gpio` | integer |
 | `board_configuration` | `storage_gpios` | array of integers |
 | `board_configuration` | `tcp_cli_enabled` | boolean |
 | `runtime` | `uptime_ms`, `system_clock_hz`, `ram_used_bytes`, `ram_total_bytes` | integer; RAM values may be `null` |
 | `runtime` | `temperature_centidegrees` | integer or `null`; hundredths of a degree Celsius |
-| `runtime` | `cpu_usage_core0_basis_points`, `cpu_usage_core1_basis_points` | integer or `null`; 100 basis points equal 1% |
+| `runtime` | `cpu_usage_core0_basis_points` | integer or `null`; basis points (100 = 1%) |
+| `runtime` | `cpu_usage_core1_basis_points` | integer or `null`; basis points (100 = 1%) |
 | `runtime` | `temperature_valid`, `usb_mounted`, `cdc_open`, `led_available`, `led_on` | boolean |
 | `memory` | `present` | boolean or `null` when card presence is unknown |
 | `memory` | `capacity_bytes`, `block_count`, `bus_clock_hz` | integer or `null` when unavailable |
 | `memory` | `mode`, `speed_mode`, `filesystem_format` | string; `mode` and `speed_mode` may be `null` |
 | `memory` | `msc` | object with boolean `enabled`, `transition_pending`, and `request_rejected` fields |
-| `self_test` | `state`, `active`, `progress_percent`, `target_bytes`, `written_bytes`, `read_bytes` | string, boolean, number, and integers respectively |
+| `self_test` | `state`, `active`, `progress_percent` | string, boolean, and number respectively |
+| `self_test` | `target_bytes`, `written_bytes`, `read_bytes` | integer |
 | `self_test` | `write_bytes_per_second`, `read_bytes_per_second` | number or `null` when elapsed time is zero |
 | `wireless` | `wifi_state`, `ipv4`, `ssid`, `ble_state`, `phase` | string |
 | `wireless` | `wifi_enabled`, `ble_enabled`, `stale`, `network_configured` | boolean |
 
-Each object in this table is itself nullable when unavailable or stale. Other fields, including identity,
-configuration, diagnostic counters, and operation details, are also returned as described by their names and the
-focused [USB HID contract](usb-hid.md) for wire interpretation. HTTP-specific decoded names and derived values above
-are authoritative for this API: for example, the wire's `core0_service_load_basis_points` becomes
-`runtime.cpu_usage_core0_basis_points`, and storage capacity is exposed as `memory.capacity_bytes`.
+The .NET host uses the same routes and snake_case style, but its status model is not byte-for-byte identical:
 
-## Status fields
+| Status field | Python response | .NET response |
+| --- | --- | --- |
+| `hardware.supported` and identity fields | Has `supported`; unsupported identity objects omit fields such as `mcu` and `board_model` | No `supported` field; exposes `mcu`, `mcu_id`, and numeric `board_model` |
+| `hardware.board_model` | Descriptive string; numeric ID is `board_model_id` | Numeric board-model ID; no `board_model_id` field |
+| `memory.speed_mode` | `null`, `"standard"`, or `"high-speed"` | Numeric byte value (`0`, `1`, or `2`) |
+| `control_result` | Present, possibly `null` | Omitted from `/api/status` |
+
+The Python top-level field list and nested type table above describe Python only. Do not assume those optional
+fields or string representations are identical in .NET.
+
+For the .NET host's generated route and response schemas, run it with `ASPNETCORE_ENVIRONMENT=Development` and open
+`http://127.0.0.1:8002/openapi/v1.json`; see [host development](../development/host-tools.md#net-builds-and-versions).
+HTTP-specific decoded names and derived values above are authoritative for the Python fields: for example, the
+wire's `core0_service_load_basis_points` becomes
+`runtime.cpu_usage_core0_basis_points`, and storage capacity is exposed as `memory.capacity_bytes`. The
+[USB HID contract](usb-hid.md) defines wire fields and units, not HTTP JSON names.
+
+### Memory accounting
 
 `/api/status` separates internal SRAM, external PSRAM, and module SPI flash. It adds
 `hardware.psram_total_bytes`, `psram_reserved_bytes` and `flash_total_bytes`, in bytes, when firmware advertises
-[memory inventory](usb-hid.md#report-id-13-module-memory-inventory). Unsupported or unavailable values are `null` or
-absent. RAM reservation is linked accounting, including heap pools, not live usage; flash capacity is not free space.
-
-Unavailable load, temperature, card presence, bus clock, or capacity remains `null`, not zero. Diagnostic values
-must preserve unknown and invalid states rather than claim a successful measurement. The
-[dashboard guide](../guides/dashboards/README.md#read-the-dashboard) defines their presentation.
+[memory inventory](usb-hid.md#report-id-13-module-memory-inventory). RAM reservation is linked accounting,
+including heap pools, not live usage; flash capacity is not free space.
 
 ## Settings
 
@@ -210,7 +229,7 @@ command.
 | Response | HTTP 200 with `{"accepted":true}` means admitted, not completed. Poll `/api/status` fields `memory.msc.transition_pending`, `enabled`, and `request_rejected`. |
 | Errors and recovery | Unavailable, stale, or busy ownership is HTTP 409; transport failure is HTTP 503 and may leave an uncertain outcome. Do not replay. |
 
-See the [SD handoff contract](sd-storage.md#usb-drive-handoff) for OS eject, reconnect and safety limits.
+Follow the [SD handoff procedure](../guides/sd-card.md#export-or-return-a-card) for OS eject and dashboard steps.
 
 ## Storage benchmark
 
@@ -222,7 +241,8 @@ See the [SD handoff contract](sd-storage.md#usb-drive-handoff) for OS eject, rec
 | Response | HTTP 200 with `{"accepted":true}` means admitted, not completed. Poll `self_test` and `self_test_stale` for [Report 11](usb-hid.md#report-id-11-storage-benchmark-status). |
 | Errors and limits | Unavailable, stale, or busy admission is HTTP 409; transport errors are HTTP 503 and may need explicit resync. `self_test` is null when absent or stale; zero-duration throughput is null. Controls require capability bit 5 and detected storage; BLE is read-only. |
 
-Do not replay an uncertain start or cancel request.
+Do not replay an uncertain start or cancel request. Read the
+[benchmark precautions](../guides/sd-card.md#run-a-benchmark) before starting.
 
 ## RGB LED control
 

@@ -1,10 +1,10 @@
 # Commission an ESP32-C6
 
-[Documentation](../README.md) / [Hardware](README.md) / C6 commissioning
+[Documentation](../README.md) / Guides / C6 commissioning
 
-Use this procedure once to commission an ESP32-C6-DevKitC-1 N8 for Direct BLE management. A fresh image does not
-advertise until a Control key is saved. The C6 has no native USB HID, so this procedure writes the first key through
-its UART flashing port.
+Use this procedure once to commission an [ESP32-C6-DevKitC-1 N8](../hardware/README.md#esp32-c6-devkitc-1-n8)
+for Direct BLE management. A fresh image does not advertise until a Control key is saved. The C6 has no native USB
+HID, so this procedure writes the first key through its UART flashing port.
 
 This procedure writes settings to an unencrypted board through its flashing port. Use it only with physical access
 to the board and no other application using that port. It has software checks, not hardware qualification.
@@ -13,7 +13,7 @@ to the board and no other application using that port. It has software checks, n
 
 1. Check the module marking. In a trusted, initialized Zephyr workspace,
    [build the selected C6 image](../development/firmware-build.md#build-with-the-wrapper) and
-   [flash it](../guides/flashing.md#from-a-source-build).
+   [flash it](flashing.md#from-a-source-build).
 2. Retain the matching build directory, including compiled configuration and devicetree. The utility derives the
    settings address from that build; it does not prove the matching image is installed.
 3. Close all other programs using the port. The `--allow-settings-write` flag in the next step enables the
@@ -82,4 +82,4 @@ private files to clean up manually.
 
 Keys and settings remain unencrypted in flash; Control-key authentication does not encrypt BLE traffic.
 See [boot settings](../reference/boot-settings.md) for the record format and power-loss limits, and
-[wireless setup](../guides/wireless.md#bluetooth-le) for connecting afterward.
+[wireless setup](wireless.md#bluetooth-le) for connecting afterward.

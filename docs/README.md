@@ -1,18 +1,22 @@
 # Documentation
 
-**New to ZephyrForge?** Follow [Get a board running](getting-started.md) from image selection to live telemetry.
+## Start here
+
+- **New board:** [Get a board running](getting-started.md) takes you from image selection to live telemetry.
+- **Firmware already installed:** [Choose a dashboard](guides/dashboards/README.md), then
+  [connect and use it](guides/dashboard-use.md).
+- **Building an application:** [Build firmware](development/firmware-build.md), then use
+  [firmware development](development/firmware.md) for extension points and tests.
 
 ## Use a board
 
 | Task | Read |
 | --- | --- |
 | Identify a board, connector, or reserved pin | [Boards and connections](hardware/README.md) |
-| Wire and prepare an SD card | [SD-card wiring](hardware/sd-card-wiring.md) |
-| Install or replace firmware | [Flashing firmware](guides/flashing.md) |
-| Set the first Control key on a C6 | [C6 commissioning](hardware/esp32c6-commissioning.md) |
-| Choose, install, or use a dashboard | [Dashboards](guides/dashboards/README.md) |
-| Export or return an SD card | [USB drive handoff](reference/sd-storage.md#usb-drive-handoff) |
-| Run a storage benchmark | [Storage benchmark](reference/sd-storage.md#optional-storage-benchmark) |
+| Install or replace firmware | [Flash firmware](guides/flashing.md) |
+| Set the first Control key on a C6 | [Commission an ESP32-C6](guides/esp32c6-commissioning.md) |
+| Read status, save settings, or recover a command | [Use a dashboard](guides/dashboard-use.md) |
+| Prepare a card, export it over USB, or run a benchmark | [Use an SD card](guides/sd-card.md) |
 | Set up Wi-Fi or Bluetooth | [Wireless setup](guides/wireless.md) |
 | Read logs or open a diagnostic terminal | [Diagnostic shells](guides/console.md) |
 
@@ -37,7 +41,7 @@ These pages own exact fields, APIs, and error semantics; operating instructions 
 | [Bluetooth LE](reference/bluetooth-le.md) | Advertising, GATT, authentication, and BLE control; reuses USB report layouts |
 | [Dashboard HTTP API](reference/http-api.md) | Python/.NET routes, JSON fields, responses, and errors |
 | [Boot settings](reference/boot-settings.md) | Defaults, record format, load/save API, and flash safety |
-| [SD storage](reference/sd-storage.md) | Drivers, mounting, exclusive ownership, and benchmarks |
+| [SD storage](reference/sd-storage.md) | Driver configuration, mount lifecycle, ownership, and benchmark execution |
 | [Security boundaries](reference/security.md) | Management links, local hosts, and stored credentials |
 
 ## Check what has been tested

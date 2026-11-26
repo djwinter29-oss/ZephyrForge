@@ -7,12 +7,15 @@ Firmware owns the card until the user explicitly hands it to USB mass storage on
 There is no automatic formatting or runtime bus fallback.
 See [qualification gaps](../validation/README.md) for tested card and wiring combinations.
 
+This is an SD memory-card interface, not an SDIO peripheral/function API.
 Select the controller and optional modules through the [build guide](../development/firmware-build.md).
-The `none` image omits SD and filesystem support entirely. This is an SD memory-card interface, not an SDIO
-peripheral/function API.
+For preparation, dashboard actions, OS eject, and manual cleanup, use [Use an SD card](../guides/sd-card.md).
 
-For runtime behavior, see [mounting](#boot-and-runtime-mount-lifecycle), [USB handoff](#usb-drive-handoff),
-or the [optional benchmark](#optional-storage-benchmark).
+- [Driver and filesystem configuration](#driver-and-filesystem-configuration)
+- [Mount lifecycle](#boot-and-runtime-mount-lifecycle)
+- [USB ownership transitions](#usb-drive-handoff)
+- [Benchmark execution](#optional-storage-benchmark)
+- [Application integration and safety](#safety-and-ownership)
 
 ## Pin allocation
 
@@ -86,50 +89,33 @@ cleanup is not a verified hardware reset. Power-cycle a card if it cannot be rei
 
 ## USB drive handoff
 
-The dashboard exposes **Enable USB drive** when this firmware advertises MSC and card hardware is initialized.
-Native USB presents HID management plus a removable MSC LUN; it has no CDC console.
-USB export is optional: an image without MSC retains firmware-side mounting but exposes no LUN or handoff command.
-See [module selection](../development/firmware-build.md#optional-modules).
-Firmware unmounts FAT before exporting raw 512-byte sectors. The native USB device briefly disconnects and
-reconnects on export so an OS-ejected LUN can be loaded again.
+USB export is optional: an image without MSC retains firmware-side mounting but exposes no LUN or handoff command;
+see [module selection](../development/firmware-build.md#optional-modules).
+Export requires initialized hardware and valid geometry, not a mounted filesystem. Firmware unmounts FAT before
+exporting raw 512-byte sectors. Return revokes USB access before remounting FAT.
 While firmware owns the card, including during transitions and benchmarks, the LUN reports no medium immediately
 instead of holding host commands until storage work finishes.
 
-Before **Return to firmware**, safely eject the drive in the operating system, then explicitly confirm eject
-in the dashboard. The native Zephyr class does not expose a public OS-eject notification; the confirmation is
-the user's assertion, not firmware verification that the host has flushed every cache. Return revokes USB
-access before remounting FAT. No unsafe force-return action exists.
-
-USB opcode `3` acknowledges admission, not completed media work. The worker defers handoff long enough to let
-the host read its result; Report `10` reports transition and failure. Never automatically resend an uncertain
-command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact flags and result semantics.
-
-## Status reporting
-
-The [USB HID Report `10` contract](usb-hid.md#report-id-10-storage-status) defines the fields and validation.
-It reports detection, hardware initialization, mount format and ownership; mount errors appear only in the UART log.
-Capacity is the whole volume, not free space. The clock field shows the configured ceiling.
-The C6 exposes storage status over BLE but has no USB-only benchmark or handoff commands.
+[Report `10`](usb-hid.md#report-id-10-storage-status) exposes ownership, transition state, and failure.
+The [USB control contract](usb-hid.md#msc-command-rules) defines OS-eject confirmation, deferred execution,
+admission versus completion, and uncertain-command recovery.
 
 ## Optional storage benchmark
 
-The dashboards offer a USB-controlled benchmark when capability bit 5 is advertised. It is disabled by default in
-CMake; the build wrapper enables it for SD-enabled ESP32-S3 and Pico images, not for C6. See
-[build configuration](../development/firmware-build.md#configuration-and-storage-profiles).
-It never runs at boot or on insertion. Authenticated BLE can read its progress but cannot start or cancel it.
+The optional benchmark runs on the storage worker; see
+[build configuration](../development/firmware-build.md#configuration-and-storage-profiles) for defaults.
 
-Back up the card before confirming a run. Choose 1–1024 MiB (dashboard default 32 MiB). The worker writes a
-deterministic pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the file. An existing file
-of that name is never overwritten or removed. The volume must already be mounted for firmware.
+The worker writes a deterministic pattern to `SD:/EFTEST.BIN`, closes it, reads and verifies it, then removes the
+file. An existing file of that name is never overwritten or removed. The volume must already be mounted for firmware.
 Free-space checks reserve the requested size plus one 32 KiB chunk. The benchmark uses a 32 KiB internal-RAM buffer.
 
 ### Admission, progress and timing
 
-The command acknowledges **queued admission**, not successful filesystem preflight or a passing benchmark.
-File-existence and free-space checks run asynchronously on the storage worker. Read Report `11` for phases,
-progress, measured throughput and terminal result; the [USB contract](usb-hid.md#report-id-11-storage-benchmark-status)
-defines its wire layout. Firmware storage samples are invalid during the run; settings, reboot and MSC handoff are
-blocked. Management remains responsive while the worker performs storage I/O.
+File-existence and free-space checks run after queued admission, not in the command callback.
+Firmware storage samples are invalid during the run; settings, reboot and MSC handoff are blocked. Management
+remains responsive while the worker performs storage I/O. [Report `11`](usb-hid.md#report-id-11-storage-benchmark-status)
+defines progress, throughput, and terminal results; [benchmark command rules](usb-hid.md#benchmark-command-rules)
+define admission.
 
 Write timing includes pattern generation, file allocation, writes and final close/sync. Read timing includes reads,
 verification and final close. Throughput is completed bytes divided by elapsed time, not a bus-frequency estimate.
@@ -139,24 +125,17 @@ A zero elapsed time produces unavailable throughput (`--`), not a fabricated rat
 
 Cancel requests stop at the next cooperative checkpoint and attempt cleanup. Short/failed I/O is never replayed.
 Observed removal stops further access to that media, including close/unlink; replacement media is not used for cleanup.
-A failed close or cleanup can leave `EFTEST.BIN` behind. Inspect it on a computer after safely releasing ownership;
-remove it manually before starting another run. Unplugging or power loss during writes can still corrupt the volume.
-The benchmark causes real card writes and wear; it provides neither power-loss atomicity nor sustained-workload
-qualification.
+A failed close or cleanup can leave `EFTEST.BIN` behind; follow the
+[operator cleanup procedure](../guides/sd-card.md#cancel-or-clean-up).
 
 ## Safety and ownership
 
-Back up the card and follow [card preparation](../hardware/sd-card-wiring.md#card-preparation-and-qualification)
-before use.
+Application code must respect the same ownership boundary as management commands:
 
 - Firmware and USB have exclusive ownership; they never mount/access the same medium concurrently.
-- Reboot and settings-save are Busy while the storage worker is active or USB owns the medium.
-- Bluetooth mirrors storage/configuration reports but cannot change MSC ownership.
-- Physical removal during reads/writes can interrupt I/O and corrupt data. Detection does not prevent unplugging,
-  make writes atomic, or provide power-loss recovery. Safely eject before returning USB ownership.
-- Power-cycle the card before changing between SDMMC and SPI images. A board reset can leave the card in SPI mode;
-  the board has no card power switch.
-- Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.
 - Downstream filesystem users must participate in ownership serialization, check every return value and close/sync
   files before handoff. Keep blocking storage work out of the management loop and application lock.
-- There is no implemented power-loss recovery or sustained-recording guarantee.
+
+Detection cannot prevent physical removal or make writes atomic. There is no implemented power-loss recovery or
+sustained-recording guarantee. Follow the [card handling precautions](../guides/sd-card.md#before-you-start) before
+using real media.

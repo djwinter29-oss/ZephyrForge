@@ -39,16 +39,20 @@ inside a particular board's hooks. Use the existing Zephyr feature symbols and
 The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
 must use a cryptographically secure source.
 
-### Example: extending an optional module
+### Worked example: benchmark size guard
 
-The storage benchmark shows how an optional behavior crosses the build, portable code, and test boundaries:
+The portable benchmark rejects a zero or oversized request before touching storage. Its focused `benchmark`
+suite checks the failure result and confirms that no files were opened or deleted:
 
-1. Select it with the existing `benchmark` build option; disabling it also removes its advertised capability.
-2. Keep the benchmark lifecycle and admission policy in the storage service, separate from USB/BLE transport.
-3. Exercise its behavior in the focused storage and control suites, then check the disabled configuration as well.
+```sh
+bundle exec ceedling test:benchmark
+```
 
-Use the [optional-module build instructions](firmware-build.md#optional-modules) and the
-[host-native test commands](#host-native-unit-tests) rather than adding a second feature switch or a new test harness.
+The manual build includes this module only when storage and `ZF_ENABLE_STORAGE_BENCHMARK` are enabled; the build
+wrapper can omit it with `--without benchmark`. In a disabled build, the `control` suite checks that the command
+returns unsupported, and `hid_reports` checks that the capability is not advertised. Run the enabled and disabled
+[feature-gate checks](#storage-feature-gates) as well. See [optional modules](firmware-build.md#optional-modules)
+for build selection.
 
 ## Host-native unit tests
 
