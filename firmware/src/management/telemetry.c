@@ -1,4 +1,4 @@
-#include "platform/telemetry.h"
+#include "management/telemetry.h"
 #include "platform/sysclk.h"
 #include "protocol/report_codec.h"
 #include <zephyr/sys/util.h>

@@ -89,8 +89,7 @@ target_sources(app PRIVATE
   src/management/report_builder.c
   src/settings/settings.c
   src/settings/settings_flash_read.c
-  src/platform/telemetry.c
-  src/management/wireless_status.c)
+  src/management/telemetry.c)
 target_sources_ifdef(CONFIG_ZF_SETTINGS_SAVE app PRIVATE src/settings/settings_flash_write.c)
 target_sources_ifdef(CONFIG_ZF_LED app PRIVATE src/platform/led.c)
 target_sources_ifdef(CONFIG_ZF_USB_HID app PRIVATE src/transport/usb_device.c)

@@ -8,7 +8,6 @@
 #include "management/report_builder.h"
 #include "settings/settings.h"
 #include "transport/ble_auth.h"
-#include "management/wireless_status.h"
 #include "app/runtime.h"
 #include "app/version.h"
 

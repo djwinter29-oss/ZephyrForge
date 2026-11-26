@@ -5,7 +5,7 @@
 #include "management/control.h"
 #include "settings/settings.h"
 #include "storage/storage.h"
-#include "platform/telemetry.h"
+#include "management/telemetry.h"
 #include "transport/usb_device.h"
 #include "transport/ble_gatt.h"
 #include "wifi/wifi.h"

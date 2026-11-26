@@ -2,8 +2,8 @@
  * @file telemetry.h
  * @brief Temperature, CPU load and clock telemetry for Feature 3.
  */
-#ifndef ZEPHYRFORGE_TELEMETRY_H
-#define ZEPHYRFORGE_TELEMETRY_H
+#ifndef ZEPHYRFORGE_MANAGEMENT_TELEMETRY_H
+#define ZEPHYRFORGE_MANAGEMENT_TELEMETRY_H
 
 #include <stdbool.h>
 #include <stdint.h>

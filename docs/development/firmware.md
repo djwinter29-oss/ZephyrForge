@@ -34,7 +34,7 @@ behind the same `CONFIG_ZF_*` Kconfig symbol, so calls compile away and no stub 
 with their owner: the folder for a feature (`zf_storage_*`, `zf_wifi_*`), or the file's component name inside a layer
 folder (`zf_control_*`, `zf_board_*`, `zf_usb_device_*`, `zf_sha256_*`, `zf_sdio_*`). Management report composition uses
 `zf_management_*` and wire encoding `zf_report_*`. Hooks between split files also name the implementing role, such as
-`zf_storage_media_open()`, `zf_storage_service_publish()` and `zf_usb_msc_register()`. Includes are qualified from
+`zf_storage_media_open()`, `zf_storage_service_publish()` and `zf_storage_export_attach()`. Includes are qualified from
 `src/`, for example `"storage/storage.h"`.
 
 The benchmark owns its engine and FatFs media adapter; storage grants exclusive media ownership rather than
@@ -51,12 +51,12 @@ beside Bluetooth authentication, until a second owner needs it. `drivers/` holds
 | `Kconfig` | Module switches and the Zephyr subsystem defaults each module needs |
 | `boards/` | Pin assignments, memory layout, and hardware overlays |
 | `src/app/` | Startup, management loop, application lock/wakeup, version and build capabilities |
-| `src/management/` | Control admission/results, credential staging and report composition |
+| `src/management/` | Control admission/results, credential staging, telemetry sampling and report composition |
 | `src/protocol/` | Wire layouts, shared payload types and stateless report encoding |
 | `src/settings/` | Portable boot-settings record; separate flash read and async write adapters |
-| `src/platform/` | Board facts (UID, reset cause, snapshots, reboot), CPU clock per SoC, telemetry sampling and LED |
+| `src/platform/` | Board facts (UID, reset cause, snapshots, reboot), per-SoC clock and memory inventory, and LED |
 | `src/transport/` | USB device/HID and MSC integration (`usb_*`); BLE GATT, authentication and SHA-256 (`ble_*`, `sha256`) |
-| `src/wifi/` | Station lifecycle, driver requests, portable policy/scan handling and disabled service |
+| `src/wifi/` | Station lifecycle, driver adapter that hides vendor event differences, portable policy/scan handling |
 | `src/storage/` | SD ownership policy, worker/admission and disk/FAT media lifecycle |
 | `src/benchmark/` | Portable benchmark engine, request/status service and FatFs media adapter |
 | `src/drivers/` | Zephyr API implementations: the Pico PIO SD host with its SDIO codec, and the Pico W random source |

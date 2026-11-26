@@ -3,9 +3,15 @@
 #include "protocol/report_codec.h"
 #include "transport/ble_gatt.h"
 #include "wifi/wifi.h"
-#include "management/wireless_status.h"
-#include "mock_settings.h"
+#include "management/report_builder.h"
+#include "mock_benchmark.h"
+#include "mock_board.h"
 #include "mock_control.h"
+#include "mock_led.h"
+#include "mock_settings.h"
+#include "mock_storage.h"
+#include "mock_telemetry.h"
+#include "mock_usb_device.h"
 
 #include <errno.h>
 
@@ -78,7 +84,7 @@ void test_disabled_wifi_report_preserves_ble_and_staged_key_state(void)
 	zf_control_staging_status_ReturnThruPtr_staged_state(&staged);
 	zf_settings_ble_key_configured_ExpectAndReturn(true);
 
-	zf_management_wireless_report(out);
+	TEST_ASSERT_EQUAL_UINT16(ZF_WIRELESS_SIZE, zf_management_report_build(ZF_REPORT_WIRELESS, 0, out));
 	TEST_ASSERT_EQUAL_UINT8(0, out[1]);
 	TEST_ASSERT_EQUAL_UINT8(0, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_BLE_CONNECTED, out[3]);
@@ -99,7 +105,7 @@ void test_disabled_wifi_report_does_not_hide_ble_start_failure(void)
 	zf_control_staging_status_ExpectAnyArgs();
 	zf_settings_ble_key_configured_ExpectAndReturn(false);
 
-	zf_management_wireless_report(out);
+	TEST_ASSERT_EQUAL_UINT16(ZF_WIRELESS_SIZE, zf_management_report_build(ZF_REPORT_WIRELESS, 0, out));
 	TEST_ASSERT_EQUAL_UINT8(0, out[1]);
 	TEST_ASSERT_EQUAL_UINT8(1, out[2]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_BLE_OFF, out[3]);

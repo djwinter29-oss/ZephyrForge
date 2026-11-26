@@ -11,11 +11,25 @@
 #include "mock_storage.h"
 #include "mock_telemetry.h"
 #include "mock_usb_device.h"
-#include "mock_wireless_status.h"
+#include "mock_control.h"
+#include "mock_wifi.h"
+
+static bool ble_failed;
+
+uint8_t zf_ble_gatt_state(void)
+{
+	return ZF_BLE_ADVERTISING;
+}
+
+bool zf_ble_gatt_failed(void)
+{
+	return ble_failed;
+}
 
 void setUp(void)
 {
 	zf_storage_msc_available_IgnoreAndReturn(true);
+	ble_failed = false;
 }
 
 void tearDown(void)
@@ -52,7 +66,11 @@ void test_report_builder_dispatches_shared_and_transport_independent_payloads(vo
 #else
 	TEST_ASSERT_EQUAL_UINT16(0, zf_management_report_build(ZF_REPORT_BENCHMARK, 9, out));
 #endif
-	zf_management_wireless_report_ExpectAnyArgs();
+	zf_app_lock_Expect();
+	zf_wifi_status_ExpectAnyArgsAndReturn(false);
+	zf_control_staging_status_ExpectAnyArgs();
+	zf_settings_ble_key_configured_ExpectAndReturn(false);
+	zf_app_unlock_Expect();
 	TEST_ASSERT_EQUAL_UINT16(ZF_WIRELESS_SIZE, zf_management_report_build(ZF_REPORT_WIRELESS, 0, out));
 
 	TEST_ASSERT_EQUAL_UINT16(0, zf_management_report_build(ZF_REPORT_CONTROL, 0, out));
@@ -152,4 +170,27 @@ void test_identity_advertises_only_modules_built_into_the_image(void)
 	TEST_ASSERT_EQUAL_UINT8(ZF_MCU_ESP32S3, out[14]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_BOARD_DEVKITC, out[15]);
 	TEST_ASSERT_EQUAL_HEX8(expected, out[17]);
+}
+
+void test_wireless_report_lets_wifi_override_detail_and_reports_saved_network(void)
+{
+	uint8_t out[ZF_WIRELESS_SIZE];
+	zf_wireless_t wifi = {.wifi_state = 6, .detail = 5, .ble_state = ZF_BLE_ADVERTISING, .ssid_length = 1};
+
+	wifi.ssid[0] = 'x';
+	ble_failed = true;
+	zf_app_lock_Expect();
+	zf_wifi_status_ExpectAnyArgsAndReturn(true);
+	zf_wifi_status_ReturnThruPtr_status(&wifi);
+	zf_control_staging_status_ExpectAnyArgs();
+	zf_settings_ble_key_configured_ExpectAndReturn(false);
+	zf_app_unlock_Expect();
+
+	TEST_ASSERT_EQUAL_UINT16(ZF_WIRELESS_SIZE, zf_management_report_build(ZF_REPORT_WIRELESS, 0, out));
+	TEST_ASSERT_EQUAL_UINT8(6, out[1]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_BLE_ADVERTISING, out[3]);
+	TEST_ASSERT_EQUAL_HEX8(0x01u, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(1, out[9]);
+	TEST_ASSERT_EQUAL_UINT8('x', out[10]);
 }

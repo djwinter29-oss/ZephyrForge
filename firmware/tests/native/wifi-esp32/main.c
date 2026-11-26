@@ -4,7 +4,6 @@
 #include "settings/settings.h"
 #include "transport/ble_gatt.h"
 #include "wifi/wifi.h"
-#include "management/wireless_status.h"
 
 #include <errno.h>
 #include <string.h>
@@ -41,10 +40,12 @@ static void notify_disconnect_result(struct net_if *iface, int result)
 
 static uint8_t wireless_state(void)
 {
-	uint8_t report[ZF_WIRELESS_SIZE];
+	zf_wireless_t status = {0};
 
-	zf_management_wireless_report(report);
-	return report[1];
+	zf_app_lock();
+	(void)zf_wifi_status(&status);
+	zf_app_unlock();
+	return status.wifi_state;
 }
 
 static struct net_if *wifi_iface;
@@ -63,10 +64,6 @@ void zf_app_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
 void zf_app_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
 void zf_settings_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0; }
-bool zf_settings_ble_key_configured(void) { return false; }
-bool zf_ble_gatt_failed(void) { return false; }
-uint8_t zf_ble_gatt_state(void) { return 0; }
-void zf_control_staging_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
 struct net_if *zf_test_wifi_iface(void) { return wifi_iface; }
 
