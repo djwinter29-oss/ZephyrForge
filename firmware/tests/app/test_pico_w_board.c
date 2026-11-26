@@ -24,6 +24,14 @@ int boot_flash_write(const uint8_t *record, size_t size)
 	return 0;
 }
 
+void zf_lock(void)
+{
+}
+
+void zf_unlock(void)
+{
+}
+
 void setUp(void)
 {
 	write_calls = 0;

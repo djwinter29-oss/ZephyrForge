@@ -8,6 +8,7 @@
 #include <errno.h>
 
 TEST_SOURCE_FILE("wifi_none.c")
+TEST_SOURCE_FILE("wireless_status.c")
 
 static uint8_t ble_state;
 static bool ble_failed;

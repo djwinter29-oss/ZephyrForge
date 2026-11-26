@@ -3,7 +3,7 @@
 [Documentation](../README.md) / Development / Architecture
 
 USB HID and BLE feed the same control dispatcher. Slow radio and storage operations run outside the management
-loop's application lock; settings saves are a synchronous exception. This page explains the service boundaries
+loop's application lock, including settings flash writes. This page explains the service boundaries
 and concurrency rules. For source layout and tests, use [firmware development](firmware.md).
 
 - [Service responsibilities](#service-responsibilities)
@@ -107,8 +107,9 @@ USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thr
 dispatcher. After boot initialization, every access to settings, staging, and wireless state holds one application
 mutex.
 
-- **Settings saves** erase, write, and verify flash synchronously in the callback while holding the mutex.
-  The nominal 20 ms main-loop period is not a response-time guarantee. The
+- **Settings saves** encode the record under the mutex, then erase, write, and verify flash on a system work-queue
+  item without it. USB reports Pending until the item finishes; the BLE write handler waits, unlocked, so its
+  result stays terminal. The nominal 20 ms main-loop period is not a response-time guarantee. The
   [flash-operation timing log](../reference/boot-settings.md#saving) excludes lock wait and full callback latency;
   save responsiveness and contention have not been hardware-qualified.
 - **Wi-Fi events** are queued and applied by the main loop. Connect, disconnect, and scan requests run outside
@@ -117,8 +118,9 @@ mutex.
 
 ### Command completion and recovery
 
-Reboots are scheduled about one second after the reply so the host can read the result. An accepted reboot or save
-blocks further reboot/save and storage-control requests until reset; diagnostic reads remain available.
+Reboots are scheduled about one second after the reply so the host can read the result. A running settings write, then
+an accepted reboot or save, blocks further reboot/save and storage-control requests until reset; diagnostic reads
+remain available.
 Failed reset scheduling leaves normal admission available. Busy or USB-owned storage blocks reboot/settings-save.
 An accepted storage request is not proof that the ownership transition has finished; see
 [SD ownership](../reference/sd-storage.md#usb-drive-handoff) for completion and recovery rules.

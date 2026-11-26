@@ -58,7 +58,7 @@
 #define ZF_DETAIL_SCAN_ACTIVE 26u /**< A Wi-Fi scan is active. */
 #define ZF_DETAIL_COMMIT_FLAG 27u /**< Staged values exist but the save commit flag is clear. */
 #define ZF_DETAIL_USB_STAGED 28u /**< Unexpired USB staging blocks a BLE save or reboot. */
-#define ZF_DETAIL_REBOOT_PENDING 29u /**< A scheduled reset blocks reboot, save and storage commands. */
+#define ZF_DETAIL_REBOOT_PENDING 29u /**< A scheduled reset or settings write blocks reboot, save and storage. */
 
 /** Initialize result slots, staging and reboot reservation before transports start. */
 void zf_control_init(void);
@@ -72,13 +72,12 @@ bool zf_control_ble_envelope(const uint8_t *request, size_t size);
 
 /** Execute an authorized BLE request with a valid envelope; replaces the BLE result slot. */
 void zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t now_ms);
+/** True while a BLE settings save waits for its flash write; the GATT write must not respond until false. */
+bool zf_control_ble_pending(void);
 void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE]);
 
-/** Expire staged values; cancels a candidate test when they expire. */
+/** Mark a finished candidate test that joined and expire staged values; cancels a test when they expire. */
 void zf_control_tick(int64_t now_ms);
-
-/** The current candidate test joined successfully. */
-void zf_control_test_joined(int64_t now_ms);
 
 /** Feature 12 staging flags (bits 4-7) and staged_state. */
 void zf_control_stage_status(uint8_t *flags, uint8_t *staged_state);

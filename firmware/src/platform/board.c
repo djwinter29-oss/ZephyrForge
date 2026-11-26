@@ -187,7 +187,7 @@ void zf_config_report(uint8_t *out)
 #if ZF_ENABLE_STORAGE
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
-		.msc_supported = IS_ENABLED(CONFIG_USBD_MSC_CLASS),
+		.msc_supported = IS_ENABLED(CONFIG_ZF_USB_MSC),
 #endif
 #if DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led_default))
 		.led_available = true,

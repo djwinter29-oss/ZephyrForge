@@ -22,6 +22,7 @@
     - -:firmware/src/platform/espressif/system_clock.c
     - -:firmware/src/app/telemetry.c
     - -:firmware/src/platform/storage.c
+    - -:firmware/src/platform/storage_msc.c
     - -:firmware/src/platform/led.c
     - -:firmware/src/app/usb/usb_hid.c
     - -:firmware/src/app/wireless/bluetooth/ble.c
@@ -55,6 +56,7 @@
     - ignore_arg
     - return_thru_ptr
     - expect_any_args
+    - callback
 
 :flags:
   :test:

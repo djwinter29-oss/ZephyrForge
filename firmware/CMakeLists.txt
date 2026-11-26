@@ -1,25 +1,25 @@
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(zephyrforge)
-option(ZF_ENABLE_STORAGE "Include removable SD-card and filesystem support" ON)
-option(ZF_ENABLE_STORAGE_BENCHMARK "Include temporary-file verification and throughput measurement" OFF)
-if(NOT ZF_ENABLE_STORAGE AND
+if(NOT CONFIG_ZF_STORAGE AND
    (CONFIG_USBD_MSC_CLASS OR CONFIG_DISK_ACCESS OR CONFIG_DISK_DRIVER_SDMMC OR CONFIG_FILE_SYSTEM OR
     CONFIG_FAT_FILESYSTEM_ELM OR CONFIG_FS_FATFS_EXFAT OR CONFIG_SDHC OR CONFIG_SPI_SDHC OR
     CONFIG_ZF_SDHC_RPI_PICO_PIO))
   message(FATAL_ERROR
-    "ZF_ENABLE_STORAGE=OFF must not include profiles/storage.conf, profiles/usb-msc.conf or SD devicetree overlays")
+    "SD storage subsystems are owned by CONFIG_ZF_STORAGE; partial storage configuration is not supported")
 endif()
-if(ZF_ENABLE_STORAGE_BENCHMARK AND NOT ZF_ENABLE_STORAGE)
-  message(FATAL_ERROR "ZF_ENABLE_STORAGE_BENCHMARK requires ZF_ENABLE_STORAGE")
+if(CONFIG_FS_FATFS_MOUNT_MKFS OR CONFIG_FS_FATFS_MKFS)
+  message(FATAL_ERROR "ZephyrForge never formats SD cards; disable FAT mkfs support")
 endif()
-target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>)
-target_compile_definitions(app PRIVATE ZF_ENABLE_STORAGE=$<BOOL:${ZF_ENABLE_STORAGE}>)
-target_compile_definitions(app PRIVATE ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_USBD_MSC_CLASS}>)
-target_compile_definitions(app PRIVATE ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${ZF_ENABLE_STORAGE_BENCHMARK}>)
-if(ZF_ENABLE_STORAGE AND ZF_ENABLE_STORAGE_BENCHMARK)
-  target_sources(app PRIVATE src/app/storage/benchmark.c)
+if(NOT CONFIG_ZF_USB_HID AND NOT CONFIG_ZF_BLUETOOTH)
+  message(FATAL_ERROR "Firmware needs a management link: enable CONFIG_ZF_USB_HID or CONFIG_ZF_BLUETOOTH")
 endif()
+# Module switches are Kconfig symbols; these definitions let native unit tests select the same variants.
+target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>
+  ZF_ENABLE_STORAGE=$<BOOL:${CONFIG_ZF_STORAGE}>
+  ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_ZF_USB_MSC}>
+  ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${CONFIG_ZF_STORAGE_BENCHMARK}>)
+target_sources_ifdef(CONFIG_ZF_STORAGE_BENCHMARK app PRIVATE src/app/storage/benchmark.c)
 if(CONFIG_SOC_FAMILY_RPI_PICO)
   # Report 1 identity: MCU 1 RP2040 or 2 RP2350. Report 2 monitor UART pins are read from the
   # console devicetree pinctrl in board.c.
@@ -37,7 +37,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   else()
     set(zf_board ZF_BOARD_PICO)
   endif()
-  if(CONFIG_WIFI)
+  if(CONFIG_ZF_WIFI)
     set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
     target_sources(app PRIVATE src/platform/rpi_pico/random.c ${zf_pico_rand}/rand.c)
     target_include_directories(app PRIVATE ${zf_pico_rand}/include
@@ -51,7 +51,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   endif()
   set(zf_board_caps 0)
   list(APPEND zf_board_sources src/platform/rpi_pico/platform.c)
-  if(ZF_ENABLE_STORAGE AND CONFIG_ZF_SDHC_RPI_PICO_PIO)
+  if(CONFIG_ZF_SDHC_RPI_PICO_PIO)
     list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)
   endif()
 else()
@@ -75,14 +75,14 @@ else()
 endif()
 
 set(zf_radio_mask 0)
-if(CONFIG_WIFI)
+if(CONFIG_ZF_WIFI)
   math(EXPR zf_radio_mask "${zf_radio_mask} | 1")
   target_sources(app PRIVATE src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c
-    src/app/wireless/wifi/wifi_policy.c)
+    src/app/wireless/wifi/wifi_policy.c src/app/wireless/wifi/scan_table.c)
 else()
   target_sources(app PRIVATE src/app/wireless/wifi/wifi_none.c)
 endif()
-if(CONFIG_BT)
+if(CONFIG_ZF_BLUETOOTH)
   math(EXPR zf_radio_mask "${zf_radio_mask} | 2")
   target_sources(app PRIVATE src/app/wireless/bluetooth/ble.c src/app/wireless/wireless_auth.c
     src/app/wireless/sha256.c)
@@ -95,8 +95,11 @@ endif()
 target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board}
   "ZF_BOARD_CAPS=(${zf_board_caps})" ZF_RADIO_MASK=${zf_radio_mask})
 
-if(ZF_ENABLE_STORAGE)
+if(CONFIG_ZF_STORAGE)
   set(zf_storage_sources src/app/storage/storage.c src/platform/storage.c)
+  if(CONFIG_ZF_USB_MSC)
+    list(APPEND zf_storage_sources src/platform/storage_msc.c)
+  endif()
 else()
   set(zf_storage_sources src/platform/storage_none.c)
 endif()
@@ -113,6 +116,7 @@ target_sources(app PRIVATE
   src/app/protocol/hid_reports.c
   src/app/usb/usb_hid.c
   src/app/wireless/wireless_stage.c
+  src/app/wireless/wireless_status.c
   ${zf_board_sources})
 target_include_directories(app PRIVATE src)
 # The pinned ESP32-S3 HAL leaves the PHY library's weak sensor-power hooks linked. They power the die-temperature

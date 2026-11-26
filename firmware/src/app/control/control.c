@@ -1,4 +1,5 @@
 #include "app/control/control.h"
+#include "app/zephyrforge.h"
 #include "app/storage/benchmark.h"
 #include "platform/boot_config.h"
 #include "platform/zf_platform.h"
@@ -34,14 +35,27 @@ typedef struct {
 static result_t usb_result;
 static result_t ble_result;
 static zf_stage_t stage;
+/* A started candidate test whose join result has not yet marked the staged pair. */
+static bool test_pending;
 static bool reboot_pending;
+/* Result slot of the save whose record the settings work item is writing; NULL when idle. */
+static result_t *save_result;
+static uint8_t save_commit_mask;
 
 void zf_control_init(void)
 {
 	memset(&usb_result, 0, sizeof(usb_result));
 	memset(&ble_result, 0, sizeof(ble_result));
 	zf_stage_reset(&stage);
+	test_pending = false;
 	reboot_pending = false;
+	save_result = NULL;
+}
+
+/* A scheduled reset or an in-flight settings write blocks reboot, save and storage commands. */
+static bool reset_blocked(void)
+{
+	return reboot_pending || save_result != NULL;
 }
 
 static bool zero(const uint8_t *data, size_t size)
@@ -111,7 +125,7 @@ static void reboot(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
 	} else if (!(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
-	} else if (reboot_pending) {
+	} else if (reset_blocked()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 	} else if (zf_platform_storage_busy()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_CONFLICT);
@@ -142,6 +156,41 @@ static void apply_commit(void)
 	}
 }
 
+static void save_complete(result_t *result, int err, uint8_t commit_mask)
+{
+	uint16_t mhz;
+
+	if (err) {
+		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+		return;
+	}
+	zf_stage_reset(&stage);
+	if (zf_platform_schedule_reboot() != 0) {
+		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+		return;
+	}
+	reboot_pending = true;
+	finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	mhz = zf_sysclk_profile_mhz(zf_boot_config_sysclk());
+	result->data[0] = (uint8_t)mhz;
+	result->data[1] = (uint8_t)(mhz >> 8);
+	result->data[2] = 0;
+	result->data[3] = zf_boot_config_radios() & ZF_RADIO_MASK;
+	result->data[4] = commit_mask;
+}
+
+static void save_written(int err)
+{
+	result_t discarded;
+
+	zf_lock();
+	err = zf_boot_config_save_finish(err);
+	/* A later USB request may have replaced the Pending result; the reset still follows a successful save. */
+	save_complete(save_result->status == ZF_STATUS_PENDING ? save_result : &discarded, err, save_commit_mask);
+	save_result = NULL;
+	zf_unlock();
+}
+
 static void save(const request_t *request, result_t *result)
 {
 	uint16_t mhz = (uint16_t)(request->args[0] | request->args[1] << 8);
@@ -149,6 +198,7 @@ static void save(const request_t *request, result_t *result)
 	bool commit = (request->flags & FLAG_COMMIT) != 0;
 	zf_sysclk_profile_t profile = zf_sysclk_profile_from_mhz(mhz);
 	uint8_t commit_mask = 0;
+	uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE];
 	uint8_t detail;
 	int err;
 
@@ -165,7 +215,7 @@ static void save(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 		return;
 	}
-	if (reboot_pending) {
+	if (reset_blocked()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 		return;
 	}
@@ -213,25 +263,24 @@ static void save(const request_t *request, result_t *result)
 	if (commit) {
 		apply_commit();
 	}
-	err = zf_boot_config_save();
-	if (err) {
-		zf_boot_config_discard();
-		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
-		return;
+	if (request->ble) {
+		commit_mask = 0;
 	}
-	zf_stage_reset(&stage);
-	if (zf_platform_schedule_reboot() != 0) {
-		finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
-		return;
+	err = zf_boot_config_save_prepare(record);
+	if (err > 0) {
+		/* Set before queueing: the completion owns the result once the work item runs. */
+		save_result = result;
+		save_commit_mask = commit_mask;
+		finish(result, ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
+		err = zf_platform_settings_write(record, sizeof(record), save_written);
+		memset(record, 0, sizeof(record));
+		if (!err) {
+			return;
+		}
+		save_result = NULL;
+		err = zf_boot_config_save_finish(err);
 	}
-	reboot_pending = true;
-	finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
-	mhz = zf_sysclk_profile_mhz(zf_boot_config_sysclk());
-	result->data[0] = (uint8_t)mhz;
-	result->data[1] = (uint8_t)(mhz >> 8);
-	result->data[2] = 0;
-	result->data[3] = zf_boot_config_radios() & ZF_RADIO_MASK;
-	result->data[4] = request->ble ? 0 : commit_mask;
+	save_complete(result, err, commit_mask);
 }
 
 static void stage_value(const request_t *request, result_t *result, int64_t now_ms)
@@ -300,6 +349,7 @@ static void test_wifi(result_t *result)
 			finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 		} else {
 			stage.pair_tested = false;
+			test_pending = true;
 			finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
 		}
 	}
@@ -355,7 +405,7 @@ static void msc(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 	} else if (action == 0 && !(request->flags & FLAG_CONFIRM)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_CONFIRMATION, 0);
-	} else if (reboot_pending) {
+	} else if (reset_blocked()) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 	} else {
 		err = zf_platform_storage_request(action == 1, request->transaction_id);
@@ -408,7 +458,7 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 				finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_BENCHMARK_ERROR_SIZE);
 				break;
 			}
-			if (reboot_pending) {
+			if (reset_blocked()) {
 				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_REBOOT_PENDING);
 				break;
 			}
@@ -539,6 +589,11 @@ void zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t 
 	memset(ble_result.data + 4, 0, sizeof(ble_result.data) - 4);
 }
 
+bool zf_control_ble_pending(void)
+{
+	return ble_result.status == ZF_STATUS_PENDING;
+}
+
 void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE])
 {
 	encode(&ble_result, out, ZF_BLE_CONTROL_SIZE - 5);
@@ -546,14 +601,15 @@ void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE])
 
 void zf_control_tick(int64_t now_ms)
 {
+	if (test_pending && !zf_wifi_test_active()) {
+		test_pending = false;
+		if (zf_wifi_test_joined()) {
+			zf_stage_mark_tested(&stage, now_ms);
+		}
+	}
 	if (zf_stage_tick(&stage, now_ms)) {
 		zf_wifi_test_cancel();
 	}
-}
-
-void zf_control_test_joined(int64_t now_ms)
-{
-	zf_stage_mark_tested(&stage, now_ms);
 }
 
 void zf_control_stage_status(uint8_t *flags, uint8_t *staged_state)

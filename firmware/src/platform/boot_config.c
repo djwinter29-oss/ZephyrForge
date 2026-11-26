@@ -25,6 +25,8 @@ struct boot_config {
 static struct boot_config staged;
 static struct boot_config saved;
 static struct boot_config boot;
+/* Values whose record is being written; readers keep seeing the last confirmed record until it verifies. */
+static struct boot_config writing;
 static zf_boot_config_source_t source;
 
 uint32_t zf_boot_config_crc32(const uint8_t *data, size_t size)
@@ -297,24 +299,41 @@ bool zf_boot_config_restart_required(void)
 	return saved.sysclk != boot.sysclk || zf_boot_config_wireless_restart_required();
 }
 
-int zf_boot_config_save(void)
+int zf_boot_config_save_prepare(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE])
 {
-	uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE];
-	int err;
-
 	if (memcmp(&staged, &saved, sizeof(staged)) == 0) {
 		return 0;
 	}
 	encode(&staged, record);
-	err = boot_flash_write(record, sizeof(record));
-	memset(record, 0, sizeof(record));
+	writing = staged;
+	staged = saved;
+	return 1;
+}
+
+int zf_boot_config_save_finish(int err)
+{
 	if (err) {
 		staged = saved;
-		return err < 0 ? err : -EIO;
+		err = err < 0 ? err : -EIO;
+	} else {
+		saved = writing;
+		staged = writing;
+		source = ZF_BOOT_CONFIG_SAVED;
 	}
-	saved = staged;
-	source = ZF_BOOT_CONFIG_SAVED;
-	return 0;
+	memset(&writing, 0, sizeof(writing));
+	return err;
+}
+
+int zf_boot_config_save(void)
+{
+	uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE];
+	int err = zf_boot_config_save_prepare(record);
+
+	if (err > 0) {
+		err = zf_boot_config_save_finish(boot_flash_write(record, sizeof(record)));
+	}
+	memset(record, 0, sizeof(record));
+	return err;
 }
 
 void zf_boot_config_discard(void)

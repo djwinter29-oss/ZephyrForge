@@ -18,7 +18,6 @@ K_SEM_DEFINE(entered, 0, 1);
 K_SEM_DEFINE(release_request, 0, 1);
 K_SEM_DEFINE(finished, 0, 1);
 static int connect_error;
-static unsigned int joined;
 static unsigned int disconnected;
 static struct wifi_iface_status station_status;
 static const struct in_addr station_ipv4 = {.s4_addr = {198, 51, 100, 1}};
@@ -39,7 +38,6 @@ void zf_boot_config_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0;
 bool zf_boot_config_ble_key_configured(void) { return false; }
 bool zf_ble_failed(void) { return false; }
 uint8_t zf_ble_state(void) { return 0; }
-void zf_control_test_joined(int64_t now) { ARG_UNUSED(now); ++joined; }
 void zf_control_stage_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
 struct net_if *zf_test_wifi_iface(void) { return net_if_get_default(); }
@@ -244,12 +242,12 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	k_sleep(K_MSEC(20));
 	zf_wifi_poll();
 	zassert_equal(wifi_state(), 4, "association alone must not mark a join successful");
-	zassert_equal(joined, 0);
+	zassert_false(zf_wifi_test_joined());
 	set_station("candidate", WIFI_STATE_COMPLETED);
 	net_mgmt_event_notify(NET_EVENT_IPV4_DHCP_BOUND, iface);
 	finish_request();
 	poll_for(5);
-	zassert_equal(joined, 1);
+	zassert_true(zf_wifi_test_joined());
 	zf_lock();
 	zf_wifi_test_cancel();
 	zf_unlock();
@@ -297,11 +295,11 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(joined, 1, "a late DHCP event must not join an unassociated replacement");
+	zassert_false(zf_wifi_test_joined(), "a late DHCP event must not join an unassociated replacement");
 	set_station("replacement", WIFI_STATE_COMPLETED);
 	net_mgmt_event_notify(NET_EVENT_IPV4_DHCP_BOUND, iface);
 	poll_for(5);
-	zassert_equal(joined, 2);
+	zassert_true(zf_wifi_test_joined());
 }
 
 ZTEST_SUITE(wifi_worker, NULL, NULL, NULL, NULL, NULL);

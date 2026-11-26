@@ -1,4 +1,5 @@
 #include "platform/boot_flash.h"
+#include "platform/zf_platform.h"
 
 #include <errno.h>
 #include <string.h>
@@ -56,4 +57,34 @@ int boot_flash_write(const uint8_t *record, size_t size)
 	flash_area_close(area);
 	LOG_INF("Settings flash operation: %lld ms, result %d", (long long)(k_uptime_get() - started), err);
 	return err;
+}
+
+static uint8_t queued_record[SETTINGS_PAGE_SIZE];
+static size_t queued_size;
+static zf_settings_done_t queued_done;
+
+static void settings_write_handler(struct k_work *work)
+{
+	int err = boot_flash_write(queued_record, queued_size);
+
+	ARG_UNUSED(work);
+	memset(queued_record, 0, sizeof(queued_record));
+	queued_done(err);
+}
+
+static K_WORK_DEFINE(settings_write_work, settings_write_handler);
+
+int zf_platform_settings_write(const uint8_t *record, size_t size, zf_settings_done_t done)
+{
+	if (size > sizeof(queued_record)) {
+		return -EINVAL;
+	}
+	memcpy(queued_record, record, size);
+	queued_size = size;
+	queued_done = done;
+	if (k_work_submit(&settings_write_work) < 0) {
+		memset(queued_record, 0, sizeof(queued_record));
+		return -EIO;
+	}
+	return 0;
 }

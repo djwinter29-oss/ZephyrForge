@@ -96,8 +96,9 @@ padded with `0xFF`, and reads it back. Success updates the saved RAM copy and re
 negative errno; RAM rollback and flash uncertainty follow [transactional staging](#transactional-staging).
 
 The Zephyr ESP32 flash driver suspends the cache and serializes SPI-flash access while erasing and programming, so
-other threads and radio interrupts may be delayed briefly. Saves are rare user actions and execute synchronously
-in the USB or Bluetooth callback thread under the application mutex, not exclusively in the main thread.
+other threads and radio interrupts may be delayed briefly. A management save encodes the record under the
+application mutex, then erases, writes and verifies it on the system work queue without the mutex, so USB, BLE and
+Wi-Fi management continue meanwhile. Reboot, save and storage commands report Busy until the write finishes.
 Buffers holding the encoded record and padded page are cleared after use.
 
 Changed saves log `Settings flash operation: N ms, result E` on the UART console. The duration spans erase,

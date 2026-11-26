@@ -42,22 +42,28 @@ with `bash tools/firmware/build.sh --storage sd-spi`.
 The build directory starts with `build/firmware`, followed by `-esp32c6` or the Pico board identifier for
 those boards, then the profile suffix. The image filename is the same across profiles for each board.
 
-By default, the wrapper enables the benchmark for storage-enabled ESP32-S3 and Pico builds. For a manual build,
-`ZF_ENABLE_STORAGE_BENCHMARK` defaults to `OFF`. The benchmark requires storage and USB HID control.
+Wrapper and manual builds include the storage benchmark whenever storage and USB HID control are both built, so
+ESP32-C6 storage builds omit it. Kconfig enforces that dependency.
 See the [SD reference](../reference/sd-storage.md) for storage behavior and the
 [benchmark safety](../guides/sd-card.md#run-a-benchmark) before running it.
 
 ### Optional modules
 
-Pass `--without MODULE` (repeatable) to omit a module the board would otherwise include:
+Every module is a symbol in the `ZephyrForge modules` Kconfig menu. A module is on by default when the board's
+devicetree describes its hardware, and it selects the Zephyr subsystems it needs. Pass `--without MODULE`
+(repeatable) to omit a module the board would otherwise include; the wrapper sets the matching symbol to `n`:
 
-| Module | Effect when omitted | Manual selection |
-| --- | --- | --- |
-| `wifi` | No Wi-Fi driver; also omits `tcp-shell` and the Pico W wireless overlay | Omit `wifi.conf`; on Pico W, also omit `w.conf` and `w.overlay` |
-| `bluetooth` | No BLE peripheral or Control-key authentication; rejected on ESP32-C6, whose only management link is BLE | Omit `bluetooth.conf` |
-| `tcp-shell` | No Wi-Fi diagnostic shell | Omit `tcp-shell.conf` |
-| `usb-msc` | Keeps storage but cannot export the card over USB; card-export commands report unsupported | Omit `usb-msc.conf` |
-| `benchmark` | No storage benchmark | Set `ZF_ENABLE_STORAGE_BENCHMARK=OFF` |
+| Module | Kconfig symbol | Default | Effect when omitted |
+| --- | --- | --- | --- |
+| `wifi` | `CONFIG_ZF_WIFI` | ESP32 and W boards | No Wi-Fi stack; also omits `tcp-shell` |
+| `bluetooth` | `CONFIG_ZF_BLUETOOTH` | ESP32 boards | No BLE peripheral or Control-key authentication; rejected on ESP32-C6, whose only management link is BLE |
+| `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | ESP32-S3 | No Wi-Fi diagnostic shell |
+| `usb-msc` | `CONFIG_ZF_USB_MSC` | Storage with USB HID | Keeps storage but cannot export the card over USB; card-export commands report unsupported |
+| `benchmark` | `CONFIG_ZF_STORAGE_BENCHMARK` | Storage with USB HID | No storage benchmark |
+
+USB HID management (`CONFIG_ZF_USB_HID`) follows the board overlay's HID node, and SD storage
+(`CONFIG_ZF_STORAGE`) follows the storage overlay selected by `--storage`. Storage never enables FAT formatting;
+the build fails if a fragment enables it, or if neither USB HID nor Bluetooth management remains.
 
 Omitted radios are never started, reported as enabled, or accepted by radio-switch commands; with both omitted,
 the image does not advertise wireless management. Each omitted module appends `-no-MODULE` to the build directory,
@@ -157,38 +163,27 @@ For an existing checkout, put it at `zephyrforge-workspace/zephyrforge` or use a
 `west init -l zephyrforge` in the new workspace. Do not nest a second workspace inside an existing one.
 The manifest pins Zephyr and imports only the required modules; do not substitute an unrelated Zephyr checkout.
 
-### Manual overlays and fragments
+### Manual builds
 
-The wrapper is the supported path for standard images. For custom `west build` configurations, start with
-`firmware/prj.conf`, select feature fragments, then combine the board and storage overlays below. USB mass storage
-requires both `profiles/usb.conf` and `profiles/storage.conf`. A no-storage image omits
-`profiles/storage.conf`, `profiles/usb-msc.conf`, and the storage overlay, and sets `ZF_ENABLE_STORAGE=OFF` and
-`ZF_ENABLE_STORAGE_BENCHMARK=OFF`.
+The wrapper is the supported path for standard images. A custom `west build` needs `firmware/prj.conf`, the board
+configuration, and the hardware overlays; Kconfig then enables the modules that hardware supports. Paths in
+`CONF_FILE` and `DTC_OVERLAY_FILE` are relative to `firmware/`:
 
-Paths in `CONF_FILE` and `DTC_OVERLAY_FILE` are relative to `firmware/`. Select the fragments and overlays for the
-target:
-
-- **ESP32-S3:** `profiles/wifi.conf`, `profiles/bluetooth.conf`, `profiles/tcp-shell.conf`, `profiles/usb.conf`,
-  and `boards/esp32s3/board.conf`; overlays `boards/esp32s3/board.overlay` and either
+- **ESP32-S3:** add `boards/esp32s3/board.conf`; overlays `boards/esp32s3/board.overlay` and, for storage,
   `boards/esp32s3/storage/sdmmc.overlay` or `boards/esp32s3/storage/sd_spi.overlay`.
-- **ESP32-C6:** `profiles/wifi.conf` and `profiles/bluetooth.conf`; overlays `boards/esp32c6/board.overlay` and
-  `boards/esp32c6/storage/sd_spi.overlay`.
-- **Pico family:** `profiles/usb.conf`; storage builds also use `profiles/storage.conf`. W boards add
-  `profiles/wifi.conf` and `boards/rpi_pico/wireless/w.conf`. All use `boards/rpi_pico/board.overlay` and the
-  matching `boards/rpi_pico/soc/rp2040.overlay` or `boards/rpi_pico/soc/rp2350.overlay`. Storage builds add
-  `boards/rpi_pico/storage/sdmmc.overlay` or `boards/rpi_pico/storage/sd_spi.overlay`; W boards also add
-  `boards/rpi_pico/wireless/w.overlay`.
+- **ESP32-C6:** overlays `boards/esp32c6/board.overlay` and, for storage, `boards/esp32c6/storage/sd_spi.overlay`.
+- **Pico family:** overlays `boards/rpi_pico/board.overlay`, the matching `boards/rpi_pico/soc/rp2040.overlay` or
+  `boards/rpi_pico/soc/rp2350.overlay`, and, for storage, `boards/rpi_pico/storage/sdmmc.overlay` or
+  `boards/rpi_pico/storage/sd_spi.overlay`.
 
-All storage-enabled builds include `profiles/storage.conf`. Include `profiles/usb-msc.conf` only when both
-`profiles/usb.conf` and `profiles/storage.conf` are selected. Apply the board overlay before the SoC, storage, and
-wireless overlays. The example builds the standard ESP32-S3 native SDMMC image from an initialized workspace:
+Apply the board overlay before the SoC and storage overlays. Omit a module with `-DCONFIG_ZF_<MODULE>=n` from the
+table above. The example builds the standard ESP32-S3 native SDMMC image from an initialized workspace:
 
 ```sh
 west build -p always -b esp32s3_devkitc/esp32s3/procpu zephyrforge/firmware \
   -d zephyrforge/build/firmware -- \
-  -DCONF_FILE="prj.conf;profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;boards/esp32s3/board.conf;profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf" \
-  -DDTC_OVERLAY_FILE="boards/esp32s3/board.overlay;boards/esp32s3/storage/sdmmc.overlay" \
-  -DZF_ENABLE_STORAGE_BENCHMARK=ON
+  -DCONF_FILE="prj.conf;boards/esp32s3/board.conf" \
+  -DDTC_OVERLAY_FILE="boards/esp32s3/board.overlay;boards/esp32s3/storage/sdmmc.overlay"
 ```
 
 ## ESP32-S3 family
@@ -237,10 +232,8 @@ an extra Kconfig fragment. This complete Pico W SDMMC example uses the country v
 ```sh
 west build -p always -b rpi_pico/rp2040/w zephyrforge/firmware \
   -d zephyrforge/build/firmware-pico-w-country -- \
-  -DCONF_FILE="prj.conf;profiles/wifi.conf;boards/rpi_pico/wireless/w.conf;profiles/usb.conf;profiles/storage.conf;profiles/usb-msc.conf" \
   -DEXTRA_CONF_FILE="/absolute/path/to/pico-country.conf" \
-  -DDTC_OVERLAY_FILE="boards/rpi_pico/board.overlay;boards/rpi_pico/soc/rp2040.overlay;boards/rpi_pico/storage/sdmmc.overlay;boards/rpi_pico/wireless/w.overlay" \
-  -DZF_ENABLE_STORAGE=ON -DZF_ENABLE_STORAGE_BENCHMARK=ON
+  -DDTC_OVERLAY_FILE="boards/rpi_pico/board.overlay;boards/rpi_pico/soc/rp2040.overlay;boards/rpi_pico/storage/sdmmc.overlay"
 ```
 
 For Pico 2 W, use target `rpi_pico2/rp2350a/m33/w` and replace the SoC overlay with

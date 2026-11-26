@@ -197,7 +197,8 @@ Proof consumption and retry-delay behavior are defined in [proof rules](#proof-r
 disconnects after a rejected session proof.
 
 The board does not enforce transaction-ID uniqueness; clients MUST advance the nonzero ID for every command and
-serialize writes. The result is synchronous: `Pending` is not a BLE command outcome.
+serialize writes. The result is synchronous: `Pending` is not a BLE command outcome. A save delays its write
+response until the flash write finishes.
 
 ## Proof rules
 
@@ -334,8 +335,8 @@ Clients MUST abandon the transaction and reconnect after an ATT transaction time
 Accepted reboot and save-and-reboot commands are followed by a reset after a 1000 ms
 grace period, intended to allow the result read. This is not a guarantee that a slow
 connection can finish reading before reset.
-During that period, further reboot/save requests on either transport and USB MSC/benchmark commands return
-Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling does not reserve the reset.
+During that period, and while either transport's save is writing flash, further reboot/save requests on either
+transport and USB MSC/benchmark commands return Busy/error `5`, detail `29`. Reads remain available; failed reset scheduling does not reserve the reset.
 
 ## ATT errors
 

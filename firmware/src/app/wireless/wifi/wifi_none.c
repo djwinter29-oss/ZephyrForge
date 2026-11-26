@@ -1,6 +1,5 @@
 #include "app/zephyrforge.h"
-#include "app/protocol/hid_reports.h"
-#include "app/control/control.h"
+#include "app/wireless/wifi/wifi_status.h"
 #include "platform/boot_config.h"
 #include "platform/zf_platform.h"
 
@@ -16,6 +15,11 @@ void zf_wifi_poll(void)
 }
 
 bool zf_wifi_test_active(void)
+{
+	return false;
+}
+
+bool zf_wifi_test_joined(void)
 {
 	return false;
 }
@@ -67,18 +71,8 @@ int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_
 	return -ENOTSUP;
 }
 
-void zf_wireless_report(uint8_t *out)
+bool zf_wifi_status(zf_wireless_t *status)
 {
-	zf_wireless_t status = {0};
-	uint8_t stage_flags = 0;
-
-	zf_lock();
-	status.ble_state = zf_ble_state();
-	status.detail = zf_ble_failed() ? 1u : 0u;
-	status.ssid_length = zf_boot_config_wifi_ssid_bytes(status.ssid);
-	zf_control_stage_status(&stage_flags, &status.staged_state);
-	status.flags = (uint8_t)((status.ssid_length ? 0x01u : 0u) |
-				 (zf_boot_config_ble_key_configured() ? 0x02u : 0u) | (stage_flags & 0xF0u));
-	zf_unlock();
-	zf_report_wireless(&status, out);
+	status->ssid_length = zf_boot_config_wifi_ssid_bytes(status->ssid);
+	return status->ssid_length != 0;
 }

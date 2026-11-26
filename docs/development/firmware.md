@@ -19,7 +19,8 @@ not in the management loop or under the application lock. Read the
 
 | Directory under `firmware/` | Responsibility |
 | --- | --- |
-| `boards/` and `profiles/` | Pin assignments, memory layout, and build-selected features |
+| `Kconfig` | Module switches and the Zephyr subsystem defaults each module needs |
+| `boards/` | Pin assignments, memory layout, and hardware overlays |
 | `src/platform/` | Runtime board facts, shared locking, delayed reboot, settings persistence and Zephyr integration |
 | `src/platform/espressif/` | ESP32 CPU clock profiles |
 | `src/platform/rpi_pico/` | Pico hooks, PIO SD host, and portable SDIO codec |
@@ -34,8 +35,8 @@ Add tests beside the relevant component. Mock narrow service interfaces rather t
 with fake headers. Changes to reports or commands also need matching host and specification updates.
 Keep board wiring in overlays, not runtime board code. Portable modules must not depend on transport implementations;
 USB and BLE both consume the shared protocol. Disabled-service implementations belong with their service rather than
-inside a particular board's hooks. Use the existing Zephyr feature symbols and
-[build switches](firmware-build.md#optional-modules) instead of introducing a second switch for the same feature.
+inside a particular board's hooks. Add a module as one `CONFIG_ZF_*` symbol that selects its Zephyr subsystems,
+as described in [optional modules](firmware-build.md#optional-modules); do not add a second switch for it.
 The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
 must use a cryptographically secure source.
 
@@ -48,8 +49,8 @@ suite checks the failure result and confirms that no files were opened or delete
 bundle exec ceedling test:benchmark
 ```
 
-The manual build includes this module only when storage and `ZF_ENABLE_STORAGE_BENCHMARK` are enabled; the build
-wrapper can omit it with `--without benchmark`. In a disabled build, the `control` suite checks that the command
+Images include this module when `CONFIG_ZF_STORAGE_BENCHMARK` is set, its default when storage and USB HID are
+built; the build wrapper can omit it with `--without benchmark`. In a disabled build, the `control` suite checks that the command
 returns unsupported, and `hid_reports` checks that the capability is not advertised. Run the enabled and disabled
 [feature-gate checks](#storage-feature-gates) as well. See [optional modules](firmware-build.md#optional-modules)
 for build selection.

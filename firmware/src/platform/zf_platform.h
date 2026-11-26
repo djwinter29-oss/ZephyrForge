@@ -6,6 +6,7 @@
 #define ZEPHYRFORGE_ZF_PLATFORM_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "wireless_limits.h"
@@ -18,6 +19,16 @@
 
 /** Queue a reset after the result-read grace period. */
 int zf_platform_schedule_reboot(void);
+/** Settings write completion: 0 after readback matched, otherwise a negative errno. */
+typedef void (*zf_settings_done_t)(int err);
+/**
+ * @brief Erase, program and verify a settings record on a work item, outside the application lock.
+ *
+ * Callers allow one write at a time. The record is copied before return.
+ * @param done Called once from the work item, without the application lock.
+ * @return 0 when queued, otherwise a negative errno and @p done is not called.
+ */
+int zf_platform_settings_write(const uint8_t *record, size_t size, zf_settings_done_t done);
 /** Initialize the onboard addressable LED to Off before management starts. */
 void zf_platform_led_init(void);
 /** Queue an RGB bitmask (red=1, green=2, blue=4); returns zero or negative errno without SPI I/O. */
@@ -46,6 +57,8 @@ int zf_platform_benchmark_request(bool start, uint32_t size_mib);
 
 /** True while a candidate test is joining (Feature 12 wifi_state 4). */
 bool zf_wifi_test_active(void);
+/** True while a candidate test has joined and holds the link (Feature 12 wifi_state 5). */
+bool zf_wifi_test_joined(void);
 /** True while a scan or its timed-out driver request is still active. */
 bool zf_wifi_scan_active(void);
 

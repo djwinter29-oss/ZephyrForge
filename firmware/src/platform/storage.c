@@ -3,6 +3,7 @@
 #include "app/storage/benchmark.h"
 #include "app/protocol/hid_reports.h"
 #include "platform/zf_platform.h"
+#include "platform/storage_export.h"
 
 #include <errno.h>
 #include <ff.h>
@@ -11,14 +12,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/disk_access.h>
-#if ZF_ENABLE_USB_MSC
-#include <zephyr/usb/class/usbd_msc.h>
-#endif
 
 LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 
-#define DISK_NAME "SD"
-#define USB_DISK_NAME "USB_SD"
+#define DISK_NAME ZF_STORAGE_DISK_NAME
 #if ZF_STORAGE_SPI
 #define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(zephyrforge_sd), spi_max_frequency)
 #else
@@ -28,10 +25,6 @@ LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 /* Far below the host's 30 s SCSI command timeout; the worker holds the lock only briefly while the card is exported. */
 #define USB_LOCK_WAIT_MS 1000
 
-#if ZF_ENABLE_USB_MSC
-/* SCSI INQUIRY limits the vendor to eight bytes, so use the short project name. */
-USBD_DEFINE_MSC_LUN(zephyrforge_sd, USB_DISK_NAME, "ZForge", "SD card", "1.00");
-#endif
 K_MUTEX_DEFINE(media_lock);
 K_MUTEX_DEFINE(snapshot_lock);
 K_MSGQ_DEFINE(requests, sizeof(int), 1, sizeof(int));
@@ -413,7 +406,7 @@ void zf_storage_report(uint8_t sequence, uint8_t *out)
 }
 
 #if ZF_ENABLE_USB_MSC
-static bool usb_ready(uint32_t *blocks)
+bool zf_storage_export_ready(uint32_t *blocks)
 {
 	bool ready;
 	int present = gpio_pin_get_dt(&detect);
@@ -431,118 +424,22 @@ static bool usb_ready(uint32_t *blocks)
 	return ready;
 }
 
-static int usb_status(struct disk_info *disk)
+bool zf_storage_export_lock(uint32_t *blocks)
 {
-	ARG_UNUSED(disk);
-	return usb_ready(NULL) ? DISK_STATUS_OK : DISK_STATUS_NOMEDIA;
-}
-
-static int usb_init(struct disk_info *disk)
-{
-	ARG_UNUSED(disk);
-	return usb_ready(NULL) ? 0 : -ENOMEDIUM;
-}
-
-/**
- * @brief Lock the exported card for one MSC batch and check ownership again under the lock.
- *
- * Fails instead of waiting while the storage worker owns the card. An MSC command parked behind a benchmark or
- * remount makes the host time out and reset the device, which can eventually leave it unable to enumerate.
- *
- * @param blocks Receives the exported block count when not NULL.
- * @return true with media_lock held, or false without it.
- */
-static bool usb_lock(uint32_t *blocks)
-{
-	if (!usb_ready(NULL) || k_mutex_lock(&media_lock, K_MSEC(USB_LOCK_WAIT_MS)) != 0) {
+	if (!zf_storage_export_ready(NULL) || k_mutex_lock(&media_lock, K_MSEC(USB_LOCK_WAIT_MS)) != 0) {
 		return false;
 	}
-	if (usb_ready(blocks)) {
+	if (zf_storage_export_ready(blocks)) {
 		return true;
 	}
 	k_mutex_unlock(&media_lock);
 	return false;
 }
 
-static int usb_read(struct disk_info *disk, uint8_t *buffer, uint32_t sector, uint32_t count)
+void zf_storage_export_unlock(void)
 {
-	int err;
-	uint32_t blocks;
-
-	ARG_UNUSED(disk);
-	if (!usb_lock(&blocks)) {
-		return -ENOMEDIUM;
-	}
-	if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
-		err = -EINVAL;
-	} else {
-		err = disk_access_read(DISK_NAME, buffer, sector, count);
-	}
-	if (err != 0) {
-		LOG_ERR("USB SD read failed: %d", err);
-	}
 	k_mutex_unlock(&media_lock);
-	return err;
 }
-
-static int usb_write(struct disk_info *disk, const uint8_t *buffer, uint32_t sector, uint32_t count)
-{
-	int err;
-	uint32_t blocks;
-
-	ARG_UNUSED(disk);
-	if (!usb_lock(&blocks)) {
-		return -ENOMEDIUM;
-	}
-	if (buffer == NULL || count == 0 || sector >= blocks || count > blocks - sector) {
-		err = -EINVAL;
-	} else {
-		err = disk_access_write(DISK_NAME, buffer, sector, count);
-	}
-	if (err != 0) {
-		LOG_ERR("USB SD write failed: %d", err);
-	}
-	k_mutex_unlock(&media_lock);
-	return err;
-}
-
-static int usb_ioctl(struct disk_info *disk, uint8_t command, void *buffer)
-{
-	int err;
-
-	ARG_UNUSED(disk);
-	if (command == DISK_IOCTL_CTRL_DEINIT) {
-		/* Releasing proxy references must not deinitialize the storage worker's medium. */
-		return 0;
-	}
-	if (!usb_lock(NULL)) {
-		return -ENOMEDIUM;
-	}
-	if (command == DISK_IOCTL_CTRL_INIT) {
-		err = 0;
-	} else if (command == DISK_IOCTL_CTRL_SYNC) {
-		err = disk_access_ioctl(DISK_NAME, command, buffer);
-	} else if (command == DISK_IOCTL_GET_SECTOR_COUNT || command == DISK_IOCTL_GET_SECTOR_SIZE ||
-		   command == DISK_IOCTL_GET_ERASE_BLOCK_SZ) {
-		err = buffer == NULL ? -EINVAL : disk_access_ioctl(DISK_NAME, command, buffer);
-	} else {
-		err = -ENOTSUP;
-	}
-	if (err != 0 && err != -ENOMEDIUM) {
-		LOG_ERR("USB SD ioctl %u failed: %d", command, err);
-	}
-	k_mutex_unlock(&media_lock);
-	return err;
-}
-
-static const struct disk_operations usb_ops = {
-	.init = usb_init,
-	.status = usb_status,
-	.read = usb_read,
-	.write = usb_write,
-	.ioctl = usb_ioctl,
-};
-static struct disk_info usb_disk = {.name = USB_DISK_NAME, .ops = &usb_ops};
 #endif
 
 static void storage_worker(void *a, void *b, void *c)
@@ -613,7 +510,7 @@ void zf_storage_init(void)
 		err = present < 0 ? present : 0;
 #if ZF_ENABLE_USB_MSC
 		if (err == 0) {
-			err = disk_access_register(&usb_disk);
+			err = zf_storage_msc_register();
 		}
 #endif
 	}

@@ -173,6 +173,21 @@ bool zf_boot_config_restart_required(void);
  * Callers may re-stage.
  */
 int zf_boot_config_save(void);
+/**
+ * @brief Encode the staged configuration for a write performed by the caller.
+ *
+ * Pair with zf_boot_config_save_finish(); do not stage values between the two calls. Getters return the last
+ * confirmed record until the write succeeds.
+ * @param record Receives the encoded record, including credentials; clear it after the write.
+ * @return 0 when nothing changed and no write is needed, or 1 when @p record must be written.
+ */
+int zf_boot_config_save_prepare(uint8_t record[ZF_BOOT_CONFIG_RECORD_SIZE]);
+/**
+ * @brief Commit or discard the staged values after writing the prepared record.
+ * @param err Write and readback result: 0 on success, otherwise a nonzero error.
+ * @return 0 on success, otherwise a negative errno with the staged values discarded as zf_boot_config_save() does.
+ */
+int zf_boot_config_save_finish(int err);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */
 void zf_boot_config_discard(void);
 

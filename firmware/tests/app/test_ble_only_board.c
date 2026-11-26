@@ -26,11 +26,27 @@ int boot_flash_write(const uint8_t *record, size_t size)
 	return 0;
 }
 
+void zf_lock(void)
+{
+}
+
+void zf_unlock(void)
+{
+}
+
+static int settings_write(const uint8_t *record, size_t size, zf_settings_done_t done, int calls)
+{
+	(void)calls;
+	done(boot_flash_write(record, size));
+	return 0;
+}
+
 void setUp(void)
 {
 	memset(flash_record, 0xFF, sizeof(flash_record));
 	zf_boot_config_load();
 	zf_control_init();
+	zf_platform_settings_write_Stub(settings_write);
 	zf_platform_storage_busy_IgnoreAndReturn(false);
 	zf_wifi_test_active_IgnoreAndReturn(false);
 	zf_wifi_scan_active_IgnoreAndReturn(false);

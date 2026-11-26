@@ -4,7 +4,7 @@
 #include "app/zephyrforge.h"
 #include "app/protocol/hid_reports.h"
 
-#if CONFIG_USB_DEVICE_STACK_NEXT
+#if CONFIG_ZF_USB_HID
 #include "app/control/control.h"
 #include "app/storage/storage.h"
 

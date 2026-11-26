@@ -4,8 +4,6 @@ board=esp32s3
 storage=sdmmc
 storage_selected=false
 conf=prj.conf
-usb_config=";profiles/usb.conf"
-storage_config=""
 disabled=()
 while (($#)); do
 	case "$1" in
@@ -34,27 +32,22 @@ if [[ "$board" == esp32c6 && "$storage_selected" == false ]]; then
 	storage=none
 fi
 case "$storage" in
-	sdmmc) build=firmware; mode=sdmmc; storage_enabled=ON; benchmark=ON
-		storage_config=";profiles/storage.conf" ;;
-	sd-spi) build=firmware-sd-spi; mode=sd_spi; storage_enabled=ON; benchmark=ON
-		storage_config=";profiles/storage.conf" ;;
-	none) build=firmware-no-storage; storage_enabled=OFF; benchmark=OFF ;;
+	sdmmc) build=firmware; mode=sdmmc ;;
+	sd-spi) build=firmware-sd-spi; mode=sd_spi ;;
+	none) build=firmware-no-storage ;;
 	*) printf 'Error: --storage must be sdmmc, sd-spi or none.\n' >&2; exit 1 ;;
 esac
 case "$board" in
 	esp32s3) target=esp32s3_devkitc/esp32s3/procpu; family=esp32s3
-		conf+=";profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;boards/esp32s3/board.conf"
+		conf+=";boards/esp32s3/board.conf"
 		toolchain=xtensa-espressif_esp32s3_zephyr-elf ;;
 	esp32c6) family=esp32c6
-		usb_config=""
-		benchmark=OFF
 		[[ "$storage" != sdmmc ]] || {
 			printf 'Error: ESP32-C6 supports SD over SPI or no storage, not native SDMMC.\n' >&2
 			exit 1
 		}
 		target=esp32c6_devkitc/esp32c6/hpcore
 		build="${build/firmware/firmware-esp32c6}"
-		conf+=";profiles/wifi.conf;profiles/bluetooth.conf"
 		toolchain=riscv64-zephyr-elf ;;
 	pico) target=rpi_pico/rp2040; soc=rp2040 ;;
 	pico_w) target=rpi_pico/rp2040/w; soc=rp2040 ;;
@@ -63,44 +56,36 @@ case "$board" in
 	*) printf 'Error: --board must be esp32s3, esp32c6, pico, pico_w, pico2 or pico2_w.\n' >&2; exit 1 ;;
 esac
 [[ "$board" != pico* ]] || family=rpi_pico
-# Overlay order: family board, Pico SoC flash layout, storage wiring, then wireless tweaks.
+# Overlays describe hardware: family board, Pico SoC flash layout, then SD card wiring. Kconfig enables each module
+# whose hardware the devicetree describes.
 overlay="boards/$family/board.overlay"
 [[ -z "${soc:-}" ]] || overlay+=";boards/$family/soc/$soc.overlay"
 [[ "$storage" == none ]] || overlay+=";boards/$family/storage/$mode.overlay"
 if [[ "$board" == pico* ]]; then
 	build="${build/firmware/firmware-$board}"
-	if [[ "$board" == *_w ]]; then
-		overlay+=";boards/rpi_pico/wireless/w.overlay"
-		conf+=";profiles/wifi.conf;boards/rpi_pico/wireless/w.conf"
-	fi
 	toolchain=arm-zephyr-eabi
 fi
 if [[ " ${disabled[*]} " == *" wifi "* ]]; then
 	disabled+=(tcp-shell)
-	conf="${conf//;profiles\/wifi.conf/}"
-	conf="${conf//;boards\/rpi_pico\/wireless\/w.conf/}"
-	overlay="${overlay//;boards\/rpi_pico\/wireless\/w.overlay/}"
 fi
 if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
 	[[ "$board" != esp32c6 ]] || {
 		printf 'Error: ESP32-C6 requires Bluetooth for management; it has no native USB HID.\n' >&2
 		exit 1
 	}
-	conf="${conf//;profiles\/bluetooth.conf/}"
 fi
-if [[ " ${disabled[*]} " == *" tcp-shell "* ]]; then
-	conf="${conf//;profiles\/tcp-shell.conf/}"
-fi
-if [[ " ${disabled[*]} " == *" benchmark "* ]]; then
-	benchmark=OFF
-fi
-conf+="$usb_config$storage_config"
-if [[ -n "$usb_config" && -n "$storage_config" && " ${disabled[*]} " != *" usb-msc "* ]]; then
-	conf+=";profiles/usb-msc.conf"
-fi
+kconfig=()
 # Keep customized images separate from the default directories used by flashing and release wrappers.
 for feature in wifi bluetooth tcp-shell usb-msc benchmark; do
 	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
+		case "$feature" in
+			wifi) symbol=WIFI ;;
+			bluetooth) symbol=BLUETOOTH ;;
+			tcp-shell) symbol=TCP_SHELL ;;
+			usb-msc) symbol=USB_MSC ;;
+			benchmark) symbol=STORAGE_BENCHMARK ;;
+		esac
+		kconfig+=("-DCONFIG_ZF_$symbol=n")
 		build+="-no-$feature"
 	fi
 done
@@ -182,8 +167,7 @@ python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware"
   -DZEPHYR_SDK_INSTALL_DIR="$ZEPHYR_SDK_INSTALL_DIR" \
   -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
   -DZEPHYRFORGE_VERSION="$firmware_version" \
-  -DZF_ENABLE_STORAGE="$storage_enabled" \
-  -DZF_ENABLE_STORAGE_BENCHMARK="$benchmark"
+  "${kconfig[@]}"
 image_hash="$(sha256sum "$build_dir/zephyr/$image_file" | awk '{print $1}')"
 elf_hash="$(sha256sum "$build_dir/zephyr/zephyr.elf" | awk '{print $1}')"
 {

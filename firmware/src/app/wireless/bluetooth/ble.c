@@ -42,6 +42,8 @@ LOG_MODULE_REGISTER(zf_ble, LOG_LEVEL_INF);
 
 /* The complete name must fit the device-name buffer and one legacy 31-byte scan-response AD element. */
 BUILD_ASSERT(NAME_SIZE <= CONFIG_BT_DEVICE_NAME_MAX && NAME_SIZE + 2 <= 31);
+/* A BLE save waits in the GATT write for the settings work item, which runs on the system work queue. */
+BUILD_ASSERT(!IS_ENABLED(CONFIG_BT_RECV_WORKQ_SYS));
 
 static atomic_t state = ATOMIC_INIT(ZF_BLE_OFF);
 static bool failed;
@@ -295,9 +297,20 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 	}
 	zf_unlock();
 	if (save_request) {
+		bool pending;
+
 		LOG_INF("BLE settings request lock wait %lld ms, hold %lld ms",
 			(long long)(lock_acquired - lock_started),
 			(long long)(k_uptime_get() - lock_acquired));
+		/* The write response must carry a terminal result; the bounded flash write runs on the work item. */
+		do {
+			zf_lock();
+			pending = zf_control_ble_pending();
+			zf_unlock();
+			if (pending) {
+				k_msleep(5);
+			}
+		} while (pending);
 	}
 	return result;
 }

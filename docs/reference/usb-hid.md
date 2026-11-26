@@ -642,7 +642,7 @@ Other successful result data is zero.
 | Status | Allowed error | Meaning |
 | --- | --- | --- |
 | `0` Idle | `0` | No request; ID, opcode and data zero |
-| `1` Pending | `0` | Reserved processing state; not emitted by the current synchronous dispatcher |
+| `1` Pending | `0` | Opcode `5` accepted; its flash write is still running. Poll until a final status |
 | `2` Completed | `0` | Operation finished or MSC/benchmark/Wi-Fi test/scan admitted |
 | `3` Invalid | `1`, `2`, `3` | Malformed request, missing confirmation or invalid argument/state |
 | `4` Unsupported | `4`, `7` | Assigned but unavailable operation, or unassigned opcode |
@@ -675,7 +675,7 @@ Error enum: `0` none; `1` malformed flags/unused arguments; `2` missing confirma
 | `26` | Wi-Fi scan active | Busy/error `5`, wireless commit `5` or opcodes `9`, `11`, `12` |
 | `27` | Staging exists but commit flag is clear | Invalid/error `3`, opcode `5` |
 | `28` | USB staging blocks BLE save/reboot | Busy/error `5`, BLE opcodes `2`, `5` |
-| `29` | Reset already scheduled | Busy/error `5`, opcodes `2`-`5` |
+| `29` | Settings write running or reset already scheduled | Busy/error `5`, opcodes `2`-`5` |
 | `30`-`255` | Reserved | - |
 
 Details are zero for Idle, Pending, Completed and Unsupported. Report `12` has a separate Wi-Fi detail namespace.
@@ -712,7 +712,8 @@ Validation follows these rules:
 6. Execute the operation; failures return Failed/error `6`.
 
 Every valid-envelope request updates the USB result slot, including invalid and unsupported operations.
-Later SET requests are not suppressed while a save is pending.
+Later SET requests are not suppressed while a save is pending. One that replaces the result slot hides the save's
+final result; a successful write still schedules the reset.
 BLE adds its own lock/proof checks and restrictions; see [BLE validation order](bluetooth-le.md#validation-order).
 Hosts MUST reject unknown status/error values and impossible status/error/opcode combinations, not interpret
 them as success.
@@ -721,8 +722,8 @@ For opcode `5`, Completed means settings passed flash readback verification and 
 A failure scheduling reset after a verified save can report Failed even though flash changed.
 Hosts MUST reconcile saved settings after an uncertain or failed save; they MUST NOT assume no side effects.
 For opcode `2`, Completed means reset was scheduled, not that the host observed reboot.
-After a successful opcode `2` or `5`, further reboot, settings-save, MSC and benchmark requests return Busy/detail
-`29` until reset. Arguments and confirmation are still validated first. Diagnostic reads, including opcode `12`,
+While an opcode `5` write is Pending, and after a successful opcode `2` or `5` until reset, further reboot,
+settings-save, MSC and benchmark requests return Busy/detail `29`. Arguments and confirmation are still validated first. Diagnostic reads, including opcode `12`,
 remain available, and the reset deadline is not extended. Failed scheduling leaves normal admission available;
 a failed save can still have changed flash as described above.
 For opcodes `9` and `11`, Completed means a test/scan was admitted; Feature `12` owns its outcome.

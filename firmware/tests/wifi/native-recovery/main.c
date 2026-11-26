@@ -41,7 +41,6 @@ void zf_boot_config_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0;
 bool zf_boot_config_ble_key_configured(void) { return false; }
 bool zf_ble_failed(void) { return false; }
 uint8_t zf_ble_state(void) { return 0; }
-void zf_control_test_joined(int64_t now) { ARG_UNUSED(now); }
 void zf_control_stage_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
 struct net_if *zf_test_wifi_iface(void) { return wifi_iface; }
