@@ -3,12 +3,8 @@
 #include "settings/settings.h"
 #include "protocol/report_codec.h"
 #include "management/credential_stage.h"
-#include "mock_benchmark.h"
 #include "mock_board.h"
-#include "mock_led.h"
 #include "mock_settings_flash.h"
-#include "mock_storage.h"
-#include "mock_wifi.h"
 
 #include <string.h>
 
@@ -59,10 +55,6 @@ void setUp(void)
 	zf_settings_load();
 	zf_control_init();
 	zf_settings_flash_write_async_Stub(settings_write);
-	zf_storage_busy_IgnoreAndReturn(false);
-	zf_storage_result_read_Ignore();
-	zf_wifi_test_active_IgnoreAndReturn(false);
-	zf_wifi_scan_active_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
