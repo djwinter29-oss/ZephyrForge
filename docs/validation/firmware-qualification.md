@@ -201,9 +201,9 @@ The single-copy settings save is not power-loss atomic.
 | DHCP renewal | Use an AP configured with a short lease; observe at least 3 lease renewals | Connectivity and management recover without reboot; address/state changes match observations |
 | RF coexistence and soak | Run Wi-Fi traffic, BLE reads and USB monitoring for 2 hours, including 20 scans and a long storage run | No reset, stuck test or scan, exhausted connection resources, or persistent transport outage |
 
-Settings saves erase, program, and verify flash on a dedicated work queue outside the application mutex. USB returns
-Pending while the write runs; BLE waits up to 30 seconds for a terminal result, but a timeout does not cancel the
-write. The 100 ms main-loop service wait is not a response-time guarantee. Capture the
+Settings saves erase, program, and verify flash on a dedicated work queue outside the application mutex. USB and
+BLE report Pending while the write runs; BLE clients poll for a terminal result. The main loop wakes on module
+events and deadlines, with a one-second maximum idle wait; this is not a response-time guarantee. Capture the
 [flash-operation timing entry](../reference/boot-settings.md#saving) with host measurements; it excludes lock wait
 and full transport-response time.
 

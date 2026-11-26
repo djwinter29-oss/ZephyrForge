@@ -51,7 +51,8 @@ See the [SD reference](../reference/sd-storage.md) for storage behavior and the
 
 Every module is a symbol in the `ZephyrForge modules` Kconfig menu. A module is on by default when the board's
 devicetree describes its hardware, and it selects the Zephyr subsystems it needs. Pass `--without MODULE`
-(repeatable) to omit a module the board would otherwise include; the wrapper sets the matching symbol to `n`:
+to omit a module or `--with MODULE` to explicitly enable one (both are repeatable). Each choice sets its
+`CONFIG_ZF_*` symbol and gets a distinct build directory:
 
 | Module/feature | Kconfig symbol | Default | Effect when omitted |
 | --- | --- | --- | --- |
@@ -60,30 +61,38 @@ devicetree describes its hardware, and it selects the Zephyr subsystems it needs
 | `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | Off | No unauthenticated plaintext TCP diagnostic shell |
 | UART shell | `CONFIG_ZF_UART_SHELL` | Off | No UART diagnostic shell |
 | CPU load | `CONFIG_ZF_CPU_LOAD` | On | Runtime accounting is disabled and telemetry reports load unavailable |
+| Settings save | `CONFIG_ZF_SETTINGS_SAVE` | ESP32 with flash-map support | Boot settings remain readable but cannot be changed persistently; save capability and writer are omitted |
 | `usb-hid` | `CONFIG_ZF_USB_HID` | Boards with a HID node | No native USB HID management; Bluetooth must remain enabled |
 | `usb-msc` | `CONFIG_ZF_USB_MSC` | Storage with USB HID | Keeps storage but cannot export the card over USB; card-export commands report unsupported |
 | `benchmark` | `CONFIG_ZF_STORAGE_BENCHMARK` | Storage with USB HID | No storage benchmark |
+| `led` | `CONFIG_ZF_LED` | ESP32-S3 board with LED node | No addressable LED control |
 
-Set other symbols such as `CONFIG_ZF_UART_SHELL` and `CONFIG_ZF_CPU_LOAD` through the Zephyr Kconfig interface
-or a configuration fragment. Diagnostic shells are disabled by default.
+Use `--benchmark-chunk-size BYTES` to set the benchmark's aligned transfer buffer from 4 to 32 KiB
+(default 32 KiB). Smaller values reduce static RAM use and increase the number of filesystem operations.
+
+Diagnostic shells are disabled by default. `--with uart-shell` and `--with tcp-shell` enable them; the TCP shell
+requires Wi-Fi and is unauthenticated plaintext for trusted networks only.
 
 USB HID management (`CONFIG_ZF_USB_HID`) follows the board overlay's HID node, and SD storage
 (`CONFIG_ZF_STORAGE`) follows the storage overlay selected by `--storage`. Storage never enables FAT formatting;
 the build fails if a fragment enables it, or if neither USB HID nor Bluetooth management remains.
 
 Omitted radios are never started, reported as enabled, or accepted by radio-switch commands; with both omitted,
-the image does not advertise wireless management. Each omitted module appends `-no-MODULE` to the build directory,
-so customized images never replace the default ones used by the flashing and release wrappers. Suffixes are always
-appended in this order: `wifi`, `bluetooth`, `tcp-shell`, `usb-msc`, `benchmark`. Omitting Wi-Fi also omits
-`tcp-shell`, so a build without Wi-Fi receives both suffixes.
+the image does not advertise wireless management. Each explicit module choice appends `-no-MODULE` or
+`-with-MODULE` to the build directory, so customized images never replace the default ones used by the flashing
+and release wrappers. Suffixes are appended in the module table order. Omitting Wi-Fi also omits `tcp-shell`.
+The benchmark chunk-size choice adds `-benchmark-BYTES`.
 
 Omitting a module at build time does not modify saved settings. To enable it again on a supported board, rebuild
-without that `--without` switch.
+with `--with MODULE` or omit the corresponding `--without` switch.
 For example:
 
 ```sh
 bash tools/firmware/build.sh --without wifi --without bluetooth
 bash tools/firmware/build.sh --without usb-msc --without benchmark
+bash tools/firmware/build.sh --without settings-save
+bash tools/firmware/build.sh --with uart-shell --without cpu-load
+bash tools/firmware/build.sh --benchmark-chunk-size 8192
 ```
 
 An image without Wi-Fi still reports BLE state and saved/staged credentials when BLE is included.
@@ -101,15 +110,18 @@ A successful build checks software only, not physical wiring, card detection, mo
 CI builds the supported targets and packages each image with build identity and dependency license notices. Firmware
 packages do not include the west manifest, generated configuration or flashing instructions; see the
 [release package contents](releases.md#release-assets) and the linked flashing guides.
-`ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version. Each component must be from 0 to 255 to
-fit the firmware identity report. The wrapper passes the version as a CMake cache value so reusing a build directory
-with a different version rebuilds the image and its build-time identity snapshot. Invalid values fail configuration.
-See [release automation](releases.md).
+`ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version; unset, builds use the development default
+in `firmware/CMakeLists.txt`. Each component must be from 0 to 255 to fit the firmware identity report, and invalid
+values fail configuration. CMake generates `app/version.h` in the build directory from `src/app/version.h.in`, with the
+version string and its numeric components. The wrapper always passes the version, empty for the default, so reusing a
+build directory with a different version regenerates the header, and it records the generated version in the build
+identity. See [release automation](releases.md).
 
 ## Custom configuration and existing workspaces
 
 The wrapper builds a standalone Zephyr application. It rejects `build.cmake-args` settings that override its
-selected board, firmware profile, version, Zephyr base, SDK, or toolchain. Use a manual west build for those changes.
+selected board, firmware profile, version, module switches, Zephyr base, SDK, or toolchain. Use a separate manual
+west build when a configuration outside the wrapper options is required.
 
 `PYTHON` selects the interpreter used to create the workspace venv (for example `PYTHON=python3.12`).
 `VENV_DIR` selects another venv; relative paths are resolved from the current directory. The scripts do not

@@ -72,6 +72,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash zephyrforge/tools/firmware/build.sh --board "$BOARD" --storage "$STORAGE"
 
+      - name: Check settings writer selection
+        run: |
+          config="$FIRMWARE_BUILD/zephyr/.config"
+          if [[ "$BOARD" == esp32* ]]; then
+            grep -Fxq 'CONFIG_ZF_SETTINGS_SAVE=y' "$config" || {
+              echo "Expected the settings writer in the default $BOARD image." >&2
+              exit 1
+            }
+          elif grep -Fxq 'CONFIG_ZF_SETTINGS_SAVE=y' "$config"; then
+            echo "Unexpected settings writer in the $BOARD image." >&2
+            exit 1
+          fi
+
       - name: Collect firmware, build identity and dependency licenses
         run: bash zephyrforge/tools/release/package-firmware.sh
 

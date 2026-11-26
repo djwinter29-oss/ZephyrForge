@@ -1,5 +1,5 @@
 #include "unity.h"
-#include "storage_policy.h"
+#include "storage/storage_policy.h"
 
 #include <errno.h>
 #include <string.h>
@@ -15,7 +15,7 @@ static bool opened_usb;
 static bool mount_failed;
 static int64_t completed_at;
 
-void zf_storage_publish(const zf_storage_t *storage)
+void zf_storage_service_publish(const zf_storage_t *storage)
 {
 	published = *storage;
 }

@@ -5,6 +5,24 @@ storage=sdmmc
 storage_selected=false
 conf=prj.conf
 disabled=()
+enabled=()
+benchmark_chunk_size=""
+module_names=(wifi bluetooth tcp-shell uart-shell cpu-load settings-save usb-hid usb-msc benchmark led)
+module_symbols=(WIFI BLUETOOTH TCP_SHELL UART_SHELL CPU_LOAD SETTINGS_SAVE USB_HID USB_MSC STORAGE_BENCHMARK LED)
+
+module_symbol()
+{
+	local i
+
+	for i in "${!module_names[@]}"; do
+		if [[ "${module_names[$i]}" == "$1" ]]; then
+			printf '%s' "${module_symbols[$i]}"
+			return 0
+		fi
+	done
+	return 1
+}
+
 while (($#)); do
 	case "$1" in
 		--board)
@@ -15,15 +33,38 @@ while (($#)); do
 			storage="$2"; storage_selected=true; shift 2 ;;
 		--without)
 			(($# >= 2)) || { printf 'Error: --without requires a module name.\n' >&2; exit 1; }
-			case "$2" in
-				wifi|bluetooth|tcp-shell|usb-hid|usb-msc|benchmark) disabled+=("$2") ;;
-				*) printf 'Error: unknown optional module: %s\n' "$2" >&2; exit 1 ;;
-			esac
+			module_symbol "$2" >/dev/null || {
+				printf 'Error: unknown optional module: %s\n' "$2" >&2
+				exit 1
+			}
+			disabled+=("$2")
+			shift 2 ;;
+		--with)
+			(($# >= 2)) || { printf 'Error: --with requires a module name.\n' >&2; exit 1; }
+			module_symbol "$2" >/dev/null || {
+				printf 'Error: unknown optional module: %s\n' "$2" >&2
+				exit 1
+			}
+			enabled+=("$2")
+			shift 2 ;;
+		--benchmark-chunk-size)
+			(($# >= 2)) || { printf 'Error: --benchmark-chunk-size requires a byte count.\n' >&2; exit 1; }
+			if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+				printf 'Error: benchmark chunk size must be a multiple of 4 from 4096 to 32768.\n' >&2
+				exit 1
+			fi
+			benchmark_chunk_size=$((10#$2))
+			((benchmark_chunk_size >= 4096 && benchmark_chunk_size <= 32768 && benchmark_chunk_size % 4 == 0)) || {
+				printf 'Error: benchmark chunk size must be a multiple of 4 from 4096 to 32768.\n' >&2
+				exit 1
+			}
 			shift 2 ;;
 		-h|--help)
 			printf '%s\n' \
-				'Usage: bash tools/firmware/build.sh [--board esp32s3|esp32c6|pico|pico_w|pico2|pico2_w] [--storage sdmmc|sd-spi|none]' \
-				'       [--without wifi|bluetooth|tcp-shell|usb-hid|usb-msc|benchmark] (repeatable)'
+				'Usage: bash tools/firmware/build.sh [--board BOARD] [--storage PROFILE]' \
+				'       [--with MODULE | --without MODULE] (repeatable)' \
+				'       [--benchmark-chunk-size BYTES]' \
+				'       Modules: wifi bluetooth tcp-shell uart-shell cpu-load settings-save usb-hid usb-msc benchmark led'
 			exit 0 ;;
 		*) printf 'Error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
 	esac
@@ -65,8 +106,26 @@ if [[ "$board" == pico* ]]; then
 	build="${build/firmware/firmware-$board}"
 	toolchain=arm-zephyr-eabi
 fi
+seen_modules=" "
+for feature in "${enabled[@]}" "${disabled[@]}"; do
+	if [[ "$seen_modules" == *" $feature "* ]]; then
+		printf 'Error: module %s was specified more than once.\n' "$feature" >&2
+		exit 1
+	fi
+	seen_modules+="$feature "
+done
+for feature in "${enabled[@]}"; do
+	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
+		printf 'Error: module %s cannot be both enabled and disabled.\n' "$feature" >&2
+		exit 1
+	fi
+done
 if [[ " ${disabled[*]} " == *" wifi "* ]]; then
-	disabled+=(tcp-shell)
+	if [[ " ${enabled[*]} " == *" tcp-shell "* ]]; then
+		printf 'Error: tcp-shell requires Wi-Fi.\n' >&2
+		exit 1
+	fi
+	[[ " ${disabled[*]} " == *" tcp-shell "* ]] || disabled+=(tcp-shell)
 fi
 if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
 	[[ "$board" != esp32c6 ]] || {
@@ -74,32 +133,75 @@ if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
 		exit 1
 	}
 fi
+for feature in "${enabled[@]}"; do
+	case "$feature" in
+		wifi)
+			[[ "$board" != pico && "$board" != pico2 ]] || {
+				printf 'Error: Wi-Fi is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+		bluetooth)
+			[[ "$board" == esp32s3 || "$board" == esp32c6 ]] || {
+				printf 'Error: Bluetooth is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+		tcp-shell)
+			[[ "$board" != pico && "$board" != pico2 &&
+			   " ${disabled[*]} " != *" wifi "* ]] || {
+				printf 'Error: tcp-shell requires Wi-Fi on a supported board.\n' >&2
+				exit 1
+			} ;;
+		settings-save)
+			[[ "$board" == esp32s3 || "$board" == esp32c6 ]] || {
+				printf 'Error: settings-save is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+		usb-msc|benchmark)
+			[[ "$storage" != none && "$board" != esp32c6 &&
+			   " ${disabled[*]} " != *" usb-hid "* ]] || {
+				printf 'Error: %s requires storage and USB HID.\n' "$feature" >&2
+				exit 1
+			} ;;
+		usb-hid)
+			[[ "$board" != esp32c6 ]] || {
+				printf 'Error: USB HID is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+		led)
+			[[ "$board" == esp32s3 ]] || {
+				printf 'Error: led is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+	esac
+done
 if [[ " ${disabled[*]} " == *" usb-hid "* ]]; then
 	[[ "$family" != rpi_pico ]] || {
 		printf 'Error: Raspberry Pi Pico boards require USB HID management.\n' >&2
 		exit 1
 	}
-	[[ " ${disabled[*]} " != *" bluetooth "* ]] || {
-		printf 'Error: firmware needs USB HID or Bluetooth management.\n' >&2
-		exit 1
-	}
 fi
 kconfig=()
 # Keep customized images separate from the default directories used by flashing and release wrappers.
-for feature in wifi bluetooth tcp-shell usb-hid usb-msc benchmark; do
+for i in "${!module_names[@]}"; do
+	feature=${module_names[$i]}
+	symbol=${module_symbols[$i]}
 	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
-		case "$feature" in
-			wifi) symbol=WIFI ;;
-			bluetooth) symbol=BLUETOOTH ;;
-			tcp-shell) symbol=TCP_SHELL ;;
-			usb-hid) symbol=USB_HID ;;
-			usb-msc) symbol=USB_MSC ;;
-			benchmark) symbol=STORAGE_BENCHMARK ;;
-		esac
 		kconfig+=("-DCONFIG_ZF_$symbol=n")
 		build+="-no-$feature"
+	elif [[ " ${enabled[*]} " == *" $feature "* ]]; then
+		kconfig+=("-DCONFIG_ZF_$symbol=y")
+		build+="-with-$feature"
 	fi
 done
+if [[ -n "$benchmark_chunk_size" ]]; then
+	[[ "$storage" != none && "$board" != esp32c6 && " ${disabled[*]} " != *" benchmark "* &&
+	   " ${disabled[*]} " != *" usb-hid "* ]] || {
+		printf 'Error: --benchmark-chunk-size requires the benchmark, storage and USB HID.\n' >&2
+		exit 1
+	}
+	kconfig+=("-DCONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=$benchmark_chunk_size")
+	build+="-benchmark-$benchmark_chunk_size"
+fi
 export ZEPHYRFORGE_VALIDATE_BUILD_CONFIG=1
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 unset ZEPHYRFORGE_VALIDATE_BUILD_CONFIG
@@ -144,12 +246,6 @@ if [[ -f "$cache" ]]; then
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
 	fi
 fi
-source_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$root/firmware/src/zephyrforge.h")"
-[[ -n "$source_version" ]] || {
-	printf 'Error: source firmware version is missing from zephyrforge.h.\n' >&2
-	exit 1
-}
-firmware_version="${ZEPHYRFORGE_VERSION:-$source_version}"
 source_commit="$(git -C "$root" rev-parse HEAD)"
 if [[ -z "$(git -C "$root" status --porcelain)" ]]; then
 	source_dirty=false
@@ -177,8 +273,14 @@ python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware"
   -DDTC_OVERLAY_FILE="$overlay" \
   -DZEPHYR_SDK_INSTALL_DIR="$ZEPHYR_SDK_INSTALL_DIR" \
   -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
-  -DZEPHYRFORGE_VERSION="$firmware_version" \
+  -DZEPHYRFORGE_VERSION="${ZEPHYRFORGE_VERSION:-}" \
   "${kconfig[@]}"
+# Record the version CMake generated, which is the default when ZEPHYRFORGE_VERSION is unset.
+firmware_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$build_dir/zephyrforge/app/version.h")"
+[[ -n "$firmware_version" ]] || {
+	printf 'Error: the build did not generate a firmware version.\n' >&2
+	exit 1
+}
 image_hash="$(sha256sum "$build_dir/zephyr/$image_file" | awk '{print $1}')"
 elf_hash="$(sha256sum "$build_dir/zephyr/zephyr.elf" | awk '{print $1}')"
 {

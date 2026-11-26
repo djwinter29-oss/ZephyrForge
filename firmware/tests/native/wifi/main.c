@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
-#include "zephyrforge.h"
-#include "report/report.h"
+#include "app/runtime.h"
+#include "protocol/report_codec.h"
 #include "settings/settings.h"
-#include "wireless/ble/ble.h"
-#include "wireless/wifi/wifi.h"
-#include "wireless/wireless.h"
+#include "transport/ble_gatt.h"
+#include "wifi/wifi.h"
+#include "management/wireless_status.h"
 
 #include <errno.h>
 #include <string.h>
@@ -33,15 +33,15 @@ static const struct net_if_api iface_api = {.init = iface_init};
 NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&iface_api, DUMMY_L2, NET_L2_GET_CTX_TYPE(DUMMY_L2), 1500);
 
-void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
-void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
-void zf_poll_wakeup(void) {}
+void zf_app_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
+void zf_app_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
+void zf_app_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
 void zf_settings_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0; }
 bool zf_settings_ble_key_configured(void) { return false; }
-bool zf_ble_failed(void) { return false; }
-uint8_t zf_ble_state(void) { return 0; }
-void zf_control_stage_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
+bool zf_ble_gatt_failed(void) { return false; }
+uint8_t zf_ble_gatt_state(void) { return 0; }
+void zf_control_staging_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
 struct net_if *zf_test_wifi_iface(void) { return net_if_get_default(); }
 
@@ -100,7 +100,7 @@ static uint8_t wifi_state(void)
 {
 	uint8_t report[ZF_WIRELESS_SIZE];
 
-	zf_wireless_report(report);
+	zf_management_wireless_report(report);
 	return report[1];
 }
 
@@ -132,9 +132,9 @@ static void start_test_for(const char *ssid, uint8_t ssid_length, const char *pa
 {
 	int64_t before;
 
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_test_start((const uint8_t *)ssid, ssid_length, password));
-	zf_unlock();
+	zf_app_unlock();
 	before = k_uptime_get();
 	zf_wifi_poll();
 	zassert_true(k_uptime_get() - before < 100, "join blocked the management loop");
@@ -173,9 +173,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 
 	zassert_not_null(iface);
 	zf_wifi_init(false);
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
-	zf_unlock();
+	zf_app_unlock();
 	before = k_uptime_get();
 	zf_wifi_poll();
 	zassert_true(k_uptime_get() - before < 100, "scan blocked the management loop");
@@ -197,9 +197,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zassert_false(zf_wifi_scan_active(), "scan completion must release quarantine after event queue overflow");
 	finish_request();
 
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
-	zf_unlock();
+	zf_app_unlock();
 	zf_wifi_poll();
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_RESULT, iface, &scan_result, sizeof(scan_result));
@@ -209,9 +209,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zassert_equal(zf_wifi_scan_count(), 0, "failed scans must discard partial results");
 	finish_request();
 
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
-	zf_unlock();
+	zf_app_unlock();
 	zf_wifi_poll();
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
 	while (zf_wifi_scan_state() == ZF_SCAN_RUNNING) {
@@ -219,9 +219,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 		k_sleep(K_MSEC(10));
 	}
 	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_FAILED);
-	zf_lock();
+	zf_app_lock();
 	zassert_equal(zf_wifi_scan_start(), -EBUSY, "do not replace a scan whose driver is still active");
-	zf_unlock();
+	zf_app_unlock();
 	success.status = 0;
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_DONE, iface, &success, sizeof(success));
 	for (int i = 0; i < 100 && zf_wifi_scan_active(); ++i) {
@@ -231,9 +231,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_FAILED, "late completion must not publish the timed-out scan");
 	finish_request();
 
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
-	zf_unlock();
+	zf_app_unlock();
 	zf_wifi_poll();
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_DONE, iface, &success, sizeof(success));
@@ -251,9 +251,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	finish_request();
 	poll_for(5);
 	zassert_true(zf_wifi_test_joined());
-	zf_lock();
+	zf_app_lock();
 	zf_wifi_test_cancel();
-	zf_unlock();
+	zf_app_unlock();
 	for (int i = 0; i < 100 && disconnected == 0; ++i) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
@@ -263,11 +263,11 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 
 	connect_error = -ETIMEDOUT;
 	start_test();
-	zf_lock();
+	zf_app_lock();
 	zf_wifi_test_cancel();
 	zassert_equal(zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password"), -EBUSY,
 		      "a replacement must wait until the canceled driver connection is quiescent");
-	zf_unlock();
+	zf_app_unlock();
 	finish_request();
 	connect_error = 0;
 	for (int i = 0; i < 100 && disconnected < 2; ++i) {
@@ -277,9 +277,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	int start_status = -EBUSY;
 	for (int i = 0; i < 100 && start_status == -EBUSY; ++i) {
 		zf_wifi_poll();
-		zf_lock();
+		zf_app_lock();
 		start_status = zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password");
-		zf_unlock();
+		zf_app_unlock();
 		if (start_status == -EBUSY) {
 			k_sleep(K_MSEC(5));
 		}

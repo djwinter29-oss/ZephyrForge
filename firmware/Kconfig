@@ -15,6 +15,14 @@ config ZF_USB_HID
 	help
 	  Vendor HID management interface on the native USB device, without CDC.
 
+config ZF_LED
+	bool "Addressable RGB LED"
+	default y
+	depends on DT_HAS_WORLDSEMI_WS2812_SPI_ENABLED
+	select LED_STRIP
+	help
+	  Include the board's addressable RGB LED control when its LED strip is described in devicetree.
+
 config ZF_STORAGE
 	bool "SD card storage"
 	default y
@@ -43,6 +51,15 @@ config ZF_STORAGE_BENCHMARK
 	help
 	  Temporary-file verification and throughput measurement on the mounted card. Starting a run needs native
 	  USB HID control, so boards without it never include the benchmark.
+
+config ZF_STORAGE_BENCHMARK_CHUNK_SIZE
+	int "Storage benchmark transfer size"
+	default 32768
+	range 4096 32768
+	depends on ZF_STORAGE_BENCHMARK
+	help
+	  Size in bytes of the aligned verification buffer. Smaller values reduce static RAM at the cost of more
+	  filesystem calls.
 
 config ZF_WIFI
 	bool "Wi-Fi station"
@@ -84,6 +101,13 @@ config ZF_CPU_LOAD
 	select SCHED_THREAD_USAGE_ALL
 	help
 	  Include per-core runtime accounting in telemetry. Disable to reduce scheduler accounting overhead.
+
+config ZF_SETTINGS_SAVE
+	bool "Persistent settings save"
+	default y if SOC_FAMILY_ESPRESSIF_ESP32
+	depends on SOC_FAMILY_ESPRESSIF_ESP32 && FLASH_MAP
+	help
+	  Include the asynchronous flash-backed boot settings writer. Settings remain readable when disabled.
 
 config ZF_BLUETOOTH
 	bool "Bluetooth LE management"

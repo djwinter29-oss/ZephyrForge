@@ -297,8 +297,9 @@ temperature.
 
 ## Report ID 10: Storage status
 
-Published nominally every 500 ms while HID is ready. Input GET returns a snapshot with sequence `0` and does not
-advance the publication sequence. Publication sequences have the same gap/wrap behavior as Report `3`.
+On storage-enabled images, published nominally every 500 ms while HID is ready. Input GET returns a snapshot with
+sequence `0` and does not advance the publication sequence. Publication sequences have the same gap/wrap behavior
+as Report `3`. Images without storage retain the report in the USB descriptor but do not publish it periodically.
 It reflects the storage worker's detection, mount and ownership state; it performs no disk I/O in the HID callback.
 
 | Offset | Size | Field | Meaning |

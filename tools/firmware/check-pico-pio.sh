@@ -4,8 +4,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 module="${1:?Usage: check-pico-pio.sh RPI_PICO_HAL_MODULE}"
 pio_dir="$module/tools/pioasm"
-source="$root/firmware/src/drivers/sdhc/sdio_pio.pio"
-checked_in="$root/firmware/src/drivers/sdhc/sdio_pio.pio.h"
+source="$root/firmware/src/drivers/sdio_pio.pio"
+checked_in="$root/firmware/src/drivers/sdio_pio.pio.h"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 

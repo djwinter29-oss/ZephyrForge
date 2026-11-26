@@ -1,6 +1,6 @@
 #include "unity.h"
-#include "settings.h"
-#include "settings_flash.h"
+#include "settings/settings.h"
+#include "settings/settings_flash.h"
 
 #include <errno.h>
 #include <string.h>
@@ -15,11 +15,11 @@ static size_t queued_size;
 static zf_settings_done_t queued_done;
 static int save_result;
 
-void zf_lock(void)
+void zf_app_lock(void)
 {
 }
 
-void zf_unlock(void)
+void zf_app_unlock(void)
 {
 }
 
@@ -64,7 +64,7 @@ static int save_settings(void)
 	save_result = -EINPROGRESS;
 	int err = zf_settings_save_async(save_done);
 
-	return err != 0 ? err : save_result;
+	return err == ZF_SETTINGS_SAVE_UNCHANGED ? 0 : err != 0 ? err : save_result;
 }
 
 static void complete_write(void)
@@ -280,7 +280,9 @@ void test_decode_rejects_unterminated_password_field(void)
 
 void test_unchanged_save_does_not_write_flash(void)
 {
-	TEST_ASSERT_EQUAL_INT(0, save_settings());
+	save_result = -EINPROGRESS;
+	TEST_ASSERT_EQUAL_INT(ZF_SETTINGS_SAVE_UNCHANGED, zf_settings_save_async(save_done));
+	TEST_ASSERT_EQUAL_INT(-EINPROGRESS, save_result);
 	TEST_ASSERT_EQUAL_INT(0, write_calls);
 }
 

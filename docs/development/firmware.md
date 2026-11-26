@@ -17,41 +17,53 @@ Keep portable policy separate from Zephyr drivers and callbacks. Product-specifi
 not in the management loop or under the application lock. Read the
 [architecture](architecture.md) before changing startup, concurrency, or resource ownership.
 
-A module is one folder under `src/` with a main header of the same name, such as `storage/storage.h`. Its other
-files add a suffix to that name (`storage_msc.c`), and every public function and type starts with the module prefix
-(`zf_storage_*`). A module may contain submodules that follow the same rule, such as `wireless/wifi/`. Disabled
-Wi-Fi, Bluetooth and storage build the module's `*_none.c` file against the same header. A module declares the hooks
-it needs and the owning module implements them: the benchmark declares `zf_benchmark_media_*` for storage to
-provide. `report/report.h` also defines the decoded content of each report, named after the report
-(`zf_storage_t`), so modules and transports share one layout. Smaller features, such as USB mass storage and the
-benchmark, use `ZF_ENABLE_*` values from `module_config.h`; `capabilities.h` combines these with the selected
-board and radio configuration for report identity and command admission. Shared radio and SSID values live in
-`wireless/wireless_types.h`, independently of saved settings and report encoding.
+Group code by its owner, not by the transport that happens to use it. `src/` is one level deep: a folder is either a
+layer (`app/`, `management/`, `protocol/`, `platform/`, `transport/`, `drivers/`) or a feature large enough to need
+split files (`settings/`, `storage/`, `benchmark/`, `wifi/`). Add a small component to the layer it belongs to as a
+file pair rather than a new folder, and do not create subfolders; file-name prefixes such as `usb_` and `ble_` group
+related files. Feature folders expose a narrow service header, such as `storage/storage.h`, and keep their policy,
+worker and hardware adapters together. `management/`
+composes service snapshots, including the image's build facts, and handles commands; `protocol/` only defines
+shared payload types and encodes bytes, and never depends on build configuration.
+Wi-Fi is a station service, while Bluetooth is a management transport.
 
-`lib/` and `drivers/` are not modules. `lib/` holds portable helpers named after their subject (`sha256.h`,
-`zf_sha256_*`). `drivers/` holds implementations of Zephyr APIs, grouped by Zephyr subsystem.
+Name files and APIs after their responsibility. Keep small, single-responsibility features in one file.
+For split implementations, use `_engine` or `_policy` for portable logic, `_service` for admission and scheduling,
+and `_media` for physical I/O. Disabled features use `_none.c` against the same service header. Public
+functions are prefixed with their owner: the folder for a feature (`zf_storage_*`, `zf_wifi_*`), or the file's
+component name inside a layer folder (`zf_control_*`, `zf_board_*`, `zf_usb_device_*`, `zf_sha256_*`, `zf_sdio_*`).
+Management report composition uses `zf_management_*` and wire encoding `zf_report_*`. Hooks between split files also name the implementing role, such as `zf_storage_media_open()`,
+`zf_storage_service_publish()` and `zf_usb_msc_register()`. Includes are qualified from `src/`, for example
+`"storage/storage.h"`.
+
+The benchmark owns its engine and FatFs media adapter; storage grants exclusive media ownership rather than
+implementing benchmark file operations. Board integration supplies hardware snapshots without reading saved settings or
+encoding management reports. Shared radio and SSID values live in `protocol/wireless_types.h`, independently of
+settings and service implementations.
+
+`app/` owns startup, runtime synchronization, version and build capabilities. Kconfig selects target features;
+portable test definitions exercise the same feature gates. A helper lives beside its only consumer, as SHA-256 does
+beside Bluetooth authentication, until a second owner needs it. `drivers/` holds implementations of Zephyr APIs.
 
 | Directory under `firmware/` | Responsibility |
 | --- | --- |
 | `Kconfig` | Module switches and the Zephyr subsystem defaults each module needs |
 | `boards/` | Pin assignments, memory layout, and hardware overlays |
-| `src/` | `main.c` startup and management loop; `zephyrforge.h` version and application lock |
-| `src/report/` | Portable report layouts and encoders shared by USB, BLE and policy |
-| `src/control/` | Portable command validation, admission and results; `control_stage` credential staging |
-| `src/settings/` | Portable boot-settings record; `settings_flash` persistence |
-| `src/board/` | Board identity, memory and configuration facts, and delayed reboot |
-| `src/sysclk/` | CPU clock profiles, applied by one implementation per SoC family |
-| `src/led/` | Status LED requests and state |
-| `src/telemetry/` | Runtime telemetry sampling |
-| `src/usb/` | Zephyr USB device stack, HID transport, descriptors and publication |
-| `src/storage/` | SD card service; `storage_policy` mount/export policy; `storage_msc` USB mass-storage export |
-| `src/benchmark/` | Storage benchmark engine |
-| `src/wireless/` | Wireless Status report; `wifi/` and `ble/` services with their disabled variants |
-| `src/lib/` | Portable helpers with no project dependencies |
+| `src/app/` | Startup, management loop, application lock/wakeup, version and build capabilities |
+| `src/management/` | Control admission/results, credential staging and report composition |
+| `src/protocol/` | Wire layouts, shared payload types and stateless report encoding |
+| `src/settings/` | Portable boot-settings record; separate flash read and async write adapters |
+| `src/platform/` | Board facts (UID, reset cause, snapshots, reboot), CPU clock per SoC, telemetry sampling and LED |
+| `src/transport/` | USB device/HID and MSC integration (`usb_*`); BLE GATT, authentication and SHA-256 (`ble_*`, `sha256`) |
+| `src/wifi/` | Station lifecycle, driver requests, portable policy/scan handling and disabled service |
+| `src/storage/` | SD ownership policy, worker/admission and disk/FAT media lifecycle |
+| `src/benchmark/` | Portable benchmark engine, request/status service and FatFs media adapter |
 | `src/drivers/` | Zephyr API implementations: the Pico PIO SD host with its SDIO codec, and the Pico W random source |
 | `tests/unit/` | Portable Ceedling suites, mirroring `src/` |
 | `tests/native/` | Zephyr `native_sim` suites |
-| `tests/tooling/`, `tests/hardware/` | Build-tool checks and opt-in hardware tests |
+| `tests/hardware/` | Opt-in firmware hardware tests |
+
+Repository-wide build, package, documentation and tooling tests live at `tests/tools/`.
 
 Add a unit test under the matching `tests/unit/` folder. Mock narrow service interfaces rather than recreating
 Zephyr internals with fake headers. Changes to reports or commands also need matching host and specification updates.
@@ -64,16 +76,16 @@ must use a cryptographically secure source.
 
 ### Worked example: benchmark size guard
 
-The portable benchmark rejects a zero or oversized request before touching storage. Its focused `test_benchmark`
+The portable benchmark rejects a zero or oversized request before touching storage. Its focused `test_benchmark_engine`
 suite checks the failure result and confirms that no files were opened or deleted:
 
 ```sh
-bundle exec ceedling test:test_benchmark
+bundle exec ceedling test:test_benchmark_engine
 ```
 
 Images include this module when `CONFIG_ZF_STORAGE_BENCHMARK` is set, its default when storage and USB HID are
 built; the build wrapper can omit it with `--without benchmark`. In a disabled build, the `test_control` suite
-checks that the command returns unsupported, and `test_report` checks that the capability is not advertised.
+checks that the command returns unsupported, and `test_report_builder` checks that the capability is not advertised.
 Run the enabled and disabled [feature-gate checks](#storage-feature-gates) as well. See
 [optional modules](firmware-build.md#optional-modules) for build selection.
 
@@ -107,12 +119,12 @@ the tests do not mount, format, or write a real card.
 
 ### Storage feature gates
 
-Run the report and control suites with SPI, no storage, and storage without USB mass storage.
+Run the report-composition and control suites with SPI, no storage, and storage without USB mass storage.
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_report test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_report test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_report test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_report_builder test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_report_builder test:test_control
 ```
 
 The no-MSC configuration retains storage while checking that card-export commands are unsupported.
@@ -149,7 +161,7 @@ and compare it with the checked-in output, ignoring only the assembler version b
 The build, flash, packaging, and workspace wrappers have software-only tests:
 
 ```sh
-python3 -m unittest discover -s firmware/tests/tooling -v
+python3 -m unittest discover -s tests/tools -v
 ```
 
 [Host Validation](../../.github/workflows/host-validation.yml) runs the portable and native Wi-Fi suites separately

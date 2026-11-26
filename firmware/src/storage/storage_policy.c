@@ -1,5 +1,5 @@
 #include "storage/storage_policy.h"
-#include "report/report.h"
+#include "protocol/report_codec.h"
 
 #include <string.h>
 
@@ -13,7 +13,7 @@ static void publish(bool busy)
 {
 	state.busy = busy;
 	state.sample_valid = state.configured && state.presence_known && !busy && !state.msc_enabled;
-	zf_storage_publish(&state);
+	zf_storage_service_publish(&state);
 }
 
 static void clear_media(void)
@@ -24,6 +24,7 @@ static void clear_media(void)
 	memset(state.cid, 0, sizeof(state.cid));
 	state.block_count = 0;
 	state.bus_clock_hz = 0;
+	state.bus_mode = 0;
 	state.filesystem_format = 0;
 }
 
@@ -39,7 +40,7 @@ void zf_storage_policy_init(bool configured, bool present, int64_t now_ms)
 	publish(false);
 }
 
-void zf_storage_policy_poll(int present, int64_t now_ms, int request)
+void zf_storage_policy_poll(int present, int64_t now_ms, zf_storage_request_t request)
 {
 	if (!state.configured) {
 		return;
@@ -92,12 +93,13 @@ void zf_storage_policy_poll(int present, int64_t now_ms, int request)
 			state.msc_enabled = false;
 			clear_media();
 			publish(true);
-			int err = zf_storage_media_open(request == 1, &state);
+			bool usb = request == ZF_STORAGE_USB_OWNER;
+			int err = zf_storage_media_open(usb, &state);
 
 			state.msc_request_rejected = err != 0;
 			state.capacity_valid = state.initialized && state.block_count != 0;
-			state.msc_enabled = err == 0 && state.initialized && request == 1;
-			if (err != 0 && request == 1) {
+			state.msc_enabled = err == 0 && state.initialized && usb;
+			if (err != 0 && usb) {
 				clear_media();
 				(void)zf_storage_media_close();
 			} else if (!state.initialized) {

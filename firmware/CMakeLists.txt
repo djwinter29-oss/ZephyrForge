@@ -16,10 +16,19 @@ if(NOT CONFIG_ZF_USB_HID AND NOT CONFIG_ZF_BLUETOOTH)
 endif()
 # Module switches are Kconfig symbols; these definitions let native unit tests select the same variants.
 target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>
+  ZF_ENABLE_LED=$<BOOL:${CONFIG_ZF_LED}>
+  ZF_ENABLE_WIFI=$<BOOL:${CONFIG_ZF_WIFI}>
+  ZF_ENABLE_BLUETOOTH=$<BOOL:${CONFIG_ZF_BLUETOOTH}>
+  ZF_ENABLE_CPU_LOAD=$<BOOL:${CONFIG_ZF_CPU_LOAD}>
   ZF_ENABLE_USB_HID=$<BOOL:${CONFIG_ZF_USB_HID}>
   ZF_ENABLE_STORAGE=$<BOOL:${CONFIG_ZF_STORAGE}>
   ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_ZF_USB_MSC}>
+  ZF_ENABLE_SETTINGS_SAVE=$<BOOL:${CONFIG_ZF_SETTINGS_SAVE}>
   ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${CONFIG_ZF_STORAGE_BENCHMARK}>)
+if(CONFIG_ZF_STORAGE_BENCHMARK)
+  target_compile_definitions(app PRIVATE
+    ZF_BENCHMARK_CHUNK_SIZE=${CONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE})
+endif()
 if(CONFIG_SOC_FAMILY_RPI_PICO)
   # Report 1 identity: MCU 1 RP2040 or 2 RP2350. Report 2 monitor UART pins are read from the
   # console devicetree pinctrl in board.c.
@@ -39,7 +48,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
   endif()
   if(CONFIG_ZF_WIFI)
     set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
-    target_sources(app PRIVATE src/drivers/random/random_rpi_pico.c ${zf_pico_rand}/rand.c)
+    target_sources(app PRIVATE src/drivers/random_rpi_pico.c ${zf_pico_rand}/rand.c)
     target_include_directories(app PRIVATE ${zf_pico_rand}/include
       ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/common/pico_time/include)
     target_compile_definitions(app PRIVATE PICO_RAND_SEED_ENTROPY_SRC_BOARD_ID=0
@@ -49,76 +58,61 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
       COMPILE_OPTIONS "-D__uninitialized_ram(name)=__attribute__((section(\".noinit\"))) name;-Dsleep_until=busy_wait_until")
     zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/random/random.h)
   endif()
-  set(zf_board_caps 0)
-  target_sources(app PRIVATE src/sysclk/sysclk_rpi_pico.c)
-  target_sources_ifdef(CONFIG_ZF_SDHC_RPI_PICO_PIO app PRIVATE src/drivers/sdhc/sdhc_rpi_pico_pio.c
-    src/drivers/sdhc/sdio_codec.c)
+  target_sources(app PRIVATE src/platform/sysclk_rpi_pico.c)
+  target_sources_ifdef(CONFIG_ZF_SDHC_RPI_PICO_PIO app PRIVATE src/drivers/sdhc_rpi_pico_pio.c
+    src/drivers/sdio_codec.c)
 else()
   if(CONFIG_SOC_ESP32S3)
     set(zf_mcu ZF_MCU_ESP32S3)
     set(zf_board ZF_BOARD_DEVKITC)
-    set(zf_board_caps "ZF_CAP_LED|ZF_CAP_SETTINGS")
   elseif(CONFIG_SOC_ESP32C6)
     set(zf_mcu ZF_MCU_ESP32C6)
     set(zf_board ZF_BOARD_ESP32C6_DEVKITC)
-    set(zf_board_caps ZF_CAP_SETTINGS)
     set(zf_sysclk_max_profile 2u)
   else()
     message(FATAL_ERROR "Unsupported Espressif SoC")
   endif()
-  target_sources(app PRIVATE src/sysclk/sysclk_espressif.c)
+  target_sources(app PRIVATE src/platform/sysclk_espressif.c)
   if(DEFINED zf_sysclk_max_profile)
     target_compile_definitions(app PRIVATE ZF_SYSCLK_MAX_PROFILE=${zf_sysclk_max_profile})
   endif()
 endif()
 
-set(zf_radio_mask 0)
 if(CONFIG_ZF_WIFI)
-  math(EXPR zf_radio_mask "${zf_radio_mask} | 1")
-  target_sources(app PRIVATE src/wireless/wifi/wifi.c src/wireless/wifi/wifi_driver.c
-    src/wireless/wifi/wifi_policy.c src/wireless/wifi/wifi_scan_table.c)
-else()
-  target_sources(app PRIVATE src/wireless/wifi/wifi_none.c)
+  target_sources(app PRIVATE src/wifi/wifi_station.c src/wifi/wifi_driver.c
+    src/wifi/wifi_policy.c src/wifi/wifi_scan_table.c)
 endif()
 if(CONFIG_ZF_BLUETOOTH)
-  math(EXPR zf_radio_mask "${zf_radio_mask} | 2")
-  target_sources(app PRIVATE src/wireless/ble/ble.c src/wireless/ble/ble_auth.c src/lib/sha256.c)
-else()
-  target_sources(app PRIVATE src/wireless/ble/ble_none.c)
+  target_sources(app PRIVATE src/transport/ble_gatt.c src/transport/ble_auth.c src/transport/sha256.c)
 endif()
-if(zf_radio_mask)
-  string(APPEND zf_board_caps "|ZF_CAP_WIRELESS")
-endif()
-target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board}
-  "ZF_BOARD_CAPS=(${zf_board_caps})" ZF_RADIO_MASK=${zf_radio_mask})
+target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board})
 
 if(CONFIG_ZF_STORAGE)
-  target_sources(app PRIVATE src/storage/storage.c src/storage/storage_policy.c)
-  target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/storage/storage_msc.c)
-else()
-  target_sources(app PRIVATE src/storage/storage_none.c)
+  target_sources(app PRIVATE src/storage/storage_service.c src/storage/storage_media.c
+    src/storage/storage_policy.c)
+  target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/transport/usb_msc.c)
 endif()
-if(CONFIG_ZF_STORAGE AND CONFIG_ZF_STORAGE_BENCHMARK)
-  target_sources(app PRIVATE src/benchmark/benchmark.c)
-elseif(NOT CONFIG_ZF_STORAGE)
-  target_sources(app PRIVATE src/benchmark/benchmark_none.c)
+if(CONFIG_ZF_STORAGE_BENCHMARK)
+  target_sources(app PRIVATE src/benchmark/benchmark_engine.c src/benchmark/benchmark_service.c
+    src/benchmark/benchmark_media.c)
 endif()
 target_sources(app PRIVATE
-  src/main.c
-  src/board/board.c
-  src/control/control.c
-  src/control/control_stage.c
-  src/led/led.c
-  src/report/report.c
+  src/app/main.c
+  src/app/runtime.c
+  src/platform/board.c
+  src/management/control.c
+  src/management/credential_stage.c
+  src/protocol/report_codec.c
+  src/management/report_builder.c
   src/settings/settings.c
-  src/settings/settings_flash.c
-  src/telemetry/telemetry.c
-  src/wireless/wireless.c)
-if(CONFIG_ZF_USB_HID)
-  target_sources(app PRIVATE src/usb/usb.c)
-else()
-  target_sources(app PRIVATE src/usb/usb_none.c)
+  src/settings/settings_flash_read.c
+  src/platform/telemetry.c
+  src/management/wireless_status.c)
+if(CONFIG_ZF_SETTINGS_SAVE)
+  target_sources(app PRIVATE src/settings/settings_flash_write.c)
 endif()
+target_sources_ifdef(CONFIG_ZF_LED app PRIVATE src/platform/led.c)
+target_sources_ifdef(CONFIG_ZF_USB_HID app PRIVATE src/transport/usb_device.c)
 target_include_directories(app PRIVATE src)
 # The pinned ESP32-S3 HAL leaves the PHY library's weak sensor-power hooks linked. They power the die-temperature
 # sensor off during Wi-Fi modem sleep, and the next telemetry read then spins with interrupts locked. The HAL
@@ -126,15 +120,21 @@ target_include_directories(app PRIVATE src)
 if(CONFIG_ESP32_TEMP AND CONFIG_SOC_ESP32S3)
   target_sources(app PRIVATE ${ZEPHYR_HAL_ESPRESSIF_MODULE_DIR}/components/esp_phy/src/phy_override.c)
 endif()
+# Release builds pass the tag version; other builds use the development default.
 if(NOT DEFINED ZEPHYRFORGE_VERSION)
   set(ZEPHYRFORGE_VERSION "$ENV{ZEPHYRFORGE_VERSION}")
 endif()
-if(NOT "${ZEPHYRFORGE_VERSION}" STREQUAL "")
-  set(zf_version_component "(0|[1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])")
-  if(NOT "${ZEPHYRFORGE_VERSION}" MATCHES
-     "^${zf_version_component}\\.${zf_version_component}\\.${zf_version_component}$")
-    message(FATAL_ERROR
-      "ZEPHYRFORGE_VERSION must be MAJOR.MINOR.PATCH with components from 0 to 255 and no leading zeros")
-  endif()
-  target_compile_definitions(app PRIVATE "ZEPHYRFORGE_VERSION=\"${ZEPHYRFORGE_VERSION}\"")
+if("${ZEPHYRFORGE_VERSION}" STREQUAL "")
+  set(ZEPHYRFORGE_VERSION 0.1.0)
 endif()
+set(zf_version_component "(0|[1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])")
+if(NOT "${ZEPHYRFORGE_VERSION}" MATCHES
+   "^${zf_version_component}\\.${zf_version_component}\\.${zf_version_component}$")
+  message(FATAL_ERROR
+    "ZEPHYRFORGE_VERSION must be MAJOR.MINOR.PATCH with components from 0 to 255 and no leading zeros")
+endif()
+set(ZEPHYRFORGE_VERSION_MAJOR ${CMAKE_MATCH_1})
+set(ZEPHYRFORGE_VERSION_MINOR ${CMAKE_MATCH_2})
+set(ZEPHYRFORGE_VERSION_PATCH ${CMAKE_MATCH_3})
+configure_file(src/app/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/zephyrforge/app/version.h @ONLY)
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/zephyrforge)

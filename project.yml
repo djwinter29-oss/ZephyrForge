@@ -4,6 +4,8 @@
   :build_root: build/ceedling
   :use_mocks: TRUE
   :release_build: FALSE
+  # Disabled modules replace their prototypes with inline stubs, so mocks must see each test's active branch.
+  :use_test_preprocessor: :all
 
 :paths:
   :test:
@@ -13,25 +15,26 @@
   :include:
     - firmware/src
     - firmware/src/**
+    # Stands in for headers that CMake generates during target builds.
+    - firmware/tests/unit/support
 
 # Zephyr glue: covered by target builds and native Zephyr tests, not by host unit tests.
 :files:
   :source:
-    - -:firmware/src/main.c
-    - -:firmware/src/board/*.c
-    - -:firmware/src/led/*.c
-    - -:firmware/src/sysclk/*.c
-    - -:firmware/src/settings/settings_flash.c
-    - -:firmware/src/benchmark/benchmark_none.c
-    - -:firmware/src/telemetry/telemetry.c
-    - -:firmware/src/storage/storage.c
-    - -:firmware/src/storage/storage_msc.c
-    - -:firmware/src/usb/usb.c
-    - -:firmware/src/usb/usb_none.c
-    - -:firmware/src/wireless/ble/ble.c
-    - -:firmware/src/wireless/wifi/wifi.c
-    - -:firmware/src/drivers/random/*.c
-    - -:firmware/src/drivers/sdhc/sdhc_rpi_pico_pio.c
+    - -:firmware/src/app/*.c
+    - -:firmware/src/platform/*.c
+    - -:firmware/src/settings/settings_flash_read.c
+    - -:firmware/src/settings/settings_flash_write.c
+    - -:firmware/src/benchmark/benchmark_service.c
+    - -:firmware/src/benchmark/benchmark_media.c
+    - -:firmware/src/storage/storage_service.c
+    - -:firmware/src/storage/storage_media.c
+    - -:firmware/src/transport/usb_*.c
+    - -:firmware/src/transport/ble_gatt.c
+    - -:firmware/src/wifi/wifi_station.c
+    - -:firmware/src/wifi/wifi_driver.c
+    - -:firmware/src/drivers/random_rpi_pico.c
+    - -:firmware/src/drivers/sdhc_rpi_pico_pio.c
 
 :defines:
   :test:
@@ -39,16 +42,30 @@
     :test_pico_board:
       - ZF_MCU=ZF_MCU_RP2040
       - ZF_BOARD_MODEL=ZF_BOARD_PICO
-      - ZF_BOARD_CAPS=0
+      - ZF_ENABLE_LED=0
+      - ZF_ENABLE_WIFI=0
+      - ZF_ENABLE_BLUETOOTH=0
+      - ZF_ENABLE_SETTINGS_SAVE=0
+      - ZF_ENABLE_STORAGE=0
+      - ZF_ENABLE_STORAGE_BENCHMARK=0
     :test_pico_w_board:
       - ZF_MCU=ZF_MCU_RP2040
       - ZF_BOARD_MODEL=ZF_BOARD_PICO_W
-      - ZF_BOARD_CAPS=ZF_CAP_WIRELESS
-      - ZF_RADIO_MASK=1u
+      - ZF_ENABLE_LED=0
+      - ZF_ENABLE_WIFI=1
+      - ZF_ENABLE_BLUETOOTH=0
+      - ZF_ENABLE_SETTINGS_SAVE=0
+      - ZF_ENABLE_STORAGE=0
+      - ZF_ENABLE_STORAGE_BENCHMARK=0
+    :test_wifi_disabled:
+      - ZF_ENABLE_WIFI=0
     # A hypothetical BLE-only override exercising the radio-mask half of control admission.
     :test_ble_only_board:
-      - ZF_BOARD_CAPS=ZF_BOARD_CAPS_ESP32C6
-      - ZF_RADIO_MASK=2u
+      - ZF_ENABLE_LED=0
+      - ZF_ENABLE_WIFI=0
+      - ZF_ENABLE_BLUETOOTH=1
+      - ZF_ENABLE_STORAGE=0
+      - ZF_ENABLE_STORAGE_BENCHMARK=0
 
 :cmock:
   :mock_prefix: mock_

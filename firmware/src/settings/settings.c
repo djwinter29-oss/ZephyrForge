@@ -1,6 +1,7 @@
 #include "settings/settings.h"
 #include "settings/settings_flash.h"
-#include "zephyrforge.h"
+#include "app/build_config.h"
+#include "app/runtime.h"
 
 #include <errno.h>
 #include <string.h>
@@ -28,6 +29,7 @@ static struct settings saved;
 static struct settings boot;
 static bool saving;
 static zf_settings_source_t source;
+#if ZF_ENABLE_SETTINGS_SAVE
 static uint8_t save_record[ZF_SETTINGS_RECORD_SIZE];
 static zf_settings_save_done_t save_done;
 
@@ -38,14 +40,15 @@ static void save_written(int err)
 {
 	zf_settings_save_done_t done;
 
-	zf_lock();
+	zf_app_lock();
 	done = save_done;
 	err = save_finish(err);
 	memset(save_record, 0, sizeof(save_record));
 	save_done = NULL;
-	zf_unlock();
+	zf_app_unlock();
 	done(err);
 }
+#endif
 
 static const struct settings *visible(void)
 {
@@ -65,6 +68,7 @@ uint32_t zf_settings_crc32(const uint8_t *data, size_t size)
 	return ~crc;
 }
 
+#if ZF_ENABLE_SETTINGS_SAVE
 static void put_u16(uint8_t *out, uint16_t value)
 {
 	out[0] = (uint8_t)value;
@@ -76,6 +80,7 @@ static void put_u32(uint8_t *out, uint32_t value)
 	put_u16(out, (uint16_t)value);
 	put_u16(out + 2, (uint16_t)(value >> 16));
 }
+#endif
 
 static uint32_t get_u32(const uint8_t *in)
 {
@@ -102,6 +107,7 @@ static bool password_valid(const char *password, size_t capacity)
 	return length < capacity && (length == 0 || (length >= 8 && length <= 63));
 }
 
+#if ZF_ENABLE_SETTINGS_SAVE
 static void encode(const struct settings *config, uint8_t record[ZF_SETTINGS_RECORD_SIZE])
 {
 	memset(record, 0, ZF_SETTINGS_RECORD_SIZE);
@@ -118,6 +124,7 @@ static void encode(const struct settings *config, uint8_t record[ZF_SETTINGS_REC
 	record[141] = config->flags;
 	put_u32(record + CRC_OFFSET, zf_settings_crc32(record, CRC_OFFSET));
 }
+#endif
 
 static bool decode(const uint8_t record[ZF_SETTINGS_RECORD_SIZE], struct settings *config)
 {
@@ -169,8 +176,10 @@ void zf_settings_load(void)
 	staged = loaded;
 	boot = loaded;
 	saving = false;
+#if ZF_ENABLE_SETTINGS_SAVE
 	save_done = NULL;
 	memset(save_record, 0, sizeof(save_record));
+#endif
 	memset(record, 0, sizeof(record));
 	memset(&loaded, 0, sizeof(loaded));
 }
@@ -331,6 +340,7 @@ bool zf_settings_restart_required(void)
 	return saved.sysclk != boot.sysclk || zf_settings_wireless_restart_required();
 }
 
+#if ZF_ENABLE_SETTINGS_SAVE
 static int save_prepare(uint8_t record[ZF_SETTINGS_RECORD_SIZE])
 {
 	if (saving) {
@@ -375,8 +385,7 @@ int zf_settings_save_async(zf_settings_save_done_t done)
 	save_done = done;
 	if (err == 0) {
 		save_done = NULL;
-		done(0);
-		return 0;
+		return ZF_SETTINGS_SAVE_UNCHANGED;
 	}
 	err = zf_settings_flash_write_async(save_record, sizeof(save_record), save_written);
 	if (err != 0) {
@@ -386,6 +395,13 @@ int zf_settings_save_async(zf_settings_save_done_t done)
 	}
 	return err;
 }
+#else
+int zf_settings_save_async(zf_settings_save_done_t done)
+{
+	(void)done;
+	return -ENOTSUP;
+}
+#endif
 
 void zf_settings_discard(void)
 {

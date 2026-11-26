@@ -52,15 +52,19 @@ their driver integration.
 
 | Layer | Responsibility |
 | --- | --- |
-| Application lifecycle | Boot order, event wakeups and bounded servicing of Wi-Fi, telemetry, and USB |
-| Board integration | Shared state locking, UID/serial, reset cause, board facts and delayed reboot |
+| Application lifecycle | Boot order, application synchronization, event wakeups and bounded service polling |
+| Board integration | UID/serial, reset cause, hardware snapshots and delayed reboot |
 | Control dispatcher | Command validation and execution shared by USB and BLE, with separate result slots |
-| Report encoding | Shared identity, configuration, telemetry, storage, and wireless payloads |
-| Wireless staging and authentication | Expiring credential candidates, BLE session unlock and per-command HMAC proofs |
+| Management report composition | Gather hardware/service snapshots and merge saved configuration policy |
+| Protocol encoding | Shared payload types and stateless wire encoding; no live service reads |
+| Credential staging | Expiring candidate settings and their test/commit state |
 | USB HID and BLE | Transport framing, read snapshots, publication/polling, and connection lifecycle |
+| BLE authentication | Session unlock and per-command HMAC proofs |
 | Wi-Fi | Saved-network joins, candidate tests and scans |
 | Diagnostic shells | Native UART and raw TCP inspection without application mutations ([console](../guides/console.md)) |
-| Telemetry and storage | CPU load, temperature, and clock; runtime SD detection, FAT mount, and exclusive USB handoff |
+| Telemetry | CPU load, temperature and clock sampling |
+| Storage | Runtime SD detection, disk/FAT lifecycle and exclusive ownership for USB or media jobs |
+| Benchmark | Request/status ownership, portable transfer/verification engine and FatFs file adapter |
 | Boot settings | One CRC-checked next-boot record for CPU clock, radio switches and credentials ([settings](../reference/boot-settings.md)) |
 
 Python and .NET own USB HID connections and serve the same dashboard through a loopback HTTP API. Direct owns
@@ -85,17 +89,20 @@ the [settings reference](../reference/boot-settings.md) defines its lifecycle an
 
 Board selection defines hardware identity and wiring; feature selection defines which services are linked.
 Shared report encoding and control policy are independent of USB and BLE transport implementations.
+Kconfig owns target module selection; portable build definitions exercise the same feature gates in unit tests.
 Wi-Fi and BLE each have a board-independent disabled implementation. Advertised radio support follows the built
 services rather than the physical board's possible radios. Runtime radio switches cannot restore omitted modules.
-Storage policy remains separate from the Zephyr media worker, and USB export can be omitted without removing FAT
-mounting. Use [firmware build options](firmware-build.md#optional-modules) for selection and dependencies.
+Storage policy remains separate from worker/admission and disk/FAT adapters. The USB transport implements the
+storage export contract; export can be omitted without removing FAT mounting. Benchmark file operations belong
+to the benchmark and run only after storage grants exclusive media ownership.
+Use [firmware build options](firmware-build.md#optional-modules) for selection and dependencies.
 
 ## Lifecycle and failure handling
 
 ### Boot
 
 Startup loads the [settings record](../reference/boot-settings.md) before consumers start, then applies the clock
-and initializes storage and radios before USB on supported boards.
+and initializes the services. Card detection and mounting start after the management transports are initialized.
 
 A mount failure is logged but does not stop USB or the radios. Report 10 can show an initialized card without a
 mounted filesystem; it does not carry the mount error code. Boot logs include settings-load source and elapsed
@@ -107,11 +114,16 @@ USB callbacks run in the USB stack thread and BLE callbacks in the Bluetooth thr
 dispatcher. After boot initialization, shared control, settings, staging and BLE session state use the recursive
 application mutex. Wi-Fi owns a separate mutex; callers do not access its state directly.
 
+When locks must be nested, acquire the application mutex before a service-state mutex. The storage worker may
+acquire the media mutex before the storage-snapshot mutex; the snapshot mutex is never held while waiting for
+media ownership. Service callbacks do not acquire the application mutex while holding a service-state mutex.
+Keep this order when adding cross-service calls.
+
 - **Settings saves** are owned by the settings service. It prepares the record under the application mutex, then
   erases, writes, and verifies flash on a dedicated low-priority work queue without it. USB reports Pending until
-  completion and holds the final result until read. The BLE write handler waits unlocked for at most 30 seconds;
-  timeout does not cancel the save. Wi-Fi events wake the main loop, which has a 100 ms maximum service wait.
-  This is not a response-time guarantee. The
+  completion and holds the final result until read. The BLE write response acknowledges admission; clients poll its
+  result until terminal. Wi-Fi events wake the main loop, which services the earliest module deadline and uses a
+  one-second maximum idle wait. This is not a response-time guarantee. The
   [flash-operation timing log](../reference/boot-settings.md#saving) excludes lock wait and full callback latency;
   save responsiveness and contention have not been hardware-qualified.
 - **Wi-Fi events** are queued and wake the main loop; module state is guarded by its own mutex. Connect, disconnect,

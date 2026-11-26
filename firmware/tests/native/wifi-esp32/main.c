@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
-#include "zephyrforge.h"
-#include "report/report.h"
+#include "app/runtime.h"
+#include "protocol/report_codec.h"
 #include "settings/settings.h"
-#include "wireless/ble/ble.h"
-#include "wireless/wifi/wifi.h"
-#include "wireless/wireless.h"
+#include "transport/ble_gatt.h"
+#include "wifi/wifi.h"
+#include "management/wireless_status.h"
 
 #include <errno.h>
 #include <string.h>
@@ -43,7 +43,7 @@ static uint8_t wireless_state(void)
 {
 	uint8_t report[ZF_WIRELESS_SIZE];
 
-	zf_wireless_report(report);
+	zf_management_wireless_report(report);
 	return report[1];
 }
 
@@ -58,15 +58,15 @@ static const struct net_if_api iface_api = {.init = iface_init};
 NET_DEVICE_INIT(wifi_test, "wifi_test", NULL, NULL, NULL, NULL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&iface_api, DUMMY_L2, NET_L2_GET_CTX_TYPE(DUMMY_L2), 1500);
 
-void zf_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
-void zf_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
-void zf_poll_wakeup(void) {}
+void zf_app_lock(void) { zassert_ok(k_mutex_lock(&app_mutex, K_FOREVER)); }
+void zf_app_unlock(void) { zassert_ok(k_mutex_unlock(&app_mutex)); }
+void zf_app_wakeup(void) {}
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t out[ZF_SSID_MAX_BYTES]) { ARG_UNUSED(out); return 0; }
 void zf_settings_wifi_password(char out[ZF_WIFI_PASSWORD_SIZE]) { out[0] = 0; }
 bool zf_settings_ble_key_configured(void) { return false; }
-bool zf_ble_failed(void) { return false; }
-uint8_t zf_ble_state(void) { return 0; }
-void zf_control_stage_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
+bool zf_ble_gatt_failed(void) { return false; }
+uint8_t zf_ble_gatt_state(void) { return 0; }
+void zf_control_staging_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
 struct net_if *zf_test_wifi_iface(void) { return wifi_iface; }
 
@@ -123,9 +123,9 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	wifi_iface = net_if_get_default();
 	zassert_not_null(wifi_iface);
 	zf_wifi_init(false);
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_test_start((const uint8_t *)"candidate", 9, "password"));
-	zf_unlock();
+	zf_app_unlock();
 	zf_wifi_poll();
 	for (int i = 0; i < 100 && connect_requests == 0; ++i) {
 		zf_wifi_poll();
@@ -134,9 +134,9 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	zassert_equal(connect_requests, 1, "candidate join should queue a driver connect");
 
 	disconnect_state = WIFI_STATE_ASSOCIATED;
-	zf_lock();
+	zf_app_lock();
 	zf_wifi_test_cancel();
-	zf_unlock();
+	zf_app_unlock();
 	zf_wifi_poll();
 	for (int i = 0; i < 100 && disconnect_requests == 0; ++i) {
 		zf_wifi_poll();
@@ -150,17 +150,17 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	}
 	zf_wifi_poll();
 	zassert_true(status_queries > 0, "ambiguous disconnect must be reconciled using interface status");
-	zf_lock();
+	zf_app_lock();
 	admission = zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password");
-	zf_unlock();
+	zf_app_unlock();
 	zassert_equal(admission, -EBUSY, "an associated driver must remain quarantined");
 
 	disconnect_state = WIFI_STATE_DISCONNECTED;
 	for (int i = 0; i < 1400 && admission == -EBUSY; ++i) {
 		zf_wifi_poll();
-		zf_lock();
+		zf_app_lock();
 		admission = zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password");
-		zf_unlock();
+		zf_app_unlock();
 		if (admission == -EBUSY) {
 			k_sleep(K_MSEC(5));
 		}
@@ -187,9 +187,9 @@ ZTEST(wifi_esp32_lifecycle, test_cancel_connecting_reconciles_esp32_disconnect_r
 	zassert_false(zf_wifi_test_active(), "a recovered disconnect must terminate the candidate");
 	zassert_equal(wireless_state(), 6, "the failed candidate must leave a terminal result");
 
-	zf_lock();
+	zf_app_lock();
 	zassert_ok(zf_wifi_test_start((const uint8_t *)"replacement", 11, "new-password"));
-	zf_unlock();
+	zf_app_unlock();
 	unsigned int connects_before_join = connect_requests;
 	zf_wifi_poll();
 	for (int i = 0; i < 100 && connect_requests == connects_before_join; ++i) {

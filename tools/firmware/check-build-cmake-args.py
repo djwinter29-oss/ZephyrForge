@@ -9,13 +9,7 @@ from pathlib import Path
 
 PROTECTED = {
     "BOARD",
-    "CONFIG_ZF_BLUETOOTH",
-    "CONFIG_ZF_STORAGE",
-    "CONFIG_ZF_STORAGE_BENCHMARK",
-    "CONFIG_ZF_TCP_SHELL",
-    "CONFIG_ZF_USB_HID",
-    "CONFIG_ZF_USB_MSC",
-    "CONFIG_ZF_WIFI",
+    "CONFIG_ZF_*",
     "CMAKE_ASM_COMPILER",
     "CMAKE_C_COMPILER",
     "CMAKE_CXX_COMPILER",
@@ -61,6 +55,8 @@ def validate_arguments(arguments):
         name = setting.split("=", 1)[0]
         if not is_unset:
             name = name.split(":", 1)[0]
+        if name.startswith("CONFIG_ZF_"):
+            raise ValueError("must not override wrapper-owned CONFIG_ZF_* module settings")
         protected = next((item for item in PROTECTED if fnmatch.fnmatchcase(item, name)), None)
         project_variable = name.startswith("CMAKE_PROJECT_") or any(
             fnmatch.fnmatchcase(variable, name) if is_unset else False

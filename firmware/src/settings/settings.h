@@ -7,7 +7,7 @@
  * commits them as one unit. Saved values apply at the next boot only.
  *
  * This API is not thread-safe. Call zf_settings_load() once before other threads use settings; afterwards all
- * access must be serialized with the application lock (zf_lock()/zf_unlock()). Management callbacks can stage
+ * access must be serialized with the application lock (zf_app_lock()/zf_app_unlock()). Management callbacks can stage
  * and save settings; ownership is not limited to the main thread.
  */
 
@@ -18,14 +18,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "sysclk/sysclk.h"
-#include "wireless/wireless_types.h"
-/** NUL-terminated passphrase storage size, including its terminator. */
-#define ZF_WIFI_PASSWORD_SIZE 64u
+#include "platform/sysclk.h"
+#include "protocol/wireless_types.h"
 /** Control key size in bytes. */
 #define ZF_BLE_KEY_SIZE 32u
 /** Serialized record size in bytes. */
 #define ZF_SETTINGS_RECORD_SIZE 148u
+/** Save request needs no flash write; no completion callback is made. */
+#define ZF_SETTINGS_SAVE_UNCHANGED 1
 
 /** Stored Wi-Fi authentication policy, including the last confirmed mode when available. */
 typedef enum {
@@ -128,10 +128,11 @@ typedef void (*zf_settings_save_done_t)(int err);
 /**
  * @brief Persist staged settings as one record outside the caller's lock.
  *
- * The settings module owns record preparation, flash submission and finalization. The callback may run before
- * this function returns when there is nothing to write; otherwise it runs once after write/readback completes.
+ * The settings module owns record preparation, flash submission and finalization. The callback runs once after
+ * write/readback completes. When settings are unchanged, this returns ZF_SETTINGS_SAVE_UNCHANGED without a
+ * callback.
  * The single-copy flash write is not power-loss atomic.
- * @return 0 when accepted, otherwise a negative errno and no callback.
+ * @return 0 when accepted, ZF_SETTINGS_SAVE_UNCHANGED when no write is needed, otherwise a negative errno.
  */
 int zf_settings_save_async(zf_settings_save_done_t done);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */

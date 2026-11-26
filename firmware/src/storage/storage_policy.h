@@ -8,16 +8,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "report/report.h"
+#include "protocol/report_codec.h"
 
 /** Presence debounce period; a raw absence already prevents USB disk I/O. */
 #define ZF_STORAGE_DEBOUNCE_MS 100
 /** Pace failed initialization and mount attempts. */
 #define ZF_STORAGE_RETRY_MS 2000
-/** No ownership request in this worker iteration. */
-#define ZF_STORAGE_NO_REQUEST (-1)
-/** Cancel an admitted request whose card changed before execution. */
-#define ZF_STORAGE_CANCEL_REQUEST (-2)
+/** Ownership action consumed by the serialized storage worker. */
+typedef enum {
+	ZF_STORAGE_CANCEL_REQUEST = -2, /**< Card changed after an ownership request was admitted. */
+	ZF_STORAGE_NO_REQUEST = -1, /**< No ownership operation is due. */
+	ZF_STORAGE_FIRMWARE_OWNER = 0, /**< Return the medium to firmware. */
+	ZF_STORAGE_USB_OWNER = 1, /**< Give the medium to USB MSC. */
+} zf_storage_request_t;
 
 /** Initialize policy before transports start; subsequent calls belong to the storage worker. */
 void zf_storage_policy_init(bool configured, bool present, int64_t now_ms);
@@ -27,10 +30,10 @@ void zf_storage_policy_init(bool configured, bool present, int64_t now_ms);
  * @param now_ms Monotonic time in milliseconds.
  * @param request One ownership request or a sentinel.
  */
-void zf_storage_policy_poll(int present, int64_t now_ms, int request);
+void zf_storage_policy_poll(int present, int64_t now_ms, zf_storage_request_t request);
 
 /** Publish a coherent snapshot without holding the application lock or exposing live mutable state. */
-void zf_storage_publish(const zf_storage_t *storage);
+void zf_storage_service_publish(const zf_storage_t *storage);
 /**
  * @brief Reset the previous medium and open it for exactly one owner.
  * @param usb True initializes raw blocks; false mounts the existing FAT volume without formatting.

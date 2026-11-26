@@ -191,17 +191,17 @@ proof:
    `HMAC-SHA256(key, nonce[16] || UID[8] || "PFBLECTL1" || request[9])`, where `request` is the exact 9-byte
    control request below.
 3. Clients MUST write that request to `0014`.
-4. A successful ATT Write Response means the command was admitted and its BLE result is already terminal. Clients
-   MUST read `0014` and match `transaction_id` and `opcode`.
+4. A successful ATT Write Response means the command was admitted. Clients MUST read `0014`, match
+   `transaction_id` and `opcode`, and continue polling while the status is Pending.
 
 Proof consumption and retry-delay behavior are defined in [proof rules](#proof-rules). The Direct dashboard
 disconnects after a rejected session proof.
 
 The board does not enforce transaction-ID uniqueness; clients MUST advance the nonzero ID for every command and
-serialize writes. A successful ATT Write Response means the command is admitted and the BLE result is terminal.
-For opcode `5`, the server waits up to 30 seconds for the flash operation. If that limit expires, it returns ATT
-error `0x0E`; the accepted save may still finish later, so clients MUST NOT replay it and MUST read `0014` again
-until its result is terminal.
+serialize writes. A successful ATT Write Response acknowledges admission, not completion. For opcode `5`, the
+result remains Pending while the asynchronous flash operation runs; clients poll `0014` until the result is
+terminal. A disconnect or timeout before observing that result leaves the outcome uncertain, so clients MUST NOT
+replay the save.
 
 ## Proof rules
 
@@ -262,8 +262,11 @@ sequenceDiagram
     C->>P: Write 0101 - HMAC(key, nonce || UID || domain || 9-byte request)
     P-->>C: Write Response - proof accepted
     C->>P: Write 0014 - exact 9-byte request
-    P-->>C: Write Response - result is terminal
-    C->>P: Read 0014 - match transaction ID and opcode
+    P-->>C: Write Response - request admitted
+    loop Until status is terminal
+        C->>P: Read 0014 - match transaction ID and opcode
+        P-->>C: Pending or terminal result
+    end
 ```
 
 ## Control characteristic
@@ -331,10 +334,11 @@ See [Feature `20` result semantics](usb-hid.md#get-result).
 
 ### Uncertain outcomes
 
-Clients MUST serialize control requests. A timeout before the `0014` Write Response leaves admission uncertain; a
-disconnect after a successful response but before the result read can hide the terminal result. Clients MUST
-reconnect and inspect the result or resulting device state; clients MUST NOT replay a state-changing request with
-an uncertain outcome. The result-slot lifetime and limitations are described in [Result](#result).
+Clients MUST serialize control requests. A successful `0014` Write Response acknowledges request admission, not
+completion; clients MUST read the result and continue polling while its status is Pending. A timeout before the
+Write Response leaves admission uncertain; a disconnect before the terminal result is read can hide the outcome.
+Clients MUST reconnect and inspect the result or resulting device state; clients MUST NOT replay a state-changing
+request with an uncertain outcome. The result-slot lifetime and limitations are described in [Result](#result).
 Clients MUST abandon the transaction and reconnect after an ATT transaction timeout.
 
 Accepted reboot and save-and-reboot commands are followed by a reset after a 1000 ms
