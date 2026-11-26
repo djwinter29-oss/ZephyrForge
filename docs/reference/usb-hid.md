@@ -147,7 +147,7 @@ Each nonzero board model requires the MCU listed under [board models](#board-mod
 | ---: | --- | --- | --- | --- |
 | 0 | RGB LED control | Set | Clear | Clear |
 | 1 | Confirmed standalone reboot | Set | Set | Set |
-| 2 | Persistent boot-settings save | Set | Set | Clear |
+| 2 | Persistent boot-settings save | Set | Set | `settings-save` image only |
 | 3 | SPI storage transport | SD-over-SPI only | SD-over-SPI only | SD-over-SPI only |
 | 4 | Native SDMMC storage transport | Native image only | Clear | Native image only |
 | 5 | Storage benchmark | Optional | Clear | Optional |
@@ -155,7 +155,8 @@ Each nonzero board model requires the MCU listed under [board models](#board-mod
 | 7 | Wireless capability | Set | Set | W boards only |
 
 Exactly one storage capability is set in SD-enabled images; both bits are clear when storage is omitted.
-Capability bit 6 independently advertises USB mass-storage ownership control; it is clear when MSC is omitted.
+Capability bit 6 independently advertises USB mass-storage ownership control; it is clear when MSC is omitted or
+its USB disk could not register at boot, in which case USB HID management continues without mass storage.
 Custom builds clear wireless bit 7 when both radios are omitted; Report `2` masks next-boot radio flags to services
 built into the image. Identity `capabilities_extension` bit 0 advertises Report `13`; other extension bits are
 reserved.

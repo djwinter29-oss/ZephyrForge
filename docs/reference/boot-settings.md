@@ -29,8 +29,9 @@ Capitalized requirement words follow the [protocol convention](usb-hid.md#scope-
 An erased, missing or invalid record uses these defaults.
 
 The selectable clock values apply to ESP32-S3 and ESP32-C6; C6 rejects profiles above 160 MHz.
-The Raspberry Pi Pico images load the record at boot but cannot save it: Report `1` advertises no settings save,
-so opcode `5` returns Unsupported (error `4`). Those images
+Default Raspberry Pi Pico images load the record at boot but cannot save it: Report `1` advertises no settings
+save, so opcode `5` returns Unsupported (error `4`). Building with `--with settings-save` opts in to saving through
+the same record format; that writer has not been qualified on Pico hardware. Pico images
 keep the devicetree build clock. W variants apply the saved Wi-Fi switch and credentials, masking out BLE;
 non-W variants start no radios. W candidate credentials remain RAM-only.
 
@@ -183,7 +184,8 @@ On the ESP32-C6 N8 target, the 8 MB partition table places `storage_partition` a
 first 4 KiB sector contains settings. Erasing that sector clears the saved clock, radio switches and credentials.
 
 On the Raspberry Pi Pico boards, `storage_partition` starts at `0x100000`, directly after the 1 MiB code partition,
-and fills the rest of the flash. The images never erase or program it; UF2 flashing writes only the image's blocks.
+and fills the rest of the flash. Default images never erase or program it; a `settings-save` image rewrites only
+its first 4 KiB sector. UF2 flashing writes only the image's blocks.
 
 To clear ESP32 settings, erase only the first settings sector from an initialized workspace:
 

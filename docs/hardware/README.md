@@ -93,6 +93,6 @@ All four boards use USB management. W boards also support
 The CYW43439 radio uses PIO0 with GP23 enable, GP24 shared data/host wake, GP25 chip select, and GP29 clock.
 Native SD uses PIO1.
 
-Pico images do not control the onboard LED or save settings. They keep the build clock: 125 MHz on RP2040,
+Pico images do not control the onboard LED or, by default, save settings. They keep the build clock: 125 MHz on RP2040,
 150 MHz on RP2350. SD-enabled images reserve GP2-GP8 and disable default I2C0 (GP4/GP5) and I2C1 (GP6/GP7)
 assignments. Card detect is active-high with no MCU pull; the breakout must drive or bias it.

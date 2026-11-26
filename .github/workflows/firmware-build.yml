@@ -124,7 +124,7 @@ jobs:
           for module in wifi bluetooth usb-hid usb-msc settings-save; do
             bash zephyrforge/tools/firmware/build.sh --board esp32s3 --storage sdmmc --without "$module"
             case "$module" in
-              wifi) symbol=WIFI; build=firmware-no-wifi-no-tcp-shell ;;
+              wifi) symbol=WIFI; build=firmware-no-wifi ;;
               bluetooth) symbol=BLUETOOTH; build=firmware-no-bluetooth ;;
               usb-hid) symbol=USB_HID; build=firmware-no-usb-hid ;;
               usb-msc) symbol=USB_MSC; build=firmware-no-usb-msc ;;

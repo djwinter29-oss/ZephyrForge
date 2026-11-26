@@ -1,5 +1,6 @@
 #include "settings/settings.h"
 #include "settings/settings_flash.h"
+#include <zephyr/sys/crc.h>
 #include <zephyr/sys/util.h>
 #include "app/runtime.h"
 
@@ -59,19 +60,6 @@ static const struct settings *visible(void)
 	return saving ? &saved : &staged;
 }
 
-uint32_t zf_settings_crc32(const uint8_t *data, size_t size)
-{
-	uint32_t crc = 0xFFFFFFFFu;
-
-	for (size_t i = 0; i < size; ++i) {
-		crc ^= data[i];
-		for (int bit = 0; bit < 8; ++bit) {
-			crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
-		}
-	}
-	return ~crc;
-}
-
 #if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 static void put_u16(uint8_t *out, uint16_t value)
 {
@@ -126,7 +114,7 @@ static void encode(const struct settings *config, uint8_t record[ZF_SETTINGS_REC
 	memcpy(record + 45, config->password, sizeof(config->password));
 	memcpy(record + 109, config->key, sizeof(config->key));
 	record[141] = config->flags;
-	put_u32(record + CRC_OFFSET, zf_settings_crc32(record, CRC_OFFSET));
+	put_u32(record + CRC_OFFSET, crc32_ieee(record, CRC_OFFSET));
 }
 #endif
 
@@ -137,7 +125,7 @@ static bool decode(const uint8_t record[ZF_SETTINGS_RECORD_SIZE], struct setting
 
 	if (get_u32(record) != RECORD_MAGIC || record[4] != RECORD_VERSION || record[5] != 0 ||
 	    record[6] != ZF_SETTINGS_RECORD_SIZE || record[7] != 0 ||
-	    get_u32(record + CRC_OFFSET) != zf_settings_crc32(record, CRC_OFFSET)) {
+	    get_u32(record + CRC_OFFSET) != crc32_ieee(record, CRC_OFFSET)) {
 		return false;
 	}
 	if (record[8] > ZF_SYSCLK_MAX_PROFILE || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||

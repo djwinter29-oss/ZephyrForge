@@ -114,9 +114,10 @@ config ZF_TEMPERATURE
 config ZF_SETTINGS_SAVE
 	bool "Persistent settings save"
 	default y if SOC_FAMILY_ESPRESSIF_ESP32
-	depends on SOC_FAMILY_ESPRESSIF_ESP32 && FLASH_MAP
+	depends on FLASH_MAP && $(dt_nodelabel_enabled,storage_partition)
 	help
 	  Include the asynchronous flash-backed boot settings writer. Settings remain readable when disabled.
+	  Enabled by default on Espressif targets; other boards with a storage_partition can opt in.
 
 config ZF_BLUETOOTH
 	bool "Bluetooth LE management"

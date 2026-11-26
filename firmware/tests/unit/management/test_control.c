@@ -19,7 +19,7 @@ static int write_result;
 static int write_calls;
 static uint8_t txn;
 static uint8_t queued[ZF_SETTINGS_RECORD_SIZE];
-static zf_settings_done_t queued_done;
+static zf_settings_save_done_t queued_done;
 static bool defer_writes;
 static bool locked;
 static int settings_save_result;
@@ -60,7 +60,7 @@ void zf_app_wakeup(void)
 /* Run the queued settings work item: write without the application lock, then report completion. */
 static void complete_write(void)
 {
-	zf_settings_done_t done = queued_done;
+	zf_settings_save_done_t done = queued_done;
 
 	TEST_ASSERT_NOT_NULL(done);
 	TEST_ASSERT_FALSE(locked);
@@ -69,7 +69,7 @@ static void complete_write(void)
 	TEST_ASSERT_FALSE(locked);
 }
 
-static int settings_write(const uint8_t *record, size_t size, zf_settings_done_t done, int calls)
+static int settings_write(const uint8_t *record, size_t size, zf_settings_save_done_t done, int calls)
 {
 	(void)calls;
 	TEST_ASSERT_EQUAL_size_t(sizeof(queued), size);

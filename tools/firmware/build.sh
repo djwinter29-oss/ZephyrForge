@@ -124,71 +124,6 @@ for feature in "${enabled[@]}"; do
 		exit 1
 	fi
 done
-if [[ " ${disabled[*]} " == *" wifi "* ]]; then
-	if [[ " ${enabled[*]} " == *" tcp-shell "* ]]; then
-		printf 'Error: tcp-shell requires Wi-Fi.\n' >&2
-		exit 1
-	fi
-	[[ " ${disabled[*]} " == *" tcp-shell "* ]] || disabled+=(tcp-shell)
-fi
-if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
-	[[ "$board" != esp32c6 ]] || {
-		printf 'Error: ESP32-C6 requires Bluetooth for management; it has no native USB HID.\n' >&2
-		exit 1
-	}
-fi
-for feature in "${enabled[@]}"; do
-	case "$feature" in
-		wifi)
-			[[ "$board" != pico && "$board" != pico2 ]] || {
-				printf 'Error: Wi-Fi is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-		bluetooth)
-			[[ "$board" == esp32s3 || "$board" == esp32c6 ]] || {
-				printf 'Error: Bluetooth is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-		tcp-shell)
-			[[ "$board" != pico && "$board" != pico2 &&
-			   " ${disabled[*]} " != *" wifi "* ]] || {
-				printf 'Error: tcp-shell requires Wi-Fi on a supported board.\n' >&2
-				exit 1
-			} ;;
-		settings-save)
-			[[ "$board" == esp32s3 || "$board" == esp32c6 ]] || {
-				printf 'Error: settings-save is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-		usb-msc|benchmark)
-			[[ "$storage" != none && "$board" != esp32c6 &&
-			   " ${disabled[*]} " != *" usb-hid "* ]] || {
-				printf 'Error: %s requires storage and USB HID.\n' "$feature" >&2
-				exit 1
-			} ;;
-		usb-hid)
-			[[ "$board" != esp32c6 ]] || {
-				printf 'Error: USB HID is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-		led)
-			[[ "$board" == esp32s3 ]] || {
-				printf 'Error: led is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-		temperature)
-			[[ "$board" != esp32c6 ]] || {
-				printf 'Error: temperature is not available on %s.\n' "$board" >&2
-				exit 1
-			} ;;
-	esac
-done
-if [[ " ${disabled[*]} " == *" usb-hid "* ]]; then
-	[[ "$family" != rpi_pico ]] || {
-		printf 'Error: Raspberry Pi Pico boards require USB HID management.\n' >&2
-		exit 1
-	}
-fi
 kconfig=()
 # Keep customized images separate from the default directories used by flashing and release wrappers.
 for i in "${!module_names[@]}"; do
@@ -203,11 +138,6 @@ for i in "${!module_names[@]}"; do
 	fi
 done
 if [[ -n "$benchmark_chunk_size" ]]; then
-	[[ "$storage" != none && "$board" != esp32c6 && " ${disabled[*]} " != *" benchmark "* &&
-	   " ${disabled[*]} " != *" usb-hid "* ]] || {
-		printf 'Error: --benchmark-chunk-size requires the benchmark, storage and USB HID.\n' >&2
-		exit 1
-	}
 	kconfig+=("-DCONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=$benchmark_chunk_size")
 	build+="-benchmark-$benchmark_chunk_size"
 fi
@@ -276,7 +206,7 @@ image_file=zephyr.bin
 mkdir -p "$build_dir"
 rm -f "$build_identity" "$build_identity.tmp"
 # Select configuration explicitly because Zephyr does not discover nested board folders.
-python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware" \
+python -m west build --cmake-only --pristine auto --no-sysbuild -b "$target" "$root/firmware" \
   -d "$root/build/$build" -- \
   -DCONF_FILE="$conf" \
   -DDTC_OVERLAY_FILE="$overlay" \
@@ -284,6 +214,27 @@ python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware"
   -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
   -DZEPHYRFORGE_VERSION="${ZEPHYRFORGE_VERSION:-}" \
   "${kconfig[@]}"
+# Kconfig owns module dependencies and hardware availability; it drops a requested value it cannot honor with
+# only a warning, so fail before compiling when the resolved configuration differs from the request.
+config="$build_dir/zephyr/.config"
+for i in "${!module_names[@]}"; do
+	feature=${module_names[$i]}
+	symbol=CONFIG_ZF_${module_symbols[$i]}
+	if [[ " ${enabled[*]} " == *" $feature "* ]] && ! grep -Fxq "$symbol=y" "$config"; then
+		printf 'Error: %s is unavailable for this board, storage profile or module selection.\n' "$feature" >&2
+		exit 1
+	fi
+	if [[ " ${disabled[*]} " == *" $feature "* ]] && grep -Fxq "$symbol=y" "$config"; then
+		printf 'Error: %s could not be disabled.\n' "$feature" >&2
+		exit 1
+	fi
+done
+if [[ -n "$benchmark_chunk_size" ]] &&
+	! grep -Fxq "CONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=$benchmark_chunk_size" "$config"; then
+	printf 'Error: --benchmark-chunk-size requires the benchmark module.\n' >&2
+	exit 1
+fi
+python -m west build -d "$root/build/$build"
 # Record the version CMake generated, which is the default when ZEPHYRFORGE_VERSION is unset.
 firmware_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$build_dir/zephyrforge/app/version.h")"
 [[ -n "$firmware_version" ]] || {

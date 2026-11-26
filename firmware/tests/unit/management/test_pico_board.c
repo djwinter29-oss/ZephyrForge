@@ -1,4 +1,5 @@
 #include "unity.h"
+#include <zephyr/sys/crc.h>
 #include "management/control.h"
 #include "settings/settings.h"
 #include "app/capabilities.h"
@@ -101,7 +102,7 @@ void test_settings_remain_readable_but_saving_is_not_built(void)
 	flash[4] = 1;
 	flash[6] = ZF_SETTINGS_RECORD_SIZE;
 	flash[8] = ZF_SYSCLK_80MHZ;
-	crc = zf_settings_crc32(flash, 144);
+	crc = crc32_ieee(flash, 144);
 	for (size_t i = 0; i < sizeof(crc); ++i) {
 		flash[144 + i] = (uint8_t)(crc >> (8u * i));
 	}

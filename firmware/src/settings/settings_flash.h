@@ -9,6 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "settings/settings.h"
+
 /**
  * @brief Read the start of the settings sector.
  * @return 0 on success, otherwise a negative errno.
@@ -21,8 +23,6 @@ int zf_settings_flash_read(uint8_t *record, size_t size);
  */
 int zf_settings_flash_write(const uint8_t *record, size_t size);
 
-/** Settings write completion: 0 after readback matched, otherwise a negative errno. */
-typedef void (*zf_settings_done_t)(int err);
 /**
  * @brief Erase, program and verify a settings record on a work item, outside the application lock.
  *
@@ -31,6 +31,6 @@ typedef void (*zf_settings_done_t)(int err);
  * @param done Called once from the work item, without the application lock.
  * @return 0 when queued, otherwise a negative errno and @p done is not called.
  */
-int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_done_t done);
+int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_save_done_t done);
 
 #endif

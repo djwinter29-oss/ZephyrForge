@@ -96,18 +96,23 @@ case "$*" in
         printf '0.17.4\n' > "$sdk/sdk_version"
         touch "$sdk/$toolchain/bin/$toolchain-gcc"
         chmod +x "$sdk/$toolchain/bin/$toolchain-gcc" ;;
+    "-m west build -d "*)
+        # Compile phase after --cmake-only; configure already produced the artifacts.
+        [[ -f "$5/zephyr/.config" ]] || { printf 'Build directory was not configured\n' >&2; exit 19; } ;;
     "-m west build "*)
         [[ "${MOCK_BUILD_STATUS:-0}" == 0 ]] || exit "$MOCK_BUILD_STATUS"
         printf 'ZEPHYR_SDK_INSTALL_DIR=%s\n' "${ZEPHYR_SDK_INSTALL_DIR:-}" >> "$MOCK_LOG"
         build="$MOCK_ROOT/build/firmware"
         driver=SDHC_ESP32
         target=esp32s3_devkitc/esp32s3/procpu
+        modules=()
         while (($#)); do
             case "$1" in
                 -d) build="$2"; shift ;;
                 -b) target="$2"; shift ;;
                 -DDTC_OVERLAY_FILE=*sd_spi.overlay) driver=SPI_SDHC ;;
                 -DZEPHYRFORGE_VERSION=*) version="${1#*=}" ;;
+                -DCONFIG_ZF_*) modules+=("${1#-D}") ;;
             esac
             shift
         done
@@ -137,7 +142,16 @@ case "$*" in
                 '# CONFIG_FILE_SYSTEM is not set' >> "$build/zephyr/.config"
         else
             printf 'CONFIG_%s=y\n' "$driver" >> "$build/zephyr/.config"
-        fi ;;
+        fi
+        # Model Kconfig: requests for symbols listed in MOCK_KCONFIG_UNAVAILABLE resolve to unset.
+        for setting in "${modules[@]}"; do
+            name="${setting%%=*}"
+            if [[ " ${MOCK_KCONFIG_UNAVAILABLE:-} " == *" ${name#CONFIG_ZF_} "* || "${setting#*=}" == n ]]; then
+                printf '# %s is not set\n' "$name" >> "$build/zephyr/.config"
+            else
+                printf '%s\n' "$setting" >> "$build/zephyr/.config"
+            fi
+        done ;;
     "-m west flash "*)
         exit "${MOCK_FLASH_STATUS:-0}" ;;
     *)
@@ -246,7 +260,7 @@ fi
         for command in ("-m venv ", "-m west sdk install "):
             self.assertEqual(commands.count(command), 1)
         self.assertNotIn("-m west init ", commands)
-        self.assertEqual(commands.count("-m west build "), 2)
+        self.assertEqual(commands.count("-m west build --cmake-only "), 2)
         self.assertEqual(commands.count("--no-sysbuild"), 2)
         self.assertIn("-m west update --narrow -o=--depth=1", commands)
         self.assertIn("-m west blobs fetch hal_espressif", commands)
@@ -288,14 +302,17 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("apply", self.commands())
 
-    def test_build_can_omit_radios_and_their_dependent_tcp_shell(self):
+    def test_build_can_omit_radios(self):
         result = self.run_script("build.sh", "--without", "wifi", "--without", "bluetooth")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        for symbol in ("WIFI", "BLUETOOTH", "TCP_SHELL"):
+        for symbol in ("WIFI", "BLUETOOTH"):
             self.assertIn(f"-DCONFIG_ZF_{symbol}=n", commands)
         self.assertNotIn("CONFIG_ZF_USB_MSC", commands)
-        self.assertIn("-d " + str(self.root / "build/firmware-no-wifi-no-bluetooth-no-tcp-shell"), commands)
+        build = self.root / "build/firmware-no-wifi-no-bluetooth"
+        self.assertIn("--cmake-only", commands)
+        self.assertIn("-m west build -d " + str(build), commands)
+        self.assertTrue((build / "zephyrforge-build-info.txt").is_file())
 
     def test_build_can_keep_storage_without_msc_or_benchmark(self):
         result = self.run_script("build.sh", "--without", "usb-msc", "--without", "benchmark")
@@ -341,18 +358,9 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-DCONFIG_ZF_TEMPERATURE=y", self.commands())
 
-    def test_build_rejects_conflicting_or_unavailable_module_options(self):
+    def test_build_rejects_conflicting_module_options_before_configuring(self):
         for args in (
             ("--with", "wifi", "--without", "wifi"),
-            ("--board", "pico", "--with", "wifi"),
-            ("--board", "pico_w", "--with", "bluetooth"),
-            ("--board", "esp32c6", "--with", "usb-hid"),
-            ("--board", "esp32c6", "--with", "temperature"),
-            ("--board", "esp32c6", "--storage", "sd-spi", "--with", "benchmark"),
-            ("--with", "tcp-shell", "--without", "wifi"),
-            ("--storage", "none", "--with", "benchmark"),
-            ("--board", "esp32c6", "--storage", "sd-spi", "--benchmark-chunk-size", "8192"),
-            ("--without", "benchmark", "--benchmark-chunk-size", "8192"),
             ("--benchmark-chunk-size", "4097"),
             ("--without", "wifi", "--without", "wifi"),
         ):
@@ -362,6 +370,22 @@ esac
                 self.assertIn("Error:", result.stderr)
                 self.assertEqual("", self.commands())
 
+    def test_build_rejects_module_choices_kconfig_cannot_honor_before_compiling(self):
+        for unavailable, args in (
+            ("WIFI", ("--board", "pico", "--with", "wifi")),
+            ("TCP_SHELL", ("--with", "tcp-shell", "--without", "wifi")),
+            ("STORAGE_BENCHMARK", ("--storage", "none", "--with", "benchmark")),
+            ("STORAGE_BENCHMARK_CHUNK_SIZE", ("--without", "benchmark", "--benchmark-chunk-size", "8192")),
+        ):
+            with self.subTest(args=args):
+                self.log.write_text("")
+                self.env["MOCK_KCONFIG_UNAVAILABLE"] = unavailable
+                result = self.run_script("build.sh", *args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Error:", result.stderr)
+                self.assertIn("--cmake-only", self.commands())
+                self.assertNotIn("-m west build -d ", self.commands())
+
     def test_build_without_pico_wifi_disables_the_wifi_module(self):
         result = self.run_script("build.sh", "--board", "pico_w", "--without", "wifi")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -370,10 +394,8 @@ esac
         self.assertIn("-DCONFIG_ZF_WIFI=n", commands)
         self.assertIn("storage/sdmmc.overlay", commands)
 
-    def test_build_rejects_unknown_modules_and_removing_the_c6_management_transport(self):
-        for args in (("--without",), ("--without", "unknown"),
-                     ("--board", "esp32c6", "--without", "bluetooth"),
-                     ("--board", "pico", "--without", "usb-hid")):
+    def test_build_rejects_unknown_modules(self):
+        for args in (("--without",), ("--without", "unknown")):
             with self.subTest(args=args):
                 result = self.run_script("build.sh", *args)
                 self.assertNotEqual(result.returncode, 0)
@@ -384,7 +406,7 @@ esac
         result = self.run_script("flash.sh", "--port", "/dev/mock", "--baud", "115200")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        self.assertEqual(commands.count("-m west build "), 1)
+        self.assertEqual(commands.count("-m west build --cmake-only "), 1)
         self.assertEqual(commands.count("-m west flash "), 1)
         self.assertLess(commands.index("-m west build "), commands.index("-m west flash "))
         self.assertIn("--skip-rebuild -r esp32 --esp-device /dev/mock --esp-baud-rate 115200 --no-erase",

@@ -1,4 +1,5 @@
 #include "unity.h"
+#include <zephyr/sys/crc.h>
 #include "settings/settings.h"
 #include "settings/settings_flash.h"
 
@@ -12,7 +13,7 @@ static int write_calls;
 static bool defer_write;
 static const uint8_t *queued_record;
 static size_t queued_size;
-static zf_settings_done_t queued_done;
+static zf_settings_save_done_t queued_done;
 static int save_result;
 
 static bool set_ssid(const char *ssid)
@@ -45,7 +46,7 @@ int zf_settings_flash_write(const uint8_t *record, size_t size)
 	return write_result;
 }
 
-int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_done_t done)
+int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_save_done_t done)
 {
 	if (defer_write) {
 		queued_record = record;
@@ -74,7 +75,7 @@ static int save_settings(void)
 
 static void complete_write(void)
 {
-	zf_settings_done_t done = queued_done;
+	zf_settings_save_done_t done = queued_done;
 
 	TEST_ASSERT_NOT_NULL(done);
 	queued_done = NULL;
@@ -90,7 +91,7 @@ static void erase_flash(void)
 
 static void reseal(void)
 {
-	uint32_t crc = zf_settings_crc32(flash, 144);
+	uint32_t crc = crc32_ieee(flash, 144);
 
 	flash[144] = (uint8_t)crc;
 	flash[145] = (uint8_t)(crc >> 8);
@@ -138,7 +139,7 @@ void tearDown(void)
 
 void test_crc_matches_ieee_check_value(void)
 {
-	TEST_ASSERT_EQUAL_HEX32(0xCBF43926u, zf_settings_crc32((const uint8_t *)"123456789", 9));
+	TEST_ASSERT_EQUAL_HEX32(0xCBF43926u, crc32_ieee((const uint8_t *)"123456789", 9));
 }
 
 void test_sysclk_profiles_convert_to_and_from_mhz(void)
@@ -198,7 +199,7 @@ void test_record_layout_matches_documented_offsets(void)
 	TEST_ASSERT_EQUAL_UINT8(1, flash[141]);
 	TEST_ASSERT_EQUAL_UINT8(0, flash[142]);
 	TEST_ASSERT_EQUAL_UINT8(0, flash[143]);
-	uint32_t crc = zf_settings_crc32(flash, 144);
+	uint32_t crc = crc32_ieee(flash, 144);
 	TEST_ASSERT_EQUAL_HEX32(crc, flash[144] | flash[145] << 8 | flash[146] << 16 | (uint32_t)flash[147] << 24);
 }
 

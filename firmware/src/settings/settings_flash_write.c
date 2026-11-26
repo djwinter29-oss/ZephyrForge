@@ -56,7 +56,7 @@ int zf_settings_flash_write(const uint8_t *record, size_t size)
 
 static const uint8_t *queued_record;
 static size_t queued_size;
-static zf_settings_done_t queued_done;
+static zf_settings_save_done_t queued_done;
 static atomic_t write_pending;
 static atomic_t queue_started;
 static struct k_work_q settings_work_queue;
@@ -64,7 +64,7 @@ K_THREAD_STACK_DEFINE(settings_work_stack, 3072);
 
 static void settings_write_handler(struct k_work *work)
 {
-	zf_settings_done_t done = queued_done;
+	zf_settings_save_done_t done = queued_done;
 	int err = zf_settings_flash_write(queued_record, queued_size);
 
 	ARG_UNUSED(work);
@@ -77,7 +77,7 @@ static void settings_write_handler(struct k_work *work)
 
 static K_WORK_DEFINE(settings_write_work, settings_write_handler);
 
-int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_done_t done)
+int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_save_done_t done)
 {
 	if (record == NULL || done == NULL || size == 0 || size > ZF_SETTINGS_RECORD_SIZE) {
 		return -EINVAL;

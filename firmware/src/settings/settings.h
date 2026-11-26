@@ -95,7 +95,7 @@ bool zf_settings_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE]);
 /** @brief Return whether a Control key is staged, or last confirmed during a save. */
 bool zf_settings_ble_key_configured(void);
 
-/** Settings save completion; called once after the settings record is committed or discarded. */
+/** Settings save completion: 0 after the record was written and read back, otherwise a negative errno. */
 typedef void (*zf_settings_save_done_t)(int err);
 
 /**
@@ -110,8 +110,5 @@ typedef void (*zf_settings_save_done_t)(int err);
 int zf_settings_save_async(zf_settings_save_done_t done);
 /** @brief Drop all staged, unsaved values, restoring the last loaded or saved configuration. */
 void zf_settings_discard(void);
-
-/** @brief Return the IEEE CRC-32 (reflected) used by the record. */
-uint32_t zf_settings_crc32(const uint8_t *data, size_t size);
 
 #endif

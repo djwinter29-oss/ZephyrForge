@@ -56,13 +56,13 @@ to omit a module or `--with MODULE` to explicitly enable one (both are repeatabl
 
 | Module/feature | Kconfig symbol | Default | Effect when omitted |
 | --- | --- | --- | --- |
-| `wifi` | `CONFIG_ZF_WIFI` | ESP32 and W boards | No Wi-Fi stack; also omits `tcp-shell` |
+| `wifi` | `CONFIG_ZF_WIFI` | ESP32 and W boards | No Wi-Fi stack; `tcp-shell` cannot be enabled |
 | `bluetooth` | `CONFIG_ZF_BLUETOOTH` | ESP32 boards | No BLE peripheral or Control-key authentication; rejected on ESP32-C6, whose only management link is BLE |
 | `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | Off | No unauthenticated plaintext TCP diagnostic shell |
 | UART shell | `CONFIG_ZF_UART_SHELL` | Off | No UART diagnostic shell |
 | CPU load | `CONFIG_ZF_CPU_LOAD` | On | Runtime accounting is disabled and telemetry reports load unavailable |
 | Die temperature | `CONFIG_ZF_TEMPERATURE` | Boards with a temperature sensor node | Sampling omitted; telemetry unavailable |
-| Settings save | `CONFIG_ZF_SETTINGS_SAVE` | ESP32 with flash-map support | Boot settings remain readable but cannot be changed persistently; save capability and writer are omitted |
+| `settings-save` | `CONFIG_ZF_SETTINGS_SAVE` | ESP32 boards; opt-in on boards with a `storage_partition` | Boot settings remain readable but cannot be changed persistently; save capability and writer are omitted |
 | `usb-hid` | `CONFIG_ZF_USB_HID` | Boards with a HID node | No native USB HID management; Bluetooth must remain enabled |
 | `usb-msc` | `CONFIG_ZF_USB_MSC` | Storage with USB HID | Keeps storage but cannot export the card over USB; card-export commands report unsupported |
 | `benchmark` | `CONFIG_ZF_STORAGE_BENCHMARK` | Storage with USB HID | No storage benchmark |
@@ -84,8 +84,12 @@ the build fails if a fragment enables it, or if neither USB HID nor Bluetooth ma
 Omitted radios are never started, reported as enabled, or accepted by radio-switch commands; with both omitted,
 the image does not advertise wireless management. Each explicit module choice appends `-no-MODULE` or
 `-with-MODULE` to the build directory, so customized images never replace the default ones used by the flashing
-and release wrappers. Suffixes are appended in the module table order. Omitting Wi-Fi also omits `tcp-shell`.
+and release wrappers. Suffixes are appended in the module table order.
 The benchmark chunk-size choice adds `-benchmark-BYTES`.
+
+Kconfig owns module dependencies and hardware availability. The wrapper configures first and stops before
+compiling when the resolved configuration does not honor a `--with`, `--without` or chunk-size choice, for example
+`--with wifi` on a board without a Wi-Fi radio or `--with tcp-shell` together with `--without wifi`.
 
 Omitting a module at build time does not modify saved settings. To enable it again on a supported board, rebuild
 with `--with MODULE` or omit the corresponding `--without` switch.

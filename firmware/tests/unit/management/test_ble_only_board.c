@@ -40,7 +40,7 @@ void zf_app_wakeup(void)
 {
 }
 
-static int settings_write(const uint8_t *record, size_t size, zf_settings_done_t done, int calls)
+static int settings_write(const uint8_t *record, size_t size, zf_settings_save_done_t done, int calls)
 {
 	(void)calls;
 	done(zf_settings_flash_write(record, size));
