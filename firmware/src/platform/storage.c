@@ -1,7 +1,7 @@
 #include "app/zephyrforge.h"
 #include "app/storage/storage.h"
 #include "app/storage/benchmark.h"
-#include "app/usb/hid_reports.h"
+#include "app/protocol/hid_reports.h"
 #include "platform/zf_platform.h"
 
 #include <errno.h>
@@ -11,7 +11,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/disk_access.h>
+#if ZF_ENABLE_USB_MSC
 #include <zephyr/usb/class/usbd_msc.h>
+#endif
 
 LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 
@@ -26,8 +28,10 @@ LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 /* Far below the host's 30 s SCSI command timeout; the worker holds the lock only briefly while the card is exported. */
 #define USB_LOCK_WAIT_MS 1000
 
+#if ZF_ENABLE_USB_MSC
 /* SCSI INQUIRY limits the vendor to eight bytes, so use the short project name. */
 USBD_DEFINE_MSC_LUN(zephyrforge_sd, USB_DISK_NAME, "ZForge", "SD card", "1.00");
+#endif
 K_MUTEX_DEFINE(media_lock);
 K_MUTEX_DEFINE(snapshot_lock);
 K_MSGQ_DEFINE(requests, sizeof(int), 1, sizeof(int));
@@ -342,6 +346,9 @@ int zf_platform_storage_request(bool usb, uint8_t transaction)
 	int action = usb ? 1 : 0;
 	int err = 0;
 
+	if (!ZF_ENABLE_USB_MSC) {
+		return -ENOTSUP;
+	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
 	if (request_pending || snapshot.busy) {
 		err = -EBUSY;
@@ -405,6 +412,7 @@ void zf_storage_report(uint8_t sequence, uint8_t *out)
 	zf_report_storage(&storage, out);
 }
 
+#if ZF_ENABLE_USB_MSC
 static bool usb_ready(uint32_t *blocks)
 {
 	bool ready;
@@ -535,6 +543,7 @@ static const struct disk_operations usb_ops = {
 	.ioctl = usb_ioctl,
 };
 static struct disk_info usb_disk = {.name = USB_DISK_NAME, .ops = &usb_ops};
+#endif
 
 static void storage_worker(void *a, void *b, void *c)
 {
@@ -601,7 +610,12 @@ void zf_storage_init(void)
 	int present = err == 0 ? gpio_pin_get_dt(&detect) : err;
 
 	if (err == 0) {
-		err = present < 0 ? present : disk_access_register(&usb_disk);
+		err = present < 0 ? present : 0;
+#if ZF_ENABLE_USB_MSC
+		if (err == 0) {
+			err = disk_access_register(&usb_disk);
+		}
+#endif
 	}
 	if (err != 0) {
 		LOG_ERR("SD service setup failed: %d after %lld ms", err,

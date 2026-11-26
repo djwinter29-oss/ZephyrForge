@@ -1,7 +1,7 @@
 #include "app/zephyrforge.h"
 #include "app/storage/benchmark_types.h"
 #include "app/storage/storage_types.h"
-#include "app/usb/hid_reports.h"
+#include "app/protocol/hid_reports.h"
 #include "platform/zf_platform.h"
 
 #include <errno.h>

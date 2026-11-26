@@ -27,7 +27,7 @@ The C6 uses the [physical commissioning procedure](boards/esp32c6-commissioning.
 
 Use a **2.4 GHz WPA2-Personal or open network with DHCP**. WPA3-SAE and enterprise networks are not supported.
 
-1. Select a scanned network or enter a hidden SSID.
+1. Select a scanned network or choose **Other network…** and enter the hidden SSID.
 2. Enter a password if required, then choose **Test connection**.
 3. On ESP32-S3, use **Save&Reboot** after a successful test to persist the credentials. On Pico W, the join remains
    temporary.
@@ -40,15 +40,14 @@ The Wi-Fi boot switch controls automatic joining, not manual tests or scans. Sca
 saved-network join, which resumes afterward. A test needs an IPv4 address; association alone is not enough. See the
 [wireless lifecycle notes](../reference/architecture.md#wi-fi-lifecycle) for retry and timeout behavior.
 
-After canceling a join, wait for the existing request to finish before starting another. If a scan times out and
-never completes, reboot the board before trying again.
+After canceling a join, wait for the existing request to finish before starting another.
 
 ### Bluetooth LE
 
-On ESP32-S3, create a Control key over USB and copy it to a password manager before saving. The board never returns
-the key. On ESP32-C6, follow [first-key commissioning](boards/esp32c6-commissioning.md) instead.
+On ESP32-S3, choose **Generate key** over USB, copy the Control key to a password manager, then choose
+**Save&Reboot**. The board never returns the key. On ESP32-C6, follow [first-key commissioning](boards/esp32c6-commissioning.md).
 
-After saving and rebooting:
+Once the board is running with a saved key:
 
 1. Open Direct in desktop Chrome or Edge, served from localhost or HTTPS.
 2. Choose **Bluetooth** and enter the saved key.
@@ -64,7 +63,9 @@ See the [BLE specification](../reference/bluetooth.md) for client and authentica
 Safely eject and [return an exported SD card](../reference/sdcard.md#usb-drive-handoff) before saving.
 Radio switches and saved credentials take effect at the next boot.
 
-See [boot settings](../reference/settings.md) for persistence and failure semantics.
+For Direct's behavior after a failed test or key save, see
+[Direct provisioning](../../host/direct/README.md#wireless-provisioning). The
+[boot settings reference](../reference/settings.md) explains persistence and failure semantics.
 
 ## Troubleshooting and recovery
 

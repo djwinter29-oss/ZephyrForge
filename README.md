@@ -24,23 +24,12 @@ software checks but no hardware validation. See [qualification gaps](docs/valida
 what has and has not been tested.
 
 An SD card is optional. A `none` image leaves out SD drivers, the filesystem, and USB mass storage entirely.
-Storage-enabled images require an external socket and the board-specific [SD wiring](docs/README.md#wire-an-sd-card).
+Storage-enabled images require an external socket and the board-specific [SD wiring](docs/guides/hardware.md#sd-card-wiring).
 
 ## Get a board running
 
-Start with [getting started](docs/guides/getting-started.md): choose an image, install it, and connect a dashboard.
-For an existing setup, go straight to [flashing](docs/guides/flashing.md) or [wireless setup](docs/guides/wireless.md).
-
-### Choose a dashboard
-
-| Dashboard | Connection | Start here |
-| --- | --- | --- |
-| [Direct](host/direct/README.md) | WebHID or Web Bluetooth in desktop Chrome/Edge | [Open the hosted dashboard](https://djwinter29-oss.github.io/ZephyrForge/) |
-| [Python](host/python/README.md) | USB HID through a local Python host | [Install the package](host/python/README.md#install) |
-| [.NET](host/dotnet/ZephyrForge/README.md) | USB HID through a local .NET host | [Run a packaged host or source build](host/dotnet/ZephyrForge/README.md#run-the-host) |
-
-Direct talks to the board from the browser. Python and .NET serve the same web dashboard through a local USB bridge.
-Use one management client per board.
+Follow [Getting Started](docs/guides/getting-started.md) to install firmware and verify live telemetry.
+The [dashboard guides](docs/README.md#set-up-and-use-a-board) cover other ways to connect.
 
 ## Build your application
 

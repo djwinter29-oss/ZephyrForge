@@ -65,7 +65,7 @@ static void finish(result_t *result, uint8_t status, uint8_t error, uint8_t deta
 static bool capable(uint8_t opcode)
 {
 	if (opcode == ZF_OP_MSC) {
-		return (ZF_CAPABILITIES & ZF_CAP_STORAGE) != 0;
+		return ZF_ENABLE_USB_MSC && (ZF_CAPABILITIES & ZF_CAP_STORAGE) != 0;
 	}
 	if (opcode == ZF_OP_BENCHMARK) {
 		return (ZF_CAPABILITIES & ZF_CAP_BENCHMARK) != 0;
@@ -161,7 +161,7 @@ static void save(const request_t *request, result_t *result)
 		return;
 	}
 	if ((unsigned)profile > ZF_SYSCLK_MAX_PROFILE || request->args[2] != 0 ||
-	    (radios & (uint8_t)~(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE))) {
+	    (radios & (uint8_t)~ZF_RADIO_MASK)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 		return;
 	}
@@ -185,7 +185,7 @@ static void save(const request_t *request, result_t *result)
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
 		return;
 	}
-	if (request->ble && radios != zf_boot_config_radios()) {
+	if (request->ble && radios != (zf_boot_config_radios() & ZF_RADIO_MASK)) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, 0);
 		return;
 	}
@@ -208,7 +208,8 @@ static void save(const request_t *request, result_t *result)
 	}
 
 	(void)zf_boot_config_set_sysclk(profile);
-	(void)zf_boot_config_set_radios(radios);
+	/* Preserve omitted radios' saved policy for a later image that includes them. */
+	(void)zf_boot_config_set_radios((zf_boot_config_radios() & (uint8_t)~ZF_RADIO_MASK) | radios);
 	if (commit) {
 		apply_commit();
 	}
@@ -229,7 +230,7 @@ static void save(const request_t *request, result_t *result)
 	result->data[0] = (uint8_t)mhz;
 	result->data[1] = (uint8_t)(mhz >> 8);
 	result->data[2] = 0;
-	result->data[3] = zf_boot_config_radios();
+	result->data[3] = zf_boot_config_radios() & ZF_RADIO_MASK;
 	result->data[4] = request->ble ? 0 : commit_mask;
 }
 

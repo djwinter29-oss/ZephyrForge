@@ -257,7 +257,8 @@ The Python, .NET and Direct dashboards provide **Save&Reboot**:
 - **Save&Reboot** sends opcode `5`. Firmware reboots about one second after a verified save; failed or rejected
   saves do not reboot. Reconnection refreshes Feature `2`.
 - **Wi-Fi** and **Bluetooth** are next-boot controls, enabled by default. Over BLE, opcode `5` must keep the current
-  saved radio mask. USB may change it.
+  reported radio mask. USB may change it. Omitted radios are masked out of reports and save results; save requests
+  must leave their bits zero. Saving preserves their stored policy for an image that includes them again.
 - **CPU clock** offers Default, 80, 160 and 240 MHz on ESP32-S3, and at most 160 MHz on ESP32-C6.
 
 Busy or USB-owned storage blocks save/reboot; safely eject and [return ownership](sdcard.md#usb-drive-handoff) first.

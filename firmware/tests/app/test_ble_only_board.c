@@ -8,26 +8,30 @@
 
 #include <string.h>
 
-/* Built with the BLE-only radio override: ZF_BOARD_CAPS=ZF_CAP_WIRELESS, ZF_RADIO_MASK=2u. The image
+static uint8_t flash_record[ZF_BOOT_CONFIG_RECORD_SIZE];
+
+/* Built with settings and the BLE-only radio override, ZF_RADIO_MASK=2u. The image
  * starts Bluetooth but never Wi-Fi, so Wi-Fi opcodes must be refused at capability admission, exactly
  * as the STAGE_KEY twin refuses BLE opcodes when the BLE bit is clear. */
 
 int boot_flash_read(uint8_t *record, size_t size)
 {
-	memset(record, 0xFF, size);
+	memcpy(record, flash_record, size);
 	return 0;
 }
 
 int boot_flash_write(const uint8_t *record, size_t size)
 {
-	(void)record;
-	(void)size;
+	memcpy(flash_record, record, size);
 	return 0;
 }
 
 void setUp(void)
 {
+	memset(flash_record, 0xFF, sizeof(flash_record));
+	zf_boot_config_load();
 	zf_control_init();
+	zf_platform_storage_busy_IgnoreAndReturn(false);
 	zf_wifi_test_active_IgnoreAndReturn(false);
 	zf_wifi_scan_active_IgnoreAndReturn(false);
 }
@@ -73,4 +77,40 @@ void test_stage_key_remains_admissible_on_ble_only_mask(void)
 	memset(key_args + 1, 0x5A, 32);
 	result = usb(ZF_OP_STAGE_KEY, key_args, sizeof(key_args));
 	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
+}
+
+void test_save_rejects_enabling_a_radio_omitted_from_the_image(void)
+{
+	const uint8_t args[4] = {0, 0, 0, ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE};
+	const uint8_t *result = usb(ZF_OP_SAVE, args, sizeof(args));
+
+	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_INVALID, result[3]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_ERROR_ARGUMENT, result[4]);
+}
+
+void test_usb_save_changes_only_the_built_radio_policy(void)
+{
+	const uint8_t args[4] = {0};
+	const uint8_t *result;
+
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	result = usb(ZF_OP_SAVE, args, sizeof(args));
+	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
+	TEST_ASSERT_EQUAL_UINT8(0, result[8]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI, zf_boot_config_radios());
+	zf_boot_config_load();
+	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI, zf_boot_config_radios());
+}
+
+void test_ble_save_accepts_reported_radios_and_preserves_omitted_radio_settings(void)
+{
+	const uint8_t request[ZF_BLE_CONTROL_SIZE] = {1, 1, ZF_OP_SAVE, 0, 0, 0, 0, ZF_WIRELESS_BLE, 0};
+	uint8_t result[ZF_BLE_CONTROL_SIZE];
+
+	zf_platform_schedule_reboot_ExpectAndReturn(0);
+	zf_control_ble_execute(request, 0);
+	zf_control_ble_get(result);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_boot_config_radios());
+	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_BLE, result[8]);
 }

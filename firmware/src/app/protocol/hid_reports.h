@@ -1,6 +1,6 @@
 /**
  * @file hid_reports.h
- * @brief Encoders for the ZephyrForge HID/GATT report payloads.
+ * @brief Transport-independent encoders for the ZephyrForge HID/GATT report payloads.
  *
  * Payloads exclude the USB report ID. Portable: the Zephyr glue samples the board and fills these structs.
  */
@@ -75,6 +75,10 @@
 /** Whether the image includes removable-card storage services. */
 #ifndef ZF_ENABLE_STORAGE
 #define ZF_ENABLE_STORAGE 1
+#endif
+/** Whether the image includes USB card export; portable tests default to the storage setting. */
+#ifndef ZF_ENABLE_USB_MSC
+#define ZF_ENABLE_USB_MSC ZF_ENABLE_STORAGE
 #endif
 /** Build-selected storage transport; portable tests default to native SDMMC. */
 #ifndef ZF_STORAGE_SPI

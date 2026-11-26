@@ -2,7 +2,7 @@
  * Bluetooth LE peripheral: report mirrors, session unlock, command proofs and the 9-byte control characteristic.
  */
 #include "app/zephyrforge.h"
-#include "app/usb/hid_reports.h"
+#include "app/protocol/hid_reports.h"
 #include "platform/boot_config.h"
 #include "app/control/control.h"
 #include "app/wireless/wireless_auth.h"

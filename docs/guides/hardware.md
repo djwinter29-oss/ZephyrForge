@@ -112,10 +112,5 @@ Wire with all power disconnected. Use a 3.3 V-compatible socket, suitable extern
 adequate regulated power. Never apply 5 V to MCU GPIOs or a bare card. Four-bit SDMMC needs CLK, CMD, and DAT0-DAT3;
 a SPI-only breakout is insufficient.
 
-Back up the card and prepare FAT16, FAT32, or exFAT on a computer. Firmware does not automatically format it.
-Insertion mounts the card for firmware, not automatically for USB. Safely eject in the OS before confirming
-return from USB ownership; removal during I/O can corrupt data.
-
-Before changing buses, follow the
-[card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
-The SD storage reference also covers mount and ownership behavior.
+Before inserting a card or switching storage buses, see
+[card preparation and ownership](../reference/sdcard.md#safety-and-ownership).

@@ -91,6 +91,10 @@ and scan state. MSC handoff and optional benchmarking use USB-only commands.
 | `13` | [Module memory inventory](#report-id-13-module-memory-inventory) | Feature | Host reads | 16 |
 | `20` | [Control command & result](#report-id-20-control-command--result) | Feature | Host writes/reads | 68 |
 
+For control tasks, jump to the [opcode table](#set-request), [USB drive handoff](#msc-command-rules),
+[storage benchmarking](#benchmark-command-rules), [wireless staging and scans](#wireless-command-rules),
+or [result decoding](#get-result).
+
 ### Wire framing
 
 On the USB HID wire, each report begins with its nonzero report ID. In the tables below, offset `0` is the first
@@ -170,6 +174,8 @@ Each nonzero board model requires the MCU listed under [board models](#board-mod
 | 8 | Module memory inventory | Set in extension byte bit 0 | Set in extension byte bit 0 | Set in extension byte bit 0 |
 
 Exactly one storage capability is set in SD-enabled images; both bits are clear when storage is omitted.
+The following capability examples describe the default radio selections. Custom builds clear wireless bit 7
+when both radios are omitted; Report `2` masks next-boot radio flags to the services built into the image.
 The ESP32-S3 no-storage image's low capability byte is `0x87`; its native image is `0x97`, or `0xB7` with
 benchmarking; its SPI image uses `0x8F`, or `0xAF` with benchmarking. Non-W Pico native images use `0x12` or `0x32`;
 their SPI images use `0x0A` or `0x2A`. W images additionally set wireless bit 7: `0x92`/`0xB2` native and
@@ -497,6 +503,13 @@ Feature `20` carries reboot, MSC ownership, settings-save, credential-staging, W
 SET submits one typed operation; GET returns the latest USB result. Both payloads are exactly 68 bytes
 (69 including the report ID). BLE uses a separate [control form](bluetooth.md#control-characteristic).
 
+- [Encode a request](#set-request)
+- [Transfer USB drive ownership](#msc-command-rules)
+- [Start or cancel a storage benchmark](#benchmark-command-rules)
+- [Stage credentials, test Wi-Fi, or scan networks](#wireless-command-rules)
+- [Decode a result](#get-result)
+- [Check contention between USB and BLE commands](#cross-interface-resource-arbitration)
+
 ### SET request
 
 | Offset | Size | Field | Meaning |
@@ -530,6 +543,9 @@ Argument offsets in the following table are relative to the 64-byte `arguments` 
 Reboot requires explicit confirmation and discards staged wireless values and any expiry marker.
 Hosts SHOULD warn when Feature `12` indicates staging or expiry.
 Opcode `5` accepts clocks `0`, `80`, `160`, `240` MHz, SD profile `0`, and only the Wi-Fi/BLE switch bits.
+Bits for radios omitted from the image must be zero; setting them returns Invalid/error `3`.
+Their saved policy is preserved for a later image that includes them. Save results include only built radios,
+matching Report `2`; BLE saves must preserve that reported mask.
 Switch bit 2 is invalid. Bit 0 returns Unsupported/error `4` before other save-argument validation.
 A 64-character hexadecimal raw Wi-Fi PSK is not supported.
 
@@ -538,6 +554,7 @@ A 64-character hexadecimal raw Wi-Fi PSK is not supported.
 Report `2` flag bit 6 advertises this workflow; Report `1` capabilities are unchanged.
 Older firmware with bit 6 clear and card-detect GPIO `255` remains readable, but hosts MUST hide MSC controls.
 Opcode `3` is USB-only; BLE returns Unsupported/error `4`.
+Images built without USB mass storage also return Unsupported/error `4`, even when SD storage is present.
 
 Enable requires an initialized card with valid geometry. Return requires the user's assertion that the operating
 system safely ejected the drive; firmware cannot verify native-class OS eject. Action `2` and other force-return

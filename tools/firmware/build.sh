@@ -6,6 +6,7 @@ storage_selected=false
 conf=prj.conf
 usb_config=";profiles/usb.conf"
 storage_config=""
+disabled=()
 while (($#)); do
 	case "$1" in
 		--board)
@@ -14,8 +15,17 @@ while (($#)); do
 		--storage)
 			(($# >= 2)) || { printf 'Error: --storage requires sdmmc, sd-spi or none.\n' >&2; exit 1; }
 			storage="$2"; storage_selected=true; shift 2 ;;
+		--without)
+			(($# >= 2)) || { printf 'Error: --without requires a module name.\n' >&2; exit 1; }
+			case "$2" in
+				wifi|bluetooth|tcp-shell|usb-msc|benchmark) disabled+=("$2") ;;
+				*) printf 'Error: unknown optional module: %s\n' "$2" >&2; exit 1 ;;
+			esac
+			shift 2 ;;
 		-h|--help)
-			printf 'Usage: bash tools/firmware/build.sh [--board esp32s3|esp32c6|pico|pico_w|pico2|pico2_w] [--storage sdmmc|sd-spi|none]\n'
+			printf '%s\n' \
+				'Usage: bash tools/firmware/build.sh [--board esp32s3|esp32c6|pico|pico_w|pico2|pico2_w] [--storage sdmmc|sd-spi|none]' \
+				'       [--without wifi|bluetooth|tcp-shell|usb-msc|benchmark] (repeatable)'
 			exit 0 ;;
 		*) printf 'Error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
 	esac
@@ -65,8 +75,35 @@ if [[ "$board" == pico* ]]; then
 	fi
 	toolchain=arm-zephyr-eabi
 fi
+if [[ " ${disabled[*]} " == *" wifi "* ]]; then
+	disabled+=(tcp-shell)
+	conf="${conf//;profiles\/wifi.conf/}"
+	conf="${conf//;boards\/rpi_pico\/wireless\/w.conf/}"
+	overlay="${overlay//;boards\/rpi_pico\/wireless\/w.overlay/}"
+fi
+if [[ " ${disabled[*]} " == *" bluetooth "* ]]; then
+	[[ "$board" != esp32c6 ]] || {
+		printf 'Error: ESP32-C6 requires Bluetooth for management; it has no native USB HID.\n' >&2
+		exit 1
+	}
+	conf="${conf//;profiles\/bluetooth.conf/}"
+fi
+if [[ " ${disabled[*]} " == *" tcp-shell "* ]]; then
+	conf="${conf//;profiles\/tcp-shell.conf/}"
+fi
+if [[ " ${disabled[*]} " == *" benchmark "* ]]; then
+	benchmark=OFF
+fi
 conf+="$usb_config$storage_config"
-[[ -z "$usb_config" || -z "$storage_config" ]] || conf+=";profiles/usb-msc.conf"
+if [[ -n "$usb_config" && -n "$storage_config" && " ${disabled[*]} " != *" usb-msc "* ]]; then
+	conf+=";profiles/usb-msc.conf"
+fi
+# Keep customized images separate from the default directories used by flashing and release wrappers.
+for feature in wifi bluetooth tcp-shell usb-msc benchmark; do
+	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
+		build+="-no-$feature"
+	fi
+done
 export ZEPHYRFORGE_VALIDATE_BUILD_CONFIG=1
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 unset ZEPHYRFORGE_VALIDATE_BUILD_CONFIG

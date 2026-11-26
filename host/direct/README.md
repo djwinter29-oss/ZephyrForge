@@ -37,11 +37,14 @@ For version rules and development checks, see
 3. Select the ZephyrForge device (`0xCAFE:0x4021`) and grant access to its vendor HID interface.
 4. Wait for valid identity, configuration, and fresh status before using controls.
 
-Cancel leaves Direct disconnected. Close other applications using the board's HID interface if it is unavailable.
+For Bluetooth, follow [Wireless Setup](../../docs/guides/wireless.md#bluetooth-le).
 
-For BLE, first save a Control key through USB on ESP32-S3 or physical commissioning on C6. Choose **Bluetooth**,
-enter the saved key, and select `ZephyrForge-<serial>`. The key authenticates commands; it does not encrypt traffic.
-See [wireless setup](../../docs/guides/wireless.md).
+### Linux USB permissions
+
+If the browser cannot open the HID device, run the [HID permission helper](../../tools/host/hid-permissions-setup.sh)
+once, then reconnect the board. From a checkout, run `bash tools/host/hid-permissions-setup.sh`. Without a checkout,
+download the script and run it with Bash. The helper may prompt for sudo to install the device rule.
+Run the browser as your regular user.
 
 ## Dashboard layout
 
@@ -75,10 +78,7 @@ Controls depend on the board, transport, and fresh reports. Unsupported actions 
 
 ### Wireless provisioning
 
-1. Over USB, choose **Configure…** for the radio.
-2. For Wi-Fi, select a network or **Other network…**, enter its password if needed, and successfully test it.
-3. For Bluetooth, generate a Control key and keep a copy in a password manager.
-4. On a board that supports persistence, choose **Save&Reboot** before staging expires, normally ten minutes.
+Follow [Wireless Setup](../../docs/guides/wireless.md#open-radio-settings) to provision either radio over USB.
 
 A failed replacement test invalidates the previous tested pair. Save stays blocked until another test succeeds
 or cancellation clears the temporary credentials. If cancellation fails, the dialog stays open until clearing is
@@ -93,29 +93,18 @@ The form shows why Save is blocked. The same eligibility checks run again when c
 and schedules a reboot; Direct rereads configuration after reconnection. BLE saves keep the saved radio switches.
 **Reboot** is a separate confirmed action; Cancel or Escape sends nothing.
 
-Return an exported card to firmware before saving. Disconnecting with unsaved edits asks for
-confirmation and identifies the board.
+Disconnecting with unsaved edits asks for confirmation and identifies the board.
 
 ## Wi-Fi shell
 
-When served by the local ZephyrForge server, fresh connected Wi-Fi status links to the
-[diagnostic shell](../../docs/guides/console.md). Keep the originating dashboard tab open and connected:
-the terminal checks its current board identity and address before each operation and disconnects if they change
-or the status becomes stale.
+The local ZephyrForge server enables the shell link when the board reports a fresh Wi-Fi connection.
+The release ZIP includes this server. GitHub Pages and other static servers show Wi-Fi status without the link.
 
-The relay accepts only private LAN IPv4 targets on port 2323 through same-origin loopback requests. Pages and
-other static servers show plain Wi-Fi status instead of a shell link. TCP connection failures are reported because
-connected Wi-Fi does not guarantee that the listener is ready. The release ZIP includes the relay and needs no
-Python host installation.
-The [shared HTTP API](../web/README.md#browser-shell) documents the relay contract.
+Keep the originating dashboard tab open and connected. The relay checks the board identity, address, and
+status freshness before each operation. It accepts private LAN IPv4 targets on port `2323` through
+same-origin loopback requests.
 
-The terminal discards unfinished input from the previous client and requests `shell echo on` once for that
-session. It supports plain-text output and native editing, not full VT100 or color emulation. Tab stays in the
-terminal; Shift+Tab leaves it. Multiline paste needs confirmation. Close the tab to disconnect; abandoned sessions
-expire after 15 idle seconds.
-
-**The shell is unauthenticated plaintext.** The Control key does not protect it. Use a trusted, isolated network
-and never enter secrets or replay uncertain input.
+The shell is unauthenticated plaintext. See [how to use the browser terminal](../../docs/guides/console.md#in-browser-terminal).
 
 ## Page lifecycle
 

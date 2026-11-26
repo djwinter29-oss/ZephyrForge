@@ -12,16 +12,22 @@ not in the management loop or under the application lock. Read the
 | Directory under `firmware/` | Responsibility |
 | --- | --- |
 | `boards/` and `profiles/` | Pin assignments, memory layout, and build-selected features |
-| `src/config/` | Board identity, facts, shared locking, and delayed reboot |
-| `src/platform/` | Settings persistence and Zephyr/platform integration |
+| `src/platform/` | Runtime board facts, shared locking, delayed reboot, settings persistence and Zephyr integration |
+| `src/platform/espressif/` | ESP32 CPU clock profiles |
 | `src/platform/rpi_pico/` | Pico hooks, PIO SD host, and portable SDIO codec |
-| `src/app/control/` and `src/app/usb/` | Shared control policy, report encoding, and USB transport |
+| `src/app/protocol/` | Portable report layouts and encoders shared by USB, BLE and policy |
+| `src/app/control/` | Portable command validation, admission and results shared by transports |
+| `src/app/usb/` | Zephyr USB HID transport, descriptors and publication |
 | `src/app/storage/` | Portable media ownership/mount policy and benchmark engine |
 | `src/app/wireless/` | Staging, authentication, Wi-Fi, and BLE |
 | `tests/` | Portable suites, Zephyr native tests, tooling checks, and opt-in hardware tests |
 
 Add tests beside the relevant component. Mock narrow service interfaces rather than recreating Zephyr internals
 with fake headers. Changes to reports or commands also need matching host and specification updates.
+Keep board wiring in overlays, not runtime board code. Portable modules must not depend on transport implementations;
+USB and BLE both consume the shared protocol. Disabled-service implementations belong with their service rather than
+inside a particular board's hooks. Use the existing Zephyr feature symbols and
+[build switches](firmware-build.md#optional-modules) instead of introducing a second switch for the same feature.
 The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
 must use a cryptographically secure source.
 
@@ -61,12 +67,18 @@ credential staging, authentication, settings records, board facts, Wi-Fi policy,
 production portable modules as C11 with warnings treated as errors. Flash and media operations use test doubles;
 the tests do not mount, format, or write a real card.
 
-Run report/control tests in both storage configurations when changing feature gates:
+### Storage feature gates
+
+Run the report and control suites with SPI, no storage, and storage without USB mass storage.
 
 ```sh
 bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
 bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_hid_reports test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_hid_reports test:test_control
 ```
+
+The no-MSC configuration retains storage while checking that card-export commands are unsupported.
+The portable disabled-Wi-Fi suite also checks BLE and credential-staging reports without a network driver.
 
 ## Zephyr native Wi-Fi tests
 
@@ -108,12 +120,9 @@ from the reusable [target builds](../../.github/workflows/firmware-build.yml).
 ## Target qualification
 
 Use the [firmware qualification procedure](../validation/firmware-qualification.md) for USB, storage,
-BLE, and Wi-Fi checks. Its runner reuses the installed Python host package. The runner's own safety checks need
-no hardware:
-
-```sh
-python3 -m unittest discover -s firmware/tests/hardware -v
-```
+BLE, and Wi-Fi checks. See the [USB runner](../validation/firmware-qualification.md#runnable-usb-target-checks)
+for installed-image checks and [runner unit tests](../validation/firmware-qualification.md#runner-unit-tests)
+for software-only checks.
 
 Builds and software tests do not flash boards, write cards, or perform fault injection. Record physical results
 separately in dated [validation records](../validation/records/README.md).

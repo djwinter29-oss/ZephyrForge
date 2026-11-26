@@ -42,8 +42,4 @@ Leave flash/PSRAM and boot-strapping pins alone; GPIO33-37 serve octal PSRAM. SP
 
 ## Card safety
 
-Back up the card and prepare an existing FAT16, FAT32 or exFAT volume on a computer.
-Firmware mounts at `/SD:` without automatic formatting. Never remove the card during I/O.
-USB drive access requires explicit handoff; safely eject before returning ownership to firmware.
-Before changing buses, follow the
-[card power-cycle instruction](../../reference/sdcard.md#safety-and-ownership).
+See [card preparation, safe removal, and bus changes](../../reference/sdcard.md#safety-and-ownership).

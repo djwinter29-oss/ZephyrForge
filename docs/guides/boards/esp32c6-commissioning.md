@@ -10,7 +10,7 @@ to the board and no other application using that port. It has software checks, n
 ## Prepare the board and build
 
 1. Check the module marking. In a trusted, initialized Zephyr workspace,
-   [build the selected C6 image](../../development/firmware-build.md#esp32-c6-family) and
+   [build the selected C6 image](../../development/firmware-build.md#build-with-the-wrapper) and
    [flash it](../flashing.md#from-a-source-build).
 2. Retain the matching build directory, including compiled configuration and devicetree. The utility derives the
    settings address from that build; it does not prove the matching image is installed.

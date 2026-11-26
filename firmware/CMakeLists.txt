@@ -15,6 +15,7 @@ if(ZF_ENABLE_STORAGE_BENCHMARK AND NOT ZF_ENABLE_STORAGE)
 endif()
 target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>)
 target_compile_definitions(app PRIVATE ZF_ENABLE_STORAGE=$<BOOL:${ZF_ENABLE_STORAGE}>)
+target_compile_definitions(app PRIVATE ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_USBD_MSC_CLASS}>)
 target_compile_definitions(app PRIVATE ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${ZF_ENABLE_STORAGE_BENCHMARK}>)
 if(ZF_ENABLE_STORAGE AND ZF_ENABLE_STORAGE_BENCHMARK)
   target_sources(app PRIVATE src/app/storage/benchmark.c)
@@ -37,10 +38,6 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
     set(zf_board ZF_BOARD_PICO)
   endif()
   if(CONFIG_WIFI)
-    set(zf_board_caps ZF_CAP_WIRELESS)
-    set(zf_radio_mask 1u)
-    list(APPEND zf_board_sources src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c
-      src/app/wireless/wifi/wifi_policy.c)
     set(zf_pico_rand ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_rand)
     target_sources(app PRIVATE src/platform/rpi_pico/random.c ${zf_pico_rand}/rand.c)
     target_include_directories(app PRIVATE ${zf_pico_rand}/include
@@ -51,12 +48,8 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
     set_source_files_properties(${zf_pico_rand}/rand.c TARGET_DIRECTORY app PROPERTIES
       COMPILE_OPTIONS "-D__uninitialized_ram(name)=__attribute__((section(\".noinit\"))) name;-Dsleep_until=busy_wait_until")
     zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/random/random.h)
-  else()
-    set(zf_board_caps 0)
-    set(zf_radio_mask 0u)
   endif()
-  target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_BOARD_CAPS=${zf_board_caps}
-                                         ZF_RADIO_MASK=${zf_radio_mask})
+  set(zf_board_caps 0)
   list(APPEND zf_board_sources src/platform/rpi_pico/platform.c)
   if(ZF_ENABLE_STORAGE AND CONFIG_ZF_SDHC_RPI_PICO_PIO)
     list(APPEND zf_board_sources src/platform/rpi_pico/sdhc_pio.c src/platform/rpi_pico/sdio_codec.c)
@@ -65,27 +58,43 @@ else()
   if(CONFIG_SOC_ESP32S3)
     set(zf_mcu ZF_MCU_ESP32S3)
     set(zf_board ZF_BOARD_DEVKITC)
-    set(zf_board_caps ZF_BOARD_CAPS_ESP32S3)
-    set(zf_radio_mask 3u)
+    set(zf_board_caps "ZF_CAP_LED|ZF_CAP_SETTINGS")
   elseif(CONFIG_SOC_ESP32C6)
     set(zf_mcu ZF_MCU_ESP32C6)
     set(zf_board ZF_BOARD_ESP32C6_DEVKITC)
-    set(zf_board_caps ZF_BOARD_CAPS_ESP32C6)
-    set(zf_radio_mask 3u)
+    set(zf_board_caps ZF_CAP_SETTINGS)
     set(zf_sysclk_max_profile 2u)
   else()
     message(FATAL_ERROR "Unsupported Espressif SoC")
   endif()
-  set(zf_clock_source src/platform/system_clock.c)
+  set(zf_clock_source src/platform/espressif/system_clock.c)
   set(zf_led_source src/platform/led.c)
-  set(zf_board_sources src/app/wireless/bluetooth/ble.c src/app/wireless/wifi/wifi.c
-    src/app/wireless/wifi/wifi_driver.c src/app/wireless/wifi/wifi_policy.c)
-  target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board}
-    ZF_BOARD_CAPS=${zf_board_caps} ZF_RADIO_MASK=${zf_radio_mask})
   if(DEFINED zf_sysclk_max_profile)
     target_compile_definitions(app PRIVATE ZF_SYSCLK_MAX_PROFILE=${zf_sysclk_max_profile})
   endif()
 endif()
+
+set(zf_radio_mask 0)
+if(CONFIG_WIFI)
+  math(EXPR zf_radio_mask "${zf_radio_mask} | 1")
+  target_sources(app PRIVATE src/app/wireless/wifi/wifi.c src/app/wireless/wifi/wifi_driver.c
+    src/app/wireless/wifi/wifi_policy.c)
+else()
+  target_sources(app PRIVATE src/app/wireless/wifi/wifi_none.c)
+endif()
+if(CONFIG_BT)
+  math(EXPR zf_radio_mask "${zf_radio_mask} | 2")
+  target_sources(app PRIVATE src/app/wireless/bluetooth/ble.c src/app/wireless/wireless_auth.c
+    src/app/wireless/sha256.c)
+else()
+  target_sources(app PRIVATE src/app/wireless/bluetooth/ble_none.c)
+endif()
+if(zf_radio_mask)
+  string(APPEND zf_board_caps "|ZF_CAP_WIRELESS")
+endif()
+target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board}
+  "ZF_BOARD_CAPS=(${zf_board_caps})" ZF_RADIO_MASK=${zf_radio_mask})
+
 if(ZF_ENABLE_STORAGE)
   set(zf_storage_sources src/app/storage/storage.c src/platform/storage.c)
 else()
@@ -93,7 +102,7 @@ else()
 endif()
 target_sources(app PRIVATE
   src/main.c
-  src/config/board.c
+  src/platform/board.c
   src/platform/boot_config.c
   src/platform/boot_flash.c
   ${zf_clock_source}
@@ -101,10 +110,8 @@ target_sources(app PRIVATE
   src/app/control/control.c
   ${zf_storage_sources}
   ${zf_led_source}
-  src/app/usb/hid_reports.c
+  src/app/protocol/hid_reports.c
   src/app/usb/usb_hid.c
-  src/app/wireless/sha256.c
-  src/app/wireless/wireless_auth.c
   src/app/wireless/wireless_stage.c
   ${zf_board_sources})
 target_include_directories(app PRIVATE src)

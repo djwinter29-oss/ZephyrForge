@@ -284,6 +284,42 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("apply", self.commands())
 
+    def test_build_can_omit_radios_and_their_dependent_tcp_shell(self):
+        result = self.run_script("build.sh", "--without", "wifi", "--without", "bluetooth")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-DCONF_FILE=prj.conf;boards/esp32s3/board.conf;profiles/usb.conf;"
+                      "profiles/storage.conf;profiles/usb-msc.conf", commands)
+        self.assertIn("-d " + str(self.root / "build/firmware-no-wifi-no-bluetooth-no-tcp-shell"), commands)
+
+    def test_build_can_keep_storage_without_msc_or_benchmark(self):
+        result = self.run_script("build.sh", "--without", "usb-msc", "--without", "benchmark")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("profiles/storage.conf", commands)
+        self.assertNotIn("profiles/usb-msc.conf", commands)
+        self.assertIn("-DZF_ENABLE_STORAGE=ON", commands)
+        self.assertIn("-DZF_ENABLE_STORAGE_BENCHMARK=OFF", commands)
+
+    def test_build_without_pico_wifi_omits_driver_config_and_overlay(self):
+        result = self.run_script("build.sh", "--board", "pico_w", "--without", "wifi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-b rpi_pico/rp2040/w", commands)
+        self.assertNotIn("profiles/wifi.conf", commands)
+        self.assertNotIn("wireless/w.conf", commands)
+        self.assertNotIn("wireless/w.overlay", commands)
+        self.assertIn("storage/sdmmc.overlay", commands)
+
+    def test_build_rejects_unknown_modules_and_removing_the_c6_management_transport(self):
+        for args in (("--without",), ("--without", "unknown"),
+                     ("--board", "esp32c6", "--without", "bluetooth")):
+            with self.subTest(args=args):
+                result = self.run_script("build.sh", *args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Error:", result.stderr)
+                self.assertEqual("", self.commands())
+
     def test_flash_builds_missing_artifacts_then_flashes_once(self):
         result = self.run_script("flash.sh", "--port", "/dev/mock", "--baud", "115200")
         self.assertEqual(result.returncode, 0, result.stderr)

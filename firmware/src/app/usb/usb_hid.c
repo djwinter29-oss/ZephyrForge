@@ -2,7 +2,7 @@
  * Vendor HID management interface on the native USB OTG port.
  */
 #include "app/zephyrforge.h"
-#include "app/usb/hid_reports.h"
+#include "app/protocol/hid_reports.h"
 
 #if CONFIG_USB_DEVICE_STACK_NEXT
 #include "app/control/control.h"
@@ -50,7 +50,7 @@ USBD_DEVICE_DEFINE(zephyrforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), Z
 USBD_DESC_LANG_DEFINE(zephyrforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(zephyrforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(zephyrforge_product, "ZephyrForge");
-#if ZF_ENABLE_STORAGE
+#if ZF_ENABLE_USB_MSC
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID + SD storage");
 #else
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID management");

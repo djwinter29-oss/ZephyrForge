@@ -17,9 +17,9 @@
 :files:
   :source:
     - -:firmware/src/main.c
-    - -:firmware/src/config/board.c
+    - -:firmware/src/platform/board.c
     - -:firmware/src/platform/boot_flash.c
-    - -:firmware/src/platform/system_clock.c
+    - -:firmware/src/platform/espressif/system_clock.c
     - -:firmware/src/app/telemetry.c
     - -:firmware/src/platform/storage.c
     - -:firmware/src/platform/led.c
@@ -44,7 +44,7 @@
       - ZF_RADIO_MASK=1u
     # A hypothetical BLE-only override exercising the radio-mask half of control admission.
     :test_ble_only_board:
-      - ZF_BOARD_CAPS=ZF_CAP_WIRELESS
+      - ZF_BOARD_CAPS=ZF_BOARD_CAPS_ESP32C6
       - ZF_RADIO_MASK=2u
 
 :cmock:

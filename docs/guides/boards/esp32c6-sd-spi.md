@@ -31,8 +31,7 @@ another peripheral while using SD-SPI.
 
 ## Card safety
 
-Back up the card and prepare an existing FAT16, FAT32 or exFAT volume on a computer. Firmware mounts at `/SD:`
-without automatic formatting. The C6 image has no native USB HID or USB MSC; Direct's authenticated BLE connection
-can read storage status but cannot export the card to a computer or run the USB-only storage benchmark.
-Before changing storage variants, follow the
-[card power-cycle instruction](../../reference/sdcard.md#safety-and-ownership).
+The C6 has no native USB HID or USB MSC. Direct can read storage status over authenticated BLE.
+USB export and the storage benchmark are unavailable on this board.
+
+See [card preparation, safe removal, and bus changes](../../reference/sdcard.md#safety-and-ownership).

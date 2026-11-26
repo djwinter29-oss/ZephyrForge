@@ -16,7 +16,7 @@ or the [optional benchmark](#optional-storage-benchmark).
 ## Pin allocation
 
 GPIO numbers are MCU signals, not physical header positions. Use the wiring guide for the exact board and storage
-variant from [Wire an SD card](../README.md#wire-an-sd-card). Read
+variant from [SD-card wiring](../guides/hardware.md#sd-card-wiring). Read
 [safety and ownership](#safety-and-ownership) before changing buses.
 
 ### Reported allocation
@@ -45,9 +45,6 @@ layer with disk name `SD` and FatFs mounted at `/SD:`, and enables GPIO/pinctrl,
 the filesystem API and FatFs. SPI images select `CONFIG_SPI_SDHC`.
 Both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` are explicitly
 disabled: the application cannot automatically format a failed mount or call FatFs mkfs through these options.
-
-Prepare an existing FAT16, FAT32 or exFAT volume on a computer and back up its data before use. exFAT support
-covers mounting existing volumes, such as factory-formatted SDXC cards; the firmware still cannot create one.
 
 ### Pico PIO resources
 
@@ -100,6 +97,8 @@ cleanup is not a verified hardware reset. Power-cycle a card if it cannot be rei
 
 The dashboard exposes **Enable USB drive** when this firmware advertises MSC and card hardware is initialized.
 Native USB presents HID management plus a removable MSC LUN; it has no CDC console.
+USB export is optional: an image without MSC retains firmware-side mounting but exposes no LUN or handoff command.
+See [module selection](../development/firmware-build.md#optional-modules).
 Firmware unmounts FAT before exporting raw 512-byte sectors. The native USB device briefly disconnects and
 reconnects on export so an OS-ejected LUN can be loaded again.
 While firmware owns the card, including during transitions and benchmarks, the LUN reports no medium immediately
@@ -168,11 +167,14 @@ qualification.
 
 ## Safety and ownership
 
+Back up the card and prepare a FAT16, FAT32, or exFAT volume on a computer. Firmware mounts the existing
+volume at `/SD:` without formatting it. This includes factory-formatted exFAT cards.
+
 - Firmware and USB have exclusive ownership; they never mount/access the same medium concurrently.
 - Reboot and settings-save are Busy while the storage worker is active or USB owns the medium.
 - Bluetooth mirrors storage/configuration reports but cannot change MSC ownership.
 - Physical removal during reads/writes can interrupt I/O and corrupt data. Detection does not prevent unplugging,
-  make writes atomic, or provide power-loss recovery. Back up data and safely eject before returning USB ownership.
+  make writes atomic, or provide power-loss recovery. Safely eject before returning USB ownership.
 - Power-cycle the card before changing between SDMMC and SPI images. A board reset can leave the card in SPI mode;
   the board has no card power switch.
 - Only an explicitly confirmed optional benchmark creates a temporary file; no automatic write workload or repair runs.

@@ -39,12 +39,20 @@ secrets. Logs are not forwarded to TCP, and command history is disabled on both 
 
 ### In-browser terminal
 
-In Python and .NET, click fresh connected Wi-Fi status to open a browser terminal for the selected board. Direct
-offers the same link from its local server; keep its dashboard tab open. Static hosting cannot relay TCP.
-The browser terminal connects to the reported address and reports connection failures explicitly.
-For relay behavior, see the [shared bridge contract](../../host/web/README.md#browser-shell) and
-[Direct guide](../../host/direct/README.md#wi-fi-shell). The relay stays on loopback; it does not secure the
-board's network listener.
+With fresh connected Wi-Fi status, open the shell link in the dashboard. Python and .NET provide a relay.
+Direct needs its [local server](../../host/direct/README.md#wi-fi-shell). The terminal uses the board's reported
+IPv4 address and shows an error if the shell is unreachable.
+
+**The board's TCP shell is unauthenticated plaintext.** Use it on a trusted, isolated network and keep
+secrets out of the terminal.
+
+Click the terminal to type. It displays plain text and supports native editing, including arrows, Tab and
+Control keys. Use Shift+Tab to leave the terminal and confirm multiline paste before sending. Opening a
+session clears unfinished input from the previous client and enables echo for the session.
+
+Close the tab to disconnect. The relay closes the session after 15 seconds without requests. If a send
+fails or its outcome is uncertain, close the session and check the board. Avoid replaying uncertain input.
+For the bridge endpoints and session rules, see the [HTTP contract](../../host/web/README.md#browser-shell).
 
 ## Commands and limits
 

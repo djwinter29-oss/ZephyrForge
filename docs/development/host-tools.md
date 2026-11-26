@@ -44,21 +44,10 @@ the shared dashboard directly. Wheel and source-distribution builds need an expl
 no custom build hook. Python type checks run in strict mode across the runtime package and compile-only API
 contracts. Dependencies are declared in `pyproject.toml`, and hatch-vcs derives package versions from Git tags.
 
-To stage assets and check a wheel locally on Linux or macOS, run from the repository root:
-
-```sh
-rm -rf host/python/src/zephyrforge/web
-mkdir -p host/python/src/zephyrforge/web
-cp -R host/web/src/. host/python/src/zephyrforge/web/
-python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
-python3 -m venv build/wheel-check
-build/wheel-check/bin/python -m pip install build/wheels/*.whl
-build/wheel-check/bin/python -I tools/check_python_wheel.py
-```
-
-Repeat staging before each package build so removed or changed assets are not left in the staged copy. After
-packaging, remove `host/python/src/zephyrforge/web` to resume serving the shared checkout assets. A source
-distribution built after staging contains the assets needed for its wheel.
+For release wheels, use the [same build and check helpers as CI](releases.md#reproduce-the-python-release-wheel).
+For a source distribution, copy the contents of `host/web/src/` into
+`host/python/src/zephyrforge/web/` before building, starting from a fresh checkout to avoid stale assets.
+The source distribution includes those assets for downstream wheel builds.
 
 ## .NET builds and versions
 

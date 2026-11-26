@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "app/usb/hid_reports.h"
+#include "app/protocol/hid_reports.h"
 
 /** Result status values. */
 #define ZF_STATUS_IDLE 0u

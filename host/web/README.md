@@ -86,9 +86,7 @@ shared dropdown beside Device information displays the reported color and uses R
 
 ## Browser shell
 
-Fresh connected Wi-Fi status exposes a labeled **Open Wi-Fi shell** link to the
-[diagnostic shell](../../docs/guides/console.md) in a new tab.
-Wi-Fi connectivity does not establish that TCP port 2323 is listening; connection failures are explicit.
+For the operator workflow and network limits, see [Diagnostic Shells](../../docs/guides/console.md#in-browser-terminal).
 
 `POST /api/console?board=ID` accepts exactly `{}`. The host obtains the address from that board's monitor, sends
 two Ctrl-C bytes followed by `shell echo on\r` in one send, and returns `{"session":"TOKEN","ipv4":"ADDRESS"}`.
@@ -106,11 +104,6 @@ Input deliberately uses POST rather than an idempotent HTTP method that a client
 Only one console is admitted per host. Requests have bounded waits; sessions expire after 15 seconds without
 requests and close during host shutdown. Invalid bodies are HTTP 400, conflicts HTTP 409, TCP failures HTTP 503;
 the existing overall body limit still returns HTTP 413.
-
-The terminal renders only text, with bounded scrollback and native cursor/edit/erase support, not full VT100
-emulation or color styling. It preserves Control keys, Tab and arrows, allows Shift+Tab to leave, and confirms
-multiline paste before sending. Closing the page tears down its relay. Reopening is always explicit.
-The raw shell is unauthenticated plaintext even when management uses authenticated BLE.
 
 ## Dashboard behavior
 

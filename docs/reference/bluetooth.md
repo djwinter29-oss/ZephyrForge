@@ -1,8 +1,11 @@
 # Bluetooth LE specification
 
-For client implementation, start with [GATT layout](#gatt-layout), then [session unlock](#session-unlock),
-[command proofs](#command-proofs), and [control characteristic](#control-characteristic).
-For connecting a dashboard, use [wireless setup](../guides/wireless.md#bluetooth-le).
+- **Find the board and service** · [Advertising](#advertising), [GATT layout](#gatt-layout)
+- **Open a session** · [Pairing and bonding](#pairing-and-bonding), [session unlock](#session-unlock)
+- **Send a command** · [Command proofs](#command-proofs), [exchange sequence](#exchange-sequence), [control request and result](#control-characteristic)
+- **Diagnose a failure** · [Validation order](#validation-order), [uncertain outcomes](#uncertain-outcomes), [ATT errors](#att-errors)
+
+For connecting a dashboard, use [Wireless Setup](../guides/wireless.md#bluetooth-le).
 
 ## Scope and conventions
 

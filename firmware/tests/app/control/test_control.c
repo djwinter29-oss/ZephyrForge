@@ -130,9 +130,9 @@ void test_unassigned_and_unsupported_opcodes(void)
 	assert_result(usb(ZF_OP_TCP_PROOF, 0, NULL, 0, 0), ZF_STATUS_UNSUPPORTED, ZF_ERROR_CAPABILITY, 0);
 }
 
-void test_msc_is_unsupported_when_storage_is_not_built(void)
+void test_msc_is_unsupported_when_storage_or_usb_export_is_not_built(void)
 {
-#if !ZF_ENABLE_STORAGE
+#if !ZF_ENABLE_STORAGE || !ZF_ENABLE_USB_MSC
 	const uint8_t enable[1] = {1};
 
 	assert_result(usb(ZF_OP_MSC, 0, enable, sizeof(enable), 0),
@@ -185,7 +185,7 @@ void test_benchmark_admission_size_and_transport_rules(void)
 
 void test_msc_requires_confirmed_return_and_rejects_malformed_or_unsafe_actions(void)
 {
-#if ZF_ENABLE_STORAGE
+#if ZF_ENABLE_STORAGE && ZF_ENABLE_USB_MSC
 	const uint8_t enable[1] = {1};
 	const uint8_t invalid[1] = {2};
 
@@ -242,7 +242,7 @@ void test_scheduled_usb_reboot_reserves_storage_across_transports_and_keeps_read
 	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
 	zf_control_usb_get(result);
 	TEST_ASSERT_EQUAL_UINT8(ZF_STATUS_COMPLETED, result[3]);
-#if ZF_ENABLE_STORAGE
+#if ZF_ENABLE_STORAGE && ZF_ENABLE_USB_MSC
 	const uint8_t export[1] = {1};
 
 	assert_result(usb(ZF_OP_MSC, 0, export, sizeof(export), 10),
@@ -271,7 +271,7 @@ void test_scheduled_ble_save_reserves_usb_storage_and_preserves_its_result(void)
 
 	zf_platform_schedule_reboot_ExpectAndReturn(0);
 	assert_result(ble(ZF_OP_SAVE, 0, args, 0), ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 80);
-#if ZF_ENABLE_STORAGE
+#if ZF_ENABLE_STORAGE && ZF_ENABLE_USB_MSC
 	const uint8_t export[1] = {1};
 
 	assert_result(usb(ZF_OP_MSC, 0, export, sizeof(export), 10),

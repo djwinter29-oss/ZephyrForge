@@ -31,7 +31,8 @@ bool zf_platform_storage_busy(void);
  * @param usb True requests USB ownership; false returns the medium to firmware.
  * @param transaction Feature 20 transaction whose result read shortens the handoff delay.
  * @return Zero when admitted or the owner is already active, -EBUSY while storage is busy, -ENOMEDIUM when
- *         USB is requested without an initialized card with valid geometry, or another negative errno.
+ *         USB is requested without an initialized card with valid geometry, -ENOTSUP when USB export is
+ *         not built, or another negative errno.
  */
 int zf_platform_storage_request(bool usb, uint8_t transaction);
 /**

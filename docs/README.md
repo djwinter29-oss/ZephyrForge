@@ -6,6 +6,7 @@ change, choose the relevant guide below.
 ## Set up and use a board
 
 - [Hardware](guides/hardware.md) - identify your board, connectors, and electrical limits.
+- [SD-card wiring](guides/hardware.md#sd-card-wiring) - choose a pinout for your board and storage image.
 - [Flashing](guides/flashing.md) - install a release image or upload a source build.
 - [Wireless](guides/wireless.md) - scan/test Wi-Fi, save credentials, and connect over BLE.
 - [C6 commissioning](guides/boards/esp32c6-commissioning.md) - set the first BLE Control key through the flashing port.
@@ -13,16 +14,6 @@ change, choose the relevant guide below.
 
 Dashboard installation and use: [Direct](../host/direct/README.md),
 [Python](../host/python/README.md), or [.NET](../host/dotnet/ZephyrForge/README.md).
-
-### Wire an SD card
-
-Choose the guide for both your board and the image's storage bus. GPIO numbers are not interchangeable across boards.
-
-| Board | Native four-bit SDMMC | SD-over-SPI |
-| --- | --- | --- |
-| ESP32-S3 N16R8 | [Wiring](guides/boards/esp32s3-sdmmc.md) | [Wiring](guides/boards/esp32s3-sd-spi.md) |
-| ESP32-C6 N8 | Not supported | [Wiring](guides/boards/esp32c6-sd-spi.md) |
-| Pico family | [Wiring](guides/boards/pico-sdmmc.md) | [Wiring](guides/boards/pico-sd-spi.md) |
 
 ## Build and develop
 

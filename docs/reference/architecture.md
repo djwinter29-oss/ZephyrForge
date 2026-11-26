@@ -78,6 +78,15 @@ the Zephyr SDHC API on PIO. The [SD reference](sdcard.md) covers driver configur
 Settings use a fixed CRC-checked record rather than Zephyr settings/NVS; the [settings reference](settings.md)
 defines its lifecycle and durability.
 
+### Build-time composition
+
+Board selection defines hardware identity and wiring; feature selection defines which services are linked.
+Shared report encoding and control policy are independent of USB and BLE transport implementations.
+Wi-Fi and BLE each have a board-independent disabled implementation. Advertised radio support follows the built
+services rather than the physical board's possible radios. Runtime radio switches cannot restore omitted modules.
+Storage policy remains separate from the Zephyr media worker, and USB export can be omitted without removing FAT
+mounting. Use [firmware build options](../development/firmware-build.md#optional-modules) for selection and dependencies.
+
 ## Lifecycle and failure handling
 
 ### Boot

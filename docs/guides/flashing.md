@@ -5,14 +5,26 @@ Check the exact board and memory variant first; images for boards with the same 
 
 ## Flash a release image
 
-Download and extract the ZIP for your board and storage variant from
-[GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest).
-Verify the ZIP against `SHA256SUMS.txt`, then check its `BUILD-INFO.txt` for the target, storage variant, version,
-and source commit.
+For first use on a factory-fresh ESP32-C6, start with [first-key commissioning](boards/esp32c6-commissioning.md).
+It requires an initialized source build matching the flashed image.
+
+On [GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest), look for
+`zephyrforge-firmware-vVERSION-BOARD-STORAGE.zip`. Match both filename fields to your setup.
+
+| Board | `BOARD` in the filename | Available `STORAGE` values |
+| --- | --- | --- |
+| ESP32-S3-DevKitC-1 N16R8 | `esp32s3-devkitc` | `sdmmc`, `sd-spi`, `none` |
+| ESP32-C6-DevKitC-1 N8 | `esp32c6-devkitc` | `sd-spi`, `none` |
+| Raspberry Pi Pico / Pico W | `pico` / `pico_w` | `sdmmc`, `sd-spi`, `none` |
+| Raspberry Pi Pico 2 / Pico 2 W | `pico2` / `pico2_w` | `sdmmc`, `sd-spi`, `none` |
+
+For example, the v0.1.0 archive for a Pico 2 W without SD storage is `zephyrforge-firmware-v0.1.0-pico2_w-none.zip`.
+Verify the downloaded ZIP against `SHA256SUMS.txt`, then extract it and confirm the target, storage variant,
+version, and source commit in `BUILD-INFO.txt`.
 
 Firmware ZIPs contain an image, build identity, and licenses, not a Zephyr build directory or offline documentation.
 Use the guides linked from the release **at its tag**, and save them before working offline.
-For SD-enabled images, check the matching [wiring guide](../README.md#wire-an-sd-card). Before changing buses,
+For SD-enabled images, check the matching [wiring guide](hardware.md#sd-card-wiring). Before changing buses,
 follow the [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
 
 ### ESP32-S3 release image
@@ -39,6 +51,9 @@ After flashing, use the **USB** connector for HID management and the **UART** co
 
 ### ESP32-C6 release image
 
+Use this path for an ESP32-C6 with a saved Control key. For a factory-fresh board, follow
+[first-key commissioning](boards/esp32c6-commissioning.md).
+
 Use only the ESP32-C6-DevKitC-1 N8 target named in `BUILD-INFO.txt`. Connect its serial flashing port, close other
 serial clients, and install esptool 5 as above. From the extracted ZIP directory:
 
@@ -47,9 +62,7 @@ python -m esptool --chip esp32c6 --port PORT --baud 460800 write-flash 0x0 zephy
 ```
 
 This writes the image without requesting a full-chip erase. Use the UART console for boot logs.
-The C6 has no native USB HID. Direct BLE management needs a saved Control key; the
-[initial commissioning procedure](boards/esp32c6-commissioning.md) requires a matching initialized build directory,
-not just this release binary.
+After boot, [connect over Bluetooth](wireless.md#bluetooth-le) with the saved Control key.
 
 ### Raspberry Pi Pico release image
 
@@ -95,6 +108,10 @@ Uploads replace image sectors without requesting a full-chip erase. Saved
 [boot settings](../reference/settings.md#flash-reservation) survive normal uploads; the wrapper does not access
 the SD card.
 
+The flash wrapper selects default images only. For a build customized with `--without`, use manual
+`west flash -d <custom-build-directory> --skip-rebuild --runner esp32 --esp-device PORT --no-erase`
+from the initialized Zephyr environment, after verifying the selected board and image.
+
 On Windows, use the wrapper from a Bash-capable Zephyr environment and pass a port such as `COM4`. For the default
 ESP32-S3 image, the equivalent command from the workspace root in a native shell is:
 
@@ -105,7 +122,7 @@ west flash -d zephyrforge/build/firmware --skip-rebuild -r esp32 --esp-device CO
 ### Raspberry Pi Pico
 
 The wrapper does not flash Pico boards. Take `zephyr.uf2` from the selected
-[build output directory](../development/firmware-build.md#raspberry-pi-pico-family) and follow the
+[build output directory](../development/firmware-build.md#build-with-the-wrapper) and follow the
 [BOOTSEL copy procedure](#raspberry-pi-pico-release-image) above.
 
 ## If flashing or startup fails
