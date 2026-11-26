@@ -1,5 +1,6 @@
 #include "transport/ble_auth.h"
 #include "transport/sha256.h"
+#include "management/control.h"
 
 #include <string.h>
 
@@ -132,4 +133,25 @@ uint8_t zf_ble_auth_authorize(zf_ble_auth_session_t *session, const uint8_t *req
 		return ZF_ATT_ERR_REJECTED;
 	}
 	return consume_and_verify(session, request, size, now_ms) ? 0 : ZF_ATT_ERR_REJECTED;
+}
+
+uint8_t zf_ble_auth_control_write(zf_ble_auth_session_t *session, const uint8_t *request, size_t size,
+				  int64_t now_ms)
+{
+	uint8_t err;
+
+	if (!session->unlocked) {
+		return ZF_ATT_ERR_REJECTED;
+	}
+	if (!zf_control_ble_envelope(request, size)) {
+		return ZF_ATT_ERR_ENVELOPE;
+	}
+	if (zf_control_ble_busy()) {
+		return ZF_ATT_ERR_UNLIKELY;
+	}
+	err = zf_control_ble_proof_required(request[2]) ? zf_ble_auth_authorize(session, request, size, now_ms) : 0;
+	if (err != 0) {
+		return err;
+	}
+	return zf_control_ble_execute(request, now_ms) ? 0 : ZF_ATT_ERR_UNLIKELY;
 }

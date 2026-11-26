@@ -75,7 +75,8 @@ Telemetry Report `3` remains available in every image because hosts use its upti
 CPU-load and die-temperature fields independently report unavailable when their modules are omitted.
 
 Diagnostic shells are disabled by default. `--with uart-shell` and `--with tcp-shell` enable them; the TCP shell
-requires Wi-Fi and is unauthenticated plaintext for trusted networks only.
+requires Wi-Fi and is unauthenticated plaintext for trusted networks only. A UART-shell build without the TCP shell
+also includes the kernel shell; its `kernel thread stacks` command reports each thread's unused stack.
 
 USB HID management (`CONFIG_ZF_USB_HID`) follows the board overlay's HID node, and SD storage
 (`CONFIG_ZF_STORAGE`) follows the storage overlay selected by `--storage`. Storage never enables FAT formatting;

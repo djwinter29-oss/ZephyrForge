@@ -54,4 +54,14 @@ uint8_t zf_ble_auth_write_proof(zf_ble_auth_session_t *session, const uint8_t *d
 /** Authorize one valid-envelope control request on an unlocked session; consumes the proof. */
 uint8_t zf_ble_auth_authorize(zf_ble_auth_session_t *session, const uint8_t *request, size_t size, int64_t now_ms);
 
+/**
+ * @brief Admit and execute one Control write; call with the application lock held.
+ *
+ * Checks the session, envelope and pending BLE save before consuming a proof, so those refusals leave a staged
+ * proof usable.
+ * @return 0 when executed, otherwise the ATT error for the write response.
+ */
+uint8_t zf_ble_auth_control_write(zf_ble_auth_session_t *session, const uint8_t *request, size_t size,
+				  int64_t now_ms);
+
 #endif

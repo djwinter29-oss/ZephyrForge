@@ -251,9 +251,7 @@ static ssize_t write_proof(struct bt_conn *conn, const struct bt_gatt_attr *attr
 static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, uint16_t len,
 			     uint16_t offset, uint8_t flags)
 {
-	const uint8_t *request = buf;
-	int64_t now = k_uptime_get();
-	ssize_t result = len;
+	uint8_t err;
 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
@@ -261,27 +259,9 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 		return BT_GATT_ERR(BT_ATT_ERR_NOT_SUPPORTED);
 	}
 	zf_app_lock();
-	if (!session.unlocked) {
-		result = BT_GATT_ERR(ZF_ATT_ERR_REJECTED);
-	} else if (!zf_control_ble_envelope(request, len)) {
-		result = BT_GATT_ERR(ZF_ATT_ERR_ENVELOPE);
-	} else if (zf_control_ble_busy()) {
-		result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
-	} else {
-		uint8_t err = zf_control_ble_proof_required(request[2])
-				      ? zf_ble_auth_authorize(&session, request, len, now)
-				      : 0;
-
-		if (err) {
-			result = BT_GATT_ERR(err);
-		} else {
-			if (!zf_control_ble_execute(request, now)) {
-				result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
-			}
-		}
-	}
+	err = zf_ble_auth_control_write(&session, buf, len, k_uptime_get());
 	zf_app_unlock();
-	return result;
+	return err ? BT_GATT_ERR(err) : len;
 }
 
 static ssize_t read_text(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf, uint16_t len,

@@ -96,12 +96,35 @@ jobs:
           if-no-files-found: error
 
   module-variants:
-    name: Optional module build variants
+    name: Module variant ${{ matrix.title }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # build.sh fails when the resolved Kconfig does not honor a requested module switch.
+        include:
+          - {args: "--board esp32s3 --without wifi", title: "ESP32-S3 without Wi-Fi"}
+          - {args: "--board esp32s3 --without bluetooth", title: "ESP32-S3 without Bluetooth"}
+          - {args: "--board esp32s3 --without usb-hid", title: "ESP32-S3 without USB HID"}
+          - {args: "--board esp32s3 --without usb-msc", title: "ESP32-S3 without USB MSC"}
+          - {args: "--board esp32s3 --without benchmark", title: "ESP32-S3 without benchmark"}
+          - {args: "--board esp32s3 --without settings-save", title: "ESP32-S3 without settings save"}
+          - {args: "--board esp32s3 --without led --without cpu-load --without temperature",
+             title: "ESP32-S3 without LED and telemetry sensors"}
+          - {args: "--board esp32s3 --with uart-shell", title: "ESP32-S3 with UART and kernel shells"}
+          - {args: "--board esp32s3 --with tcp-shell --with uart-shell", title: "ESP32-S3 with both shells"}
+          - {args: "--board esp32s3 --storage none --without wifi --without bluetooth --without led
+                    --without cpu-load --without temperature --without settings-save",
+             title: "ESP32-S3 minimal USB HID"}
+          - {args: "--board esp32c6 --storage none --without wifi --without temperature",
+             title: "ESP32-C6 Bluetooth only"}
+          - {args: "--board pico --with settings-save", title: "Pico with settings save"}
+          - {args: "--board pico_w --storage none --without wifi", title: "Pico W without Wi-Fi"}
     env:
       ZEPHYRFORGE_VERSION: ${{ inputs.version }}
       CMAKE_BUILD_PARALLEL_LEVEL: 2
+      BUILD_ARGS: ${{ matrix.args }}
     steps:
       - name: Checkout manifest repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -117,22 +140,8 @@ jobs:
       - name: Use source commit timestamp for build dates
         run: echo "SOURCE_DATE_EPOCH=$(git -C zephyrforge show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
-      - name: Build optional module variants
+      - name: Build module variant
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          for module in wifi bluetooth usb-hid usb-msc settings-save; do
-            bash zephyrforge/tools/firmware/build.sh --board esp32s3 --storage sdmmc --without "$module"
-            case "$module" in
-              wifi) symbol=WIFI; build=firmware-no-wifi ;;
-              bluetooth) symbol=BLUETOOTH; build=firmware-no-bluetooth ;;
-              usb-hid) symbol=USB_HID; build=firmware-no-usb-hid ;;
-              usb-msc) symbol=USB_MSC; build=firmware-no-usb-msc ;;
-              settings-save) symbol=SETTINGS_SAVE; build=firmware-no-settings-save ;;
-            esac
-            config="zephyrforge/build/$build/zephyr/.config"
-            grep -Fxq "# CONFIG_ZF_$symbol is not set" "$config" || {
-              echo "Expected CONFIG_ZF_$symbol to be disabled for the $module variant." >&2
-              exit 1
-            }
-          done
+        # BUILD_ARGS is a fixed matrix value; word splitting is intended.
+        run: bash zephyrforge/tools/firmware/build.sh $BUILD_ARGS

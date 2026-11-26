@@ -92,7 +92,8 @@ config ZF_UART_SHELL
 	select SHELL_BACKEND_SERIAL
 	help
 	  Diagnostic shell on the monitor UART. The shell is unauthenticated and should only be enabled on trusted
-	  physical connections.
+	  physical connections. Without the TCP shell it adds the kernel shell, whose "kernel thread stacks" command
+	  reports stack high-water marks.
 
 config ZF_CPU_LOAD
 	bool "CPU load telemetry"
@@ -242,7 +243,10 @@ config DATE_SHELL
 	default n
 config DEVMEM_SHELL
 	default n
+# The kernel shell reports thread stack high-water marks. Shell commands reach every backend, so it stays off
+# whenever the unauthenticated network shell is built.
 config KERNEL_SHELL
+	default y if ZF_UART_SHELL && !ZF_TCP_SHELL
 	default n
 config FILE_SYSTEM_SHELL
 	default n

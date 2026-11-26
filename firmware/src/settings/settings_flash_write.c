@@ -59,6 +59,8 @@ static size_t queued_size;
 static zf_settings_save_done_t queued_done;
 static atomic_t write_pending;
 static atomic_t queue_started;
+/* Not shared with Wi-Fi requests, which can block past the host's 5 s control-result wait, nor with the system
+ * queue, whose Bluetooth host work must not stall behind a flash erase. */
 static struct k_work_q settings_work_queue;
 K_THREAD_STACK_DEFINE(settings_work_stack, 3072);
 

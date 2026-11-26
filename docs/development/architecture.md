@@ -132,7 +132,8 @@ Keep this order when adding cross-service calls.
 - **Storage** runs in a worker outside the application lock. Native MSC block I/O runs in its own USB class thread.
   Flash, Wi-Fi driver and filesystem operations may block, so their dedicated workers are not merged into the
   latency-sensitive system work queue. Stack budgets are not reduced until high-water measurements cover supported
-  targets and worst-case operations; native simulation cannot establish MCU stack requirements.
+  targets and worst-case operations; native simulation cannot establish MCU stack requirements. The
+  [UART diagnostic shell](firmware-build.md#optional-modules) reports them.
 
 ### Command completion and recovery
 

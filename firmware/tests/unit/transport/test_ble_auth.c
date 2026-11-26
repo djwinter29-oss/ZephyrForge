@@ -1,6 +1,7 @@
 #include "unity.h"
 #include "transport/ble_auth.h"
 #include "transport/sha256.h"
+#include "mock_control.h"
 
 #include <string.h>
 
@@ -117,4 +118,39 @@ void test_missing_key_is_unavailable(void)
 	zf_ble_auth_init(NULL, uid);
 	zf_ble_auth_set_nonce(&session, nonce);
 	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_UNAVAILABLE, zf_ble_auth_write_proof(&session, session_proof, 16, 0));
+}
+
+void test_control_write_refusals_before_proof_leave_the_staged_proof_usable(void)
+{
+	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_REJECTED, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
+	unlock();
+	zf_ble_auth_set_nonce(&session, nonce);
+	TEST_ASSERT_EQUAL_UINT8(0, zf_ble_auth_write_proof(&session, command_proof, 16, 0));
+
+	zf_control_ble_envelope_ExpectAndReturn(reboot_request, 9, false);
+	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_ENVELOPE, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
+	zf_control_ble_envelope_ExpectAndReturn(reboot_request, 9, true);
+	zf_control_ble_busy_ExpectAndReturn(true);
+	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_UNLIKELY, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
+
+	zf_control_ble_envelope_ExpectAndReturn(reboot_request, 9, true);
+	zf_control_ble_busy_ExpectAndReturn(false);
+	zf_control_ble_proof_required_ExpectAndReturn(reboot_request[2], true);
+	zf_control_ble_execute_ExpectAndReturn(reboot_request, 0, true);
+	TEST_ASSERT_EQUAL_UINT8(0, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
+}
+
+void test_control_write_skips_proof_only_for_exempt_opcodes_and_reports_refused_execution(void)
+{
+	unlock();
+	zf_control_ble_envelope_ExpectAndReturn(reboot_request, 9, true);
+	zf_control_ble_busy_ExpectAndReturn(false);
+	zf_control_ble_proof_required_ExpectAndReturn(reboot_request[2], true);
+	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_UNAVAILABLE, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
+
+	zf_control_ble_envelope_ExpectAndReturn(reboot_request, 9, true);
+	zf_control_ble_busy_ExpectAndReturn(false);
+	zf_control_ble_proof_required_ExpectAndReturn(reboot_request[2], false);
+	zf_control_ble_execute_ExpectAndReturn(reboot_request, 0, false);
+	TEST_ASSERT_EQUAL_UINT8(ZF_ATT_ERR_UNLIKELY, zf_ble_auth_control_write(&session, reboot_request, 9, 0));
 }

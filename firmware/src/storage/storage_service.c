@@ -343,6 +343,7 @@ static void storage_worker(void *a, void *b, void *c)
 	}
 }
 
+/* SD and benchmark I/O can occupy this thread for minutes; it is never shared with other background work. */
 K_THREAD_STACK_DEFINE(storage_stack, 4096);
 static struct k_thread storage_thread;
 

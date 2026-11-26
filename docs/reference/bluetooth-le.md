@@ -317,11 +317,12 @@ prove which connection produced it.
 1. Locked link: ATT error `0x80`. The envelope is not checked.
 2. Invalid envelope (length other than 9, version other than `1`, or transaction ID `0`): ATT error `0x81`. The
    result slot, nonce and proof are unchanged.
-3. Non-LED requests follow the proof lifecycle and failure mapping in [proof rules](#proof-rules). LED requests
+3. A BLE settings save still pending: ATT error `0x0E`. The result slot, nonce and proof are unchanged.
+4. Non-LED requests follow the proof lifecycle and failure mapping in [proof rules](#proof-rules). LED requests
    skip authentication.
-4. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
+5. Opcodes `3`, `4` and `6`-`13` (assigned but USB-only): Unsupported/error `4` in the result slot.
    Unassigned opcodes: Unsupported/error `7`.
-5. Opcodes `1`, `2` and `5` follow the shared [error precedence](usb-hid.md#get-result) for their arguments and
+6. Opcodes `1`, `2` and `5` follow the shared [error precedence](usb-hid.md#get-result) for their arguments and
    state, with ZephyrForge's unsupported-feature restrictions.
    Valid save arguments are checked before USB staging conflicts: opcode `5` returns Busy/error `5` with
    detail `28` while unexpired USB-staged wireless values exist. Opcode `2` also returns Busy/error `5`,
@@ -362,6 +363,7 @@ the reset.
 | `0x06` | Request Not Supported | Prepared (long), offset or Write Without Response writes rejected by the application callbacks. Write Without Response has no ATT response. |
 | `0x07` | Invalid Offset | Read Blob uses a different handle than the active snapshot, or an offset exceeds the snapshot length. |
 | `0x0D` | Invalid Attribute Value Length | `0101` write that is not 16 bytes. |
+| `0x0E` | Unlikely Error | `0014` write while a BLE settings save is pending; checked after the envelope and before the proof. |
 
 These ATT errors apply to requests that receive an ATT response. Standard GAP/GATT attributes, including CCCD
 validation and caching, are handled by the Bluetooth stack and can return stack-defined ATT errors. The server's

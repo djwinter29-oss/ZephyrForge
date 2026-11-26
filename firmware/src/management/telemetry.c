@@ -93,7 +93,7 @@ void zf_telemetry_set_active(bool active)
 		return;
 	}
 
-	int64_t now = k_uptime_get();
+	int64_t now __maybe_unused = k_uptime_get();
 
 #if IS_ENABLED(CONFIG_ZF_CPU_LOAD)
 	window_at = now;
@@ -115,7 +115,7 @@ void zf_telemetry_poll(void)
 	if (!sampling_active) {
 		return;
 	}
-	int64_t now = k_uptime_get();
+	int64_t now __maybe_unused = k_uptime_get();
 #if IS_ENABLED(CONFIG_ZF_CPU_LOAD)
 	uint64_t busy;
 	uint64_t total;

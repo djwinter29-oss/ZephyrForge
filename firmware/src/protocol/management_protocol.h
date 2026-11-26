@@ -165,6 +165,7 @@
 /** BLE ATT errors returned by the management characteristics. */
 #define ZF_ATT_ERR_INVALID_OFFSET 0x07u
 #define ZF_ATT_ERR_INVALID_LENGTH 0x0Du
+#define ZF_ATT_ERR_UNLIKELY 0x0Eu
 #define ZF_ATT_ERR_REJECTED 0x80u
 #define ZF_ATT_ERR_ENVELOPE 0x81u
 #define ZF_ATT_ERR_RATE_LIMITED 0x82u

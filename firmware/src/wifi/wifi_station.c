@@ -520,6 +520,7 @@ static enum action next_action(int64_t now, zf_wifi_network_t *network)
 	return ACTION_NONE;
 }
 
+/* Driver requests block for the whole association on AIROC, so they get a queue of their own. */
 static struct k_work_q request_queue;
 K_THREAD_STACK_DEFINE(request_stack, 4096);
 static enum action request_action;
