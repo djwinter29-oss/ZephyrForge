@@ -34,8 +34,10 @@ void zf_storage_snapshot(zf_storage_t *out);
  * correlated transaction shortens that delay.
  */
 void zf_storage_result_read(uint8_t transaction);
-/** True while the storage worker is busy or USB exclusively owns the card. */
-bool zf_storage_busy(void);
+/** True while the storage worker is manipulating the card or USB exclusively owns it. */
+bool zf_storage_in_use(void);
+/** True when USB mass-storage export is built and its disk proxy registered successfully. */
+bool zf_storage_msc_available(void);
 /**
  * @brief Admit one USB ownership request without doing disk I/O; correlate its result before USB refresh.
  * @param usb True requests USB ownership; false returns the medium to firmware.
@@ -81,7 +83,12 @@ static inline void zf_storage_result_read(uint8_t transaction)
 	(void)transaction;
 }
 
-static inline bool zf_storage_busy(void)
+static inline bool zf_storage_in_use(void)
+{
+	return false;
+}
+
+static inline bool zf_storage_msc_available(void)
 {
 	return false;
 }

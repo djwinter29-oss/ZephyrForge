@@ -95,7 +95,6 @@ typedef struct {
 	bool msc_enabled; /**< USB exclusively owns the raw medium. */
 	bool msc_transition_pending; /**< An admitted ownership handoff is pending. */
 	bool msc_request_rejected; /**< Last admitted handoff failed or was cancelled. */
-	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
 } zf_storage_t;
 
 /** Coherent progress, retained until a subsequent admitted run or reboot. */

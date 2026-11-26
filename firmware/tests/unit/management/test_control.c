@@ -117,8 +117,8 @@ void setUp(void)
 	zf_wifi_test_active_IgnoreAndReturn(false);
 	zf_wifi_scan_active_IgnoreAndReturn(false);
 #if IS_ENABLED(CONFIG_ZF_STORAGE)
-	zf_storage_busy_IgnoreAndReturn(false);
-	zf_storage_result_read_Ignore();
+	zf_storage_in_use_IgnoreAndReturn(false);
+	zf_storage_msc_available_IgnoreAndReturn(true);
 #endif
 }
 
@@ -288,9 +288,9 @@ void test_reboot_and_save_do_not_run_while_storage_is_busy_or_usb_owned(void)
 #if IS_ENABLED(CONFIG_ZF_STORAGE)
 	const uint8_t settings[4] = {240, 0, 0, 3};
 
-	zf_storage_busy_StopIgnore();
-	zf_storage_busy_ExpectAndReturn(true);
-	zf_storage_busy_ExpectAndReturn(true);
+	zf_storage_in_use_StopIgnore();
+	zf_storage_in_use_ExpectAndReturn(true);
+	zf_storage_in_use_ExpectAndReturn(true);
 	assert_result(usb(ZF_OP_REBOOT, 1, NULL, 0, 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, 1);
 	assert_result(usb(ZF_OP_SAVE, 0, settings, sizeof(settings), 0), ZF_STATUS_BUSY, ZF_ERROR_BUSY, 1);
 	TEST_ASSERT_EQUAL_INT(0, write_calls);

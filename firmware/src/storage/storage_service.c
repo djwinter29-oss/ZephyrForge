@@ -27,6 +27,10 @@ static const struct gpio_dt_spec detect = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user),
 static struct gpio_callback detect_callback;
 static bool detect_irq;
 static zf_storage_t snapshot;
+/* The worker is manipulating the medium; guarded by snapshot_lock. */
+static bool worker_busy;
+/* The USB disk proxy is registered, so USB ownership can be granted. */
+static atomic_t export_attached;
 static bool request_pending;
 static uint8_t request_transaction;
 static int64_t request_ready_at;
@@ -69,7 +73,7 @@ bool zf_storage_media_present(void)
 	return available;
 }
 
-void zf_storage_service_publish(const zf_storage_t *storage)
+void zf_storage_service_publish(const zf_storage_t *storage, bool busy)
 {
 #if IS_ENABLED(CONFIG_ZF_USB_MSC)
 	bool msc_changed;
@@ -80,8 +84,9 @@ void zf_storage_service_publish(const zf_storage_t *storage)
 	msc_changed = snapshot.msc_enabled != storage->msc_enabled;
 #endif
 	snapshot = *storage;
+	worker_busy = busy;
 	if (request_pending) {
-		snapshot.busy = true;
+		worker_busy = true;
 		snapshot.sample_valid = false;
 		snapshot.msc_transition_pending = true;
 	}
@@ -106,12 +111,12 @@ int zf_storage_request(bool usb, uint8_t transaction)
 	zf_storage_request_t action = usb ? ZF_STORAGE_USB_OWNER : ZF_STORAGE_FIRMWARE_OWNER;
 	int err = 0;
 
-	/* Protocol admission also checks this; retain the service guard for direct callers. */
-	if (!IS_ENABLED(CONFIG_ZF_USB_MSC)) {
+	/* Protocol admission checks the build; this also covers a USB proxy that failed to register. */
+	if (!zf_storage_msc_available()) {
 		return -ENOTSUP;
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
-	if (request_pending || snapshot.busy) {
+	if (request_pending || worker_busy) {
 		err = -EBUSY;
 	} else if (usb == snapshot.msc_enabled) {
 		/* Repeating a confirmed owner request is a no-op, not a replayed block write. */
@@ -123,7 +128,7 @@ int zf_storage_request(bool usb, uint8_t transaction)
 		request_transaction = transaction;
 		request_ready_at = k_uptime_get() + OWNER_HANDOFF_DELAY_MS;
 		request_pending = true;
-		snapshot.busy = true;
+		worker_busy = true;
 		snapshot.sample_valid = false;
 		snapshot.msc_transition_pending = true;
 		request_action = action;
@@ -147,14 +152,19 @@ void zf_storage_result_read(uint8_t transaction)
 	k_mutex_unlock(&snapshot_lock);
 }
 
-bool zf_storage_busy(void)
+bool zf_storage_in_use(void)
 {
-	bool busy;
+	bool in_use;
 
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
-	busy = snapshot.busy || snapshot.msc_enabled;
+	in_use = worker_busy || snapshot.msc_enabled;
 	k_mutex_unlock(&snapshot_lock);
-	return busy;
+	return in_use;
+}
+
+bool zf_storage_msc_available(void)
+{
+	return IS_ENABLED(CONFIG_ZF_USB_MSC) && atomic_get(&export_attached) != 0;
 }
 
 void zf_storage_report(uint8_t sequence, uint8_t *out)
@@ -174,7 +184,7 @@ int zf_storage_run_exclusive(zf_storage_exclusive_job_t job, void *context)
 		return -EINVAL;
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
-	if (request_pending || snapshot.busy) {
+	if (request_pending || worker_busy) {
 		err = -EBUSY;
 	} else if (snapshot.msc_enabled) {
 		err = -EACCES;
@@ -187,7 +197,7 @@ int zf_storage_run_exclusive(zf_storage_exclusive_job_t job, void *context)
 	} else {
 		exclusive_job = job;
 		exclusive_context = context;
-		snapshot.busy = true;
+		worker_busy = true;
 		snapshot.sample_valid = false;
 		media_removed = false;
 		k_sem_give(&storage_wakeup);
@@ -207,7 +217,7 @@ bool zf_storage_export_ready(uint32_t *blocks)
 		return false;
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
-	ready = present && snapshot.msc_enabled && !snapshot.busy && snapshot.block_count != 0;
+	ready = present && snapshot.msc_enabled && !worker_busy && snapshot.block_count != 0;
 	if (blocks != NULL) {
 		*blocks = snapshot.block_count;
 	}
@@ -230,6 +240,22 @@ bool zf_storage_export_lock(uint32_t *blocks)
 void zf_storage_export_unlock(void)
 {
 	k_mutex_unlock(&media_lock);
+}
+
+void zf_storage_export_attach(void)
+{
+	atomic_set(&export_attached, 1);
+}
+
+bool zf_storage_export_owner(bool *usb)
+{
+	bool settled;
+
+	k_mutex_lock(&snapshot_lock, K_FOREVER);
+	settled = !worker_busy && !snapshot.msc_transition_pending;
+	*usb = snapshot.msc_enabled;
+	k_mutex_unlock(&snapshot_lock);
+	return settled;
 }
 #endif
 
@@ -282,7 +308,7 @@ static void storage_worker(void *a, void *b, void *c)
 		if (job != NULL) {
 			job(job_context);
 			k_mutex_lock(&snapshot_lock, K_FOREVER);
-			snapshot.busy = false;
+			worker_busy = false;
 			snapshot.sample_valid = false;
 			k_mutex_unlock(&snapshot_lock);
 			present = gpio_pin_get_dt(&detect);

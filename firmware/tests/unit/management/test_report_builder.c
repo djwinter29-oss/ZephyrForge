@@ -13,6 +13,14 @@
 #include "mock_usb_device.h"
 #include "mock_wireless_status.h"
 
+void setUp(void)
+{
+	zf_storage_msc_available_IgnoreAndReturn(true);
+}
+
+void tearDown(void)
+{
+}
 
 void test_report_builder_dispatches_shared_and_transport_independent_payloads(void)
 {

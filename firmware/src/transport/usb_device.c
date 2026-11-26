@@ -8,10 +8,8 @@
 #include "protocol/report_codec.h"
 #include "management/report_builder.h"
 #include "app/runtime.h"
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 #include "storage/storage.h"
 #include "transport/usb_msc.h"
-#endif
 
 #include <errno.h>
 #include <string.h>
@@ -98,67 +96,6 @@ static int64_t storage_check_at;
 static int64_t benchmark_check_at;
 static int64_t storage_sent_at;
 static int64_t benchmark_sent_at;
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
-static atomic_t msc_state;
-static atomic_t storage_reconnect_pending;
-
-static int reconnect(void)
-{
-	int err = usbd_disable(&zephyrforge_usbd);
-
-	if (err == 0) {
-		k_sleep(K_MSEC(250));
-		err = usbd_enable(&zephyrforge_usbd);
-	}
-	if (err != 0) {
-		LOG_ERR("USB storage refresh failed: %d", err);
-	}
-	return err;
-}
-
-static void storage_reconnect_handler(struct k_work *work)
-{
-	zf_storage_t storage;
-	int err;
-
-	ARG_UNUSED(work);
-	err = reconnect();
-	if (err != 0) {
-		struct k_work_delayable *delayable = k_work_delayable_from_work(work);
-
-		if (k_work_reschedule(delayable, K_SECONDS(1)) < 0) {
-			atomic_clear(&storage_reconnect_pending);
-			LOG_ERR("Unable to retry USB storage refresh");
-		}
-		return;
-	}
-	zf_storage_snapshot(&storage);
-	if (!storage.busy && !storage.msc_transition_pending) {
-		atomic_set(&msc_state, storage.msc_enabled);
-	}
-	atomic_clear(&storage_reconnect_pending);
-}
-
-K_WORK_DELAYABLE_DEFINE(storage_reconnect_work, storage_reconnect_handler);
-
-static void poll_storage_owner(void)
-{
-	zf_storage_t storage;
-
-	zf_storage_snapshot(&storage);
-	if (storage.busy || storage.msc_transition_pending || storage.msc_enabled == atomic_get(&msc_state)) {
-		return;
-	}
-	if (!atomic_cas(&storage_reconnect_pending, 0, 1)) {
-		return;
-	}
-	if (k_work_reschedule(&storage_reconnect_work, K_NO_WAIT) < 0) {
-		atomic_clear(&storage_reconnect_pending);
-		LOG_ERR("Unable to queue USB storage refresh");
-	}
-}
-#endif
-
 static void iface_ready(const struct device *dev, const bool is_ready)
 {
 	ARG_UNUSED(dev);
@@ -190,6 +127,8 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		zf_app_lock();
 		zf_control_usb_get(buf + 1);
 		zf_app_unlock();
+		/* Reading the correlated result shortens a pending storage ownership handoff. */
+		zf_storage_result_read(buf[2]);
 	} else if (zf_management_report_build(id, 0, buf + 1) != size) {
 		return -ENOTSUP;
 	}
@@ -285,9 +224,7 @@ void zf_usb_device_poll(void)
 {
 	int64_t now = k_uptime_get();
 
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
-	poll_storage_owner();
-#endif
+	zf_usb_msc_poll();
 	if (!atomic_get(&ready)) {
 		return;
 	}
@@ -332,8 +269,19 @@ bool zf_usb_device_configured(void)
 	return atomic_get(&ready) != 0;
 }
 
+int zf_usb_device_enable(void)
+{
+	return usbd_enable(&zephyrforge_usbd);
+}
+
+int zf_usb_device_disable(void)
+{
+	return usbd_disable(&zephyrforge_usbd);
+}
+
 int zf_usb_device_init(void)
 {
+	static const char *msc_blocklist[] = {NULL, NULL};
 	int err;
 
 	if (!device_is_ready(hid)) {
@@ -344,17 +292,10 @@ int zf_usb_device_init(void)
 	if (err) {
 		return err;
 	}
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
-	err = zf_usb_msc_register();
-	if (err != 0) {
-		LOG_ERR("USB mass-storage setup failed: %d", err);
-		return err;
+	/* Mass storage is optional: keep HID management when its disk proxy cannot register. */
+	if (zf_usb_msc_init() != 0) {
+		msc_blocklist[0] = "msc_0";
 	}
-	zf_storage_t storage;
-
-	zf_storage_snapshot(&storage);
-	atomic_set(&msc_state, storage.msc_enabled);
-#endif
 	memcpy(serial_ascii, zf_board_serial(), sizeof(serial_ascii));
 
 	err = usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_lang);
@@ -362,7 +303,7 @@ int zf_usb_device_init(void)
 	err = err ? err : usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_product);
 	err = err ? err : usbd_add_descriptor(&zephyrforge_usbd, &zephyrforge_serial);
 	err = err ? err : usbd_add_configuration(&zephyrforge_usbd, USBD_SPEED_FS, &zephyrforge_config);
-	err = err ? err : usbd_register_all_classes(&zephyrforge_usbd, USBD_SPEED_FS, 1, NULL);
+	err = err ? err : usbd_register_all_classes(&zephyrforge_usbd, USBD_SPEED_FS, 1, msc_blocklist);
 	if (err) {
 		LOG_ERR("USB device setup failed: %d", err);
 		return err;

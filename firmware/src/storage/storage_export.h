@@ -26,5 +26,13 @@ bool zf_storage_export_ready(uint32_t *blocks);
 bool zf_storage_export_lock(uint32_t *blocks);
 /** Release the media lock taken by a successful zf_storage_export_lock(). */
 void zf_storage_export_unlock(void);
+/** Allow USB ownership requests once the USB disk proxy has registered; until then they fail with -ENOTSUP. */
+void zf_storage_export_attach(void);
+/**
+ * @brief Read the card owner the USB host should see after re-enumeration.
+ * @param usb Receives true while USB owns the card.
+ * @return False while an ownership handoff or other media work is still in progress.
+ */
+bool zf_storage_export_owner(bool *usb);
 
 #endif

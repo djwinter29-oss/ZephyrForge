@@ -20,6 +20,10 @@ bool zf_usb_device_configured(void);
 void zf_usb_device_poll(void);
 /** Return the next Input publication deadline, or INT64_MAX when USB is idle. */
 int64_t zf_usb_device_next_deadline(void);
+/** Detach from the host so it re-enumerates the device; returns 0 or a negative errno. */
+int zf_usb_device_disable(void);
+/** Reattach to the host after zf_usb_device_disable(); returns 0 or a negative errno. */
+int zf_usb_device_enable(void);
 #else
 static inline int zf_usb_device_init(void)
 {

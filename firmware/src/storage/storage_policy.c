@@ -11,9 +11,8 @@ static int64_t retry_at;
 /** Publish before blocking media work; readers never wait for SD operations. */
 static void publish(bool busy)
 {
-	state.busy = busy;
 	state.sample_valid = state.configured && state.presence_known && !busy && !state.msc_enabled;
-	zf_storage_service_publish(&state);
+	zf_storage_service_publish(&state, busy);
 }
 
 static void clear_media(void)

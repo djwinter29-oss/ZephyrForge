@@ -52,7 +52,8 @@ static zf_ble_auth_session_t session;
 static const struct bt_gatt_attr *snapshot_attr;
 static uint8_t snapshot[SNAPSHOT_SIZE];
 static uint16_t snapshot_length;
-static uint8_t sequence;
+/* Input-report sequences, one per mirrored report as on USB; index by report ID. */
+static uint8_t sequences[ZF_REPORT_BENCHMARK + 1];
 
 static const struct bt_data advertising[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
@@ -136,6 +137,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	snapshot_attr = NULL;
 	atomic_set(&state, ZF_BLE_CONNECTED);
 	zf_app_unlock();
+	/* The main loop switches telemetry sampling on management-link changes. */
+	zf_app_wakeup();
 	LOG_INF("Central connected");
 }
 
@@ -150,6 +153,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	snapshot_attr = NULL;
 	atomic_set(&state, ZF_BLE_OFF);
 	zf_app_unlock();
+	zf_app_wakeup();
 	LOG_INF("Central disconnected (0x%02x)", reason);
 }
 
@@ -185,7 +189,7 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 		return ZF_BLE_AUTH_NONCE_SIZE;
 	}
 	if (chr == ZF_REPORT_TELEMETRY || chr == ZF_REPORT_STORAGE || chr == ZF_REPORT_BENCHMARK) {
-		return zf_management_report_build(chr, ++sequence, out);
+		return zf_management_report_build(chr, ++sequences[chr], out);
 	}
 	switch (chr) {
 	case ZF_REPORT_IDENTITY:

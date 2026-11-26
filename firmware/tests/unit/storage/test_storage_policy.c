@@ -5,6 +5,7 @@
 #include <string.h>
 
 static zf_storage_t published;
+static bool published_busy;
 static int open_result;
 static int close_result;
 static int refresh_result;
@@ -15,14 +16,15 @@ static bool opened_usb;
 static bool mount_failed;
 static int64_t completed_at;
 
-void zf_storage_service_publish(const zf_storage_t *storage)
+void zf_storage_service_publish(const zf_storage_t *storage, bool busy)
 {
 	published = *storage;
+	published_busy = busy;
 }
 
 int zf_storage_media_open(bool usb, zf_storage_t *storage)
 {
-	TEST_ASSERT_TRUE(published.busy);
+	TEST_ASSERT_TRUE(published_busy);
 	TEST_ASSERT_FALSE(published.sample_valid);
 	TEST_ASSERT_FALSE(published.msc_enabled);
 	++opens;
@@ -48,7 +50,7 @@ int64_t zf_storage_media_time(void)
 
 int zf_storage_media_close(void)
 {
-	TEST_ASSERT_TRUE(published.busy);
+	TEST_ASSERT_TRUE(published_busy);
 	TEST_ASSERT_FALSE(published.msc_enabled);
 	++closes;
 	return close_result;
@@ -263,7 +265,7 @@ void test_unconfigured_policy_performs_no_media_io(void)
 	TEST_ASSERT_EQUAL_UINT(0, opens);
 	TEST_ASSERT_EQUAL_UINT(0, closes);
 	TEST_ASSERT_EQUAL_UINT(0, refreshes);
-	TEST_ASSERT_FALSE(published.busy);
+	TEST_ASSERT_FALSE(published_busy);
 	TEST_ASSERT_FALSE(published.present);
 }
 

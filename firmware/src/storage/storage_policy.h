@@ -32,8 +32,12 @@ void zf_storage_policy_init(bool configured, bool present, int64_t now_ms);
  */
 void zf_storage_policy_poll(int present, int64_t now_ms, zf_storage_request_t request);
 
-/** Publish a coherent snapshot without holding the application lock or exposing live mutable state. */
-void zf_storage_service_publish(const zf_storage_t *storage);
+/**
+ * @brief Publish a coherent snapshot without holding the application lock or exposing live mutable state.
+ * @param storage Wire-visible storage state.
+ * @param busy True while the worker is about to manipulate, or is manipulating, the medium.
+ */
+void zf_storage_service_publish(const zf_storage_t *storage, bool busy);
 /**
  * @brief Reset the previous medium and open it for exactly one owner.
  * @param usb True initializes raw blocks; false mounts the existing FAT volume without formatting.
