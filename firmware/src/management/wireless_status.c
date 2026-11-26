@@ -15,7 +15,7 @@ void zf_management_wireless_report(uint8_t *out)
 	zf_app_lock();
 	status.ble_state = zf_ble_gatt_state();
 	/* Detail 1 reports a terminal radio start failure unless Wi-Fi has a more specific detail. */
-	status.detail = zf_ble_gatt_failed() ? 1u : 0u;
+	status.detail = zf_ble_gatt_failed() ? ZF_WIRELESS_DETAIL_RADIO : ZF_WIRELESS_DETAIL_NONE;
 	saved_network = zf_wifi_status(&status);
 	zf_control_staging_status(&stage_flags, &status.staged_state);
 	status.flags = (uint8_t)((saved_network ? 0x01u : 0u) | (zf_settings_ble_key_configured() ? 0x02u : 0u) |

@@ -7,4 +7,5 @@ target_sources(app PRIVATE main.c ${ZF_ROOT}/src/wifi/wifi_station.c
   ${ZF_ROOT}/src/protocol/report_codec.c ${ZF_ROOT}/src/management/wireless_status.c
   ${ZF_ROOT}/src/wifi/wifi_scan_table.c)
 target_include_directories(app PRIVATE ${ZF_ROOT}/src)
-target_compile_definitions(app PRIVATE net_if_get_first_wifi=zf_test_wifi_iface)
+target_compile_definitions(app PRIVATE CONFIG_ZF_WIFI=1 CONFIG_ZF_BLUETOOTH=1
+  net_if_get_first_wifi=zf_test_wifi_iface)

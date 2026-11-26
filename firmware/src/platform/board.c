@@ -8,7 +8,7 @@
 #endif
 
 #include "platform/board.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "protocol/report_codec.h"
 
 #include <errno.h>
@@ -40,7 +40,7 @@ extern char _ext_ram_start[];
 extern char _ext_ram_end[];
 #endif
 #endif
-#if ZF_ENABLE_STORAGE
+#if IS_ENABLED(CONFIG_ZF_STORAGE)
 #define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(zephyrforge_sd), pinctrl_0, 0)
 #define SD_SPI_PINCTRL DT_PHANDLE_BY_IDX(DT_PARENT(DT_ALIAS(zephyrforge_sd)), pinctrl_0, 0)
 #endif
@@ -153,11 +153,11 @@ void zf_board_config_snapshot(zf_config_t *out)
 		.monitor_uart_index = CONSOLE_UART_INDEX,
 		.monitor_uart_tx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group1), 0),
 		.monitor_uart_rx_gpio = GPIO_FROM_MUX(DT_CHILD(CONSOLE_PINCTRL, group2), 0),
-#if ZF_ENABLE_STORAGE
+#if IS_ENABLED(CONFIG_ZF_STORAGE)
 		.card_detect_available = true,
 		.card_detect_gpio = DT_GPIO_PIN(DT_PATH(zephyr_user), sd_detect_gpios),
-		.msc_supported = ZF_ENABLE_USB_MSC,
-#if ZF_STORAGE_SPI
+		.msc_supported = IS_ENABLED(CONFIG_ZF_USB_MSC),
+#if IS_ENABLED(CONFIG_SPI_SDHC)
 		.storage_gpios = {
 			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, clock), 0),
 			GPIO_FROM_MUX(DT_CHILD(SD_SPI_PINCTRL, data), 0),
@@ -179,7 +179,7 @@ void zf_board_config_snapshot(zf_config_t *out)
 		.storage_gpios = {ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED,
 				  ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED, ZF_GPIO_UNASSIGNED},
 #endif
-#if ZF_ENABLE_LED && DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led_default))
+#if IS_ENABLED(CONFIG_ZF_LED) && DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led_default))
 		.led_available = true,
 		.led_gpio = GPIO_FROM_MUX(DT_CHILD(DT_NODELABEL(zephyrforge_led_default), mosi), 0),
 #endif

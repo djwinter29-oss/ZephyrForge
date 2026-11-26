@@ -46,6 +46,14 @@ bool zf_ble_gatt_failed(void) { return false; }
 uint8_t zf_ble_gatt_state(void) { return 0; }
 void zf_control_staging_status(uint8_t *flags, uint8_t *state) { *flags = 0; *state = 0; }
 
+static zf_wireless_t scan_snapshot(void)
+{
+	zf_wireless_t status = {0};
+
+	(void)zf_wifi_status(&status);
+	return status;
+}
+
 struct net_if *zf_test_wifi_iface(void) { return wifi_iface; }
 
 int net_mgmt_NET_REQUEST_WIFI_CONNECT(uint64_t request, struct net_if *iface, void *data, size_t size)
@@ -135,6 +143,7 @@ ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 	zassert_not_null(net_if_ipv4_addr_add(wifi_iface, &address, NET_ADDR_MANUAL, 0));
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_CONNECT_RESULT, wifi_iface, &successful_connect,
 					sizeof(successful_connect));
+	net_mgmt_event_notify(NET_EVENT_IPV4_DHCP_BOUND, wifi_iface);
 	for (int i = 0; i < 100 && wireless_state() != 2; ++i) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
@@ -171,11 +180,11 @@ ZTEST(wifi_recovery, test_timed_out_scan_fences_automatic_saved_join)
 	}
 	zassert_equal(scan_requests, 1);
 
-	for (int i = 0; i < 2200 && zf_wifi_scan_state() == ZF_SCAN_RUNNING; ++i) {
+	for (int i = 0; i < 2200 && scan_snapshot().scan_state == ZF_SCAN_RUNNING; ++i) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_FAILED);
+	zassert_equal(scan_snapshot().scan_state, ZF_SCAN_FAILED);
 	zassert_true(zf_wifi_scan_active(), "the timed-out driver operation remains quarantined");
 	for (int i = 0; i < 20; ++i) {
 		zf_wifi_poll();

@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "protocol/report_codec.h"
 
 /** Disk-access name of the SD medium owned by the storage service. */
@@ -18,7 +18,7 @@
 /** Storage-owned job run by the sole media worker while it owns the card. */
 typedef void (*zf_storage_exclusive_job_t)(void *context);
 
-#if ZF_ENABLE_STORAGE
+#if IS_ENABLED(CONFIG_ZF_STORAGE)
 /** Register the storage service and start policy polling with the boot-sampled card state. */
 void zf_storage_init(void);
 /** Allow card initialization and mounting after management transports are initialized. */

@@ -102,5 +102,6 @@ class LedStartupTests(unittest.TestCase):
             executable = temp / "test_led"
             subprocess.run(["gcc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                             "-I", str(temp), "-I", str(ROOT / "firmware/src"),
+                            "-I", str(ROOT / "firmware/tests/unit/support"),
                             str(source), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)

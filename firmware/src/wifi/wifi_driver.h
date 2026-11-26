@@ -10,6 +10,7 @@
 #include <zephyr/net/net_if.h>
 
 #include "protocol/report_codec.h"
+#include "settings/settings.h"
 
 /** Request operations executed by the Zephyr adapter. */
 typedef enum {

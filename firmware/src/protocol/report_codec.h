@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "protocol/wireless_types.h"
+#include "protocol/management_protocol.h"
 
 /** Feature report IDs on the ZephyrForge HID collection. */
 #define ZF_REPORT_IDENTITY 1u /**< Report 1: identity and capabilities. */
@@ -22,6 +22,13 @@
 /** Read-only boot memory inventory Feature report. */
 #define ZF_REPORT_MEMORY 13u
 #define ZF_REPORT_CONTROL 20u /**< Feature 20: control request/result envelope. */
+
+/** Wi-Fi radio switch bit in stored and commanded radio masks. */
+#define ZF_WIRELESS_WIFI 1u
+/** BLE radio switch bit in stored and commanded radio masks. */
+#define ZF_WIRELESS_BLE 2u
+/** Maximum Wi-Fi SSID length in bytes (IEEE 802.11 limit and wire field width). */
+#define ZF_SSID_MAX_BYTES 32u
 
 /** Payload sizes excluding the report ID, matching the encoded wire layout. */
 #define ZF_IDENTITY_SIZE 26u /**< Report 1 payload. */
@@ -167,34 +174,6 @@ typedef struct {
 	bool msc_request_rejected; /**< Last admitted handoff failed or was cancelled. */
 	bool busy; /**< Storage worker is manipulating the medium; not encoded separately. */
 } zf_storage_t;
-
-/** Retained benchmark lifecycle, encoded in Report 11. */
-typedef enum {
-	ZF_BENCHMARK_IDLE = 0, /**< No admitted run. */
-	ZF_BENCHMARK_QUEUED = 1, /**< Storage reserved for execution. */
-	ZF_BENCHMARK_PREPARING = 2, /**< Checking the mounted filesystem. */
-	ZF_BENCHMARK_WRITING = 3, /**< Writing the generated pattern. */
-	ZF_BENCHMARK_READING = 4, /**< Reading and verifying the pattern. */
-	ZF_BENCHMARK_CLEANUP = 5, /**< Closing and removing this run's file. */
-	ZF_BENCHMARK_PASSED = 6, /**< Verification and cleanup succeeded. */
-	ZF_BENCHMARK_FAILED = 7, /**< Execution or cleanup failed. */
-	ZF_BENCHMARK_CANCELLED = 8, /**< Cancellation and cleanup completed. */
-} zf_benchmark_state_t;
-
-/** Admission and execution details; zero means no error. */
-typedef enum {
-	ZF_BENCHMARK_ERROR_NONE = 0, /**< No error. */
-	ZF_BENCHMARK_ERROR_BUSY = 1, /**< Another operation owns storage. */
-	ZF_BENCHMARK_ERROR_USB = 2, /**< USB owns the card. */
-	ZF_BENCHMARK_ERROR_SIZE = 3, /**< Size outside 1..1024 MiB. */
-	ZF_BENCHMARK_ERROR_CARD = 4, /**< Medium absent or changed. */
-	ZF_BENCHMARK_ERROR_SPACE = 5, /**< Insufficient filesystem space. */
-	ZF_BENCHMARK_ERROR_EXISTS = 6, /**< Reserved file already exists. */
-	ZF_BENCHMARK_ERROR_IO = 7, /**< Filesystem failure or short transfer. */
-	ZF_BENCHMARK_ERROR_VERIFY = 8, /**< Pattern mismatch. */
-	ZF_BENCHMARK_ERROR_CLEANUP = 9, /**< File close or removal failed. */
-	ZF_BENCHMARK_ERROR_MOUNT = 10, /**< No firmware-owned filesystem mount. */
-} zf_benchmark_error_t;
 
 /** This run created a file that could not be removed. */
 #define ZF_BENCHMARK_FILE_REMAINS 1u

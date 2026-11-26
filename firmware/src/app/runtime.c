@@ -22,5 +22,7 @@ void zf_app_wakeup(void)
 
 void zf_app_wait(int64_t timeout_ms)
 {
-	(void)k_sem_take(&service_wakeup, K_MSEC(timeout_ms));
+	k_timeout_t timeout = timeout_ms == INT64_MAX ? K_FOREVER : K_MSEC(timeout_ms);
+
+	(void)k_sem_take(&service_wakeup, timeout);
 }

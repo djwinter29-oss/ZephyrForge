@@ -9,9 +9,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 
-#if ZF_ENABLE_LED
+#if IS_ENABLED(CONFIG_ZF_LED)
 /** Initialize the onboard addressable LED to Off before management starts. */
 void zf_led_init(void);
 /** Queue an RGB bitmask (red=1, green=2, blue=4); returns zero or negative errno without SPI I/O. */

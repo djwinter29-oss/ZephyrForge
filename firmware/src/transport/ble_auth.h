@@ -12,6 +12,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "protocol/management_protocol.h"
+
 /** Saved Control key size in bytes. */
 #define ZF_BLE_AUTH_KEY_SIZE 32u
 /** Connection challenge size in bytes. */
@@ -22,14 +24,6 @@
 #define ZF_BLE_AUTH_UID_SIZE 8u
 /** Global delay every proof attempt must wait after a failed proof, across connections. */
 #define ZF_BLE_AUTH_RETRY_DELAY_MS 2000
-
-/** ATT error returns used by the control characteristics (BT_GATT_ERR payload values). */
-#define ZF_ATT_ERR_INVALID_OFFSET 0x07u /**< Standard ATT invalid offset. */
-#define ZF_ATT_ERR_INVALID_LENGTH 0x0Du /**< Standard ATT invalid attribute length. */
-#define ZF_ATT_ERR_REJECTED 0x80u /**< Application rejection: locked session or unavailable state. */
-#define ZF_ATT_ERR_ENVELOPE 0x81u /**< Control request envelope failed (length, version or transaction). */
-#define ZF_ATT_ERR_RATE_LIMITED 0x82u /**< Retry delay active after a failed proof. */
-#define ZF_ATT_ERR_UNAVAILABLE 0x83u /**< No key was saved; proofs can never be accepted. */
 
 /** Per-connection BLE unlock state: one challenge, one staged proof, consumed on use. */
 typedef struct {
@@ -57,7 +51,7 @@ void zf_ble_auth_set_nonce(zf_ble_auth_session_t *session, const uint8_t nonce[Z
 /** Handle a 0101 Write Request. Unlocks a locked session when the session proof matches. */
 uint8_t zf_ble_auth_write_proof(zf_ble_auth_session_t *session, const uint8_t *data, size_t size, int64_t now_ms);
 
-/** Authorize one valid-envelope, non-LED control request on an unlocked session; consumes the proof. */
+/** Authorize one valid-envelope control request on an unlocked session; consumes the proof. */
 uint8_t zf_ble_auth_authorize(zf_ble_auth_session_t *session, const uint8_t *request, size_t size, int64_t now_ms);
 
 #endif

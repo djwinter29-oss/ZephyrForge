@@ -65,8 +65,9 @@ On the Pico boards that setting withdraws High Speed, leaving cards on the one-b
 
 ## Boot and runtime mount lifecycle
 
-Storage starts after boot settings, CPU clock application and telemetry initialization, before the transports.
-An inserted boot-time card is mounted immediately. Startup continues after a logged mount failure.
+Storage is initialized after boot settings, CPU clock application and telemetry initialization. Its worker starts after
+the management transports, so card detection and mounting do not delay USB or BLE startup. An inserted boot-time card
+is mounted after the worker starts; startup continues after a logged mount failure.
 
 A separate worker polls card detection nominally every 50 ms and requires 100 ms stable insertion. Insertion, including
 insertion after startup, mounts the existing FAT volume. Failed initialization/mount attempts retry every

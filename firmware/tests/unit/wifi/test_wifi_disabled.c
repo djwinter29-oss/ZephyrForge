@@ -58,7 +58,7 @@ void test_disabled_wifi_refuses_driver_operations(void)
 
 	TEST_ASSERT_EQUAL_INT(-ENOTSUP, zf_wifi_test_start(ssid, 0, ""));
 	TEST_ASSERT_EQUAL_INT(-ENOTSUP, zf_wifi_scan_start());
-	TEST_ASSERT_EQUAL_INT(-ENOTSUP, zf_wifi_scan_entry(0, ssid, &length, &rssi, &security));
+	TEST_ASSERT_EQUAL_INT(-ENOTSUP, zf_wifi_scan_entry(1, 0, ssid, &length, &rssi, &security));
 	TEST_ASSERT_FALSE(zf_wifi_test_active());
 	TEST_ASSERT_FALSE(zf_wifi_scan_active());
 }

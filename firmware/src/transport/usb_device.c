@@ -3,7 +3,7 @@
  */
 #include "transport/usb_device.h"
 #include "platform/board.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "management/control.h"
 #include "protocol/report_codec.h"
 #include "management/report_builder.h"
@@ -23,7 +23,8 @@ LOG_MODULE_REGISTER(zf_usb, LOG_LEVEL_INF);
 #define ZF_USB_PID 0x4021
 #define TELEMETRY_PERIOD_MS 250
 #define STORAGE_PERIOD_MS 500
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#define REPORT_KEEPALIVE_MS 1000
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 #define USB_INPUT_REPORT_SIZE MAX(ZF_STORAGE_SIZE, MAX(ZF_TELEMETRY_SIZE, ZF_BENCHMARK_SIZE))
 #else
 #define USB_INPUT_REPORT_SIZE MAX(ZF_STORAGE_SIZE, ZF_TELEMETRY_SIZE)
@@ -44,7 +45,7 @@ static const uint8_t report_descriptor[] = {
 	FEATURE(ZF_REPORT_MEMORY, ZF_MEMORY_SIZE),
 	INPUT(ZF_REPORT_TELEMETRY, ZF_TELEMETRY_SIZE),
 	INPUT(ZF_REPORT_STORAGE, ZF_STORAGE_SIZE),
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 	INPUT(ZF_REPORT_BENCHMARK, ZF_BENCHMARK_SIZE),
 #endif
 	FEATURE(ZF_REPORT_CONTROL, ZF_CONTROL_SIZE),
@@ -56,7 +57,7 @@ USBD_DEVICE_DEFINE(zephyrforge_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), Z
 USBD_DESC_LANG_DEFINE(zephyrforge_lang);
 USBD_DESC_MANUFACTURER_DEFINE(zephyrforge_manufacturer, "djwinter29");
 USBD_DESC_PRODUCT_DEFINE(zephyrforge_product, "ZephyrForge");
-#if ZF_ENABLE_USB_MSC
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID + SD storage");
 #else
 USBD_DESC_CONFIG_DEFINE(zephyrforge_config_name, "HID management");
@@ -79,19 +80,29 @@ static const struct device *const hid = DEVICE_DT_GET(DT_NODELABEL(zephyrforge_h
 
 static atomic_t ready;
 static atomic_t in_flight;
+static atomic_t cache_reset_pending;
 static uint8_t input[1 + USB_INPUT_REPORT_SIZE] __aligned(4);
 static uint8_t telemetry_sequence;
 static uint8_t storage_sequence;
 static uint8_t benchmark_sequence;
+static uint8_t last_storage[ZF_STORAGE_SIZE];
+static uint8_t last_benchmark[ZF_BENCHMARK_SIZE];
+static bool storage_cache_valid;
+static bool benchmark_cache_valid;
 static int64_t telemetry_at;
-static int64_t storage_at;
-static int64_t benchmark_at;
+static int64_t storage_check_at;
+static int64_t benchmark_check_at;
+static int64_t storage_sent_at;
+static int64_t benchmark_sent_at;
 
 static void iface_ready(const struct device *dev, const bool is_ready)
 {
 	ARG_UNUSED(dev);
 	atomic_set(&ready, is_ready);
 	atomic_clear(&in_flight);
+	if (is_ready) {
+		atomic_set(&cache_reset_pending, 1);
+	}
 	zf_app_wakeup();
 	LOG_INF("HID interface %s", is_ready ? "ready" : "not ready");
 }
@@ -100,18 +111,12 @@ static int get_report(const struct device *dev, const uint8_t type, const uint8_
 		      uint8_t *const buf)
 {
 	uint16_t size = zf_management_report_size(id);
-	bool valid_type;
+	zf_management_report_type_t report_type = zf_management_report_type(id);
 
 	ARG_UNUSED(dev);
-	if (type == HID_REPORT_TYPE_FEATURE) {
-		valid_type = id == ZF_REPORT_IDENTITY || id == ZF_REPORT_CONFIG || id == ZF_REPORT_MEMORY ||
-			     id == ZF_REPORT_WIRELESS || id == ZF_REPORT_CONTROL;
-	} else if (type == HID_REPORT_TYPE_INPUT) {
-		valid_type = id == ZF_REPORT_TELEMETRY || id == ZF_REPORT_STORAGE ||
-			     (ZF_ENABLE_STORAGE_BENCHMARK && id == ZF_REPORT_BENCHMARK);
-	} else {
-		valid_type = false;
-	}
+	bool valid_type = (type == HID_REPORT_TYPE_FEATURE && report_type == ZF_MANAGEMENT_REPORT_FEATURE) ||
+			  (type == HID_REPORT_TYPE_INPUT && report_type == ZF_MANAGEMENT_REPORT_INPUT);
+
 	if (!valid_type || size == 0 || len < size + 1) {
 		return -ENOTSUP;
 	}
@@ -161,6 +166,12 @@ static const struct hid_device_ops hid_ops = {
 
 static bool submit(uint8_t id)
 {
+	uint8_t *sequence;
+	uint8_t *cache = NULL;
+	bool *cache_valid = NULL;
+	int64_t *sent_at = NULL;
+	uint8_t next_sequence;
+	bool tracked = false;
 	uint16_t size;
 
 	if (!atomic_cas(&in_flight, 0, 1)) {
@@ -168,18 +179,39 @@ static bool submit(uint8_t id)
 	}
 	input[0] = id;
 	if (id == ZF_REPORT_TELEMETRY) {
-		(void)zf_management_report_build(id, ++telemetry_sequence, input + 1);
-		size = 1 + ZF_TELEMETRY_SIZE;
-	} else if (id == ZF_REPORT_BENCHMARK) {
-		(void)zf_management_report_build(id, ++benchmark_sequence, input + 1);
-		size = 1 + ZF_BENCHMARK_SIZE;
+		sequence = &telemetry_sequence;
+		size = ZF_TELEMETRY_SIZE;
+	} else if (id == ZF_REPORT_STORAGE) {
+		sequence = &storage_sequence;
+		cache = last_storage;
+		cache_valid = &storage_cache_valid;
+		sent_at = &storage_sent_at;
+		tracked = true;
+		size = ZF_STORAGE_SIZE;
 	} else {
-		(void)zf_management_report_build(id, ++storage_sequence, input + 1);
-		size = 1 + ZF_STORAGE_SIZE;
+		sequence = &benchmark_sequence;
+		cache = last_benchmark;
+		cache_valid = &benchmark_cache_valid;
+		sent_at = &benchmark_sent_at;
+		tracked = true;
+		size = ZF_BENCHMARK_SIZE;
 	}
-	if (hid_device_submit_report(hid, size, input) != 0) {
+	next_sequence = (uint8_t)(*sequence + 1u);
+	(void)zf_management_report_build(id, next_sequence, input + 1);
+	if (tracked && *cache_valid && memcmp(input + 2, cache + 1, size - 1) == 0 &&
+	    k_uptime_get() - *sent_at < REPORT_KEEPALIVE_MS) {
 		atomic_clear(&in_flight);
 		return false;
+	}
+	if (hid_device_submit_report(hid, size + 1, input) != 0) {
+		atomic_clear(&in_flight);
+		return false;
+	}
+	*sequence = next_sequence;
+	if (tracked) {
+		memcpy(cache, input + 1, size);
+		*cache_valid = true;
+		*sent_at = k_uptime_get();
 	}
 	return true;
 }
@@ -191,12 +223,20 @@ void zf_usb_device_poll(void)
 	if (!atomic_get(&ready)) {
 		return;
 	}
+	if (atomic_cas(&cache_reset_pending, 1, 0)) {
+		storage_cache_valid = false;
+		benchmark_cache_valid = false;
+		storage_check_at = 0;
+		benchmark_check_at = 0;
+	}
 	if (now - telemetry_at >= TELEMETRY_PERIOD_MS && submit(ZF_REPORT_TELEMETRY)) {
 		telemetry_at = now;
-	} else if (ZF_ENABLE_STORAGE && now - storage_at >= STORAGE_PERIOD_MS && submit(ZF_REPORT_STORAGE)) {
-		storage_at = now;
-	} else if (ZF_ENABLE_STORAGE_BENCHMARK && now - benchmark_at >= STORAGE_PERIOD_MS && submit(ZF_REPORT_BENCHMARK)) {
-		benchmark_at = now;
+	} else if (IS_ENABLED(CONFIG_ZF_STORAGE) && now - storage_check_at >= STORAGE_PERIOD_MS) {
+		storage_check_at = now;
+		(void)submit(ZF_REPORT_STORAGE);
+	} else if (IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK) && now - benchmark_check_at >= STORAGE_PERIOD_MS) {
+		benchmark_check_at = now;
+		(void)submit(ZF_REPORT_BENCHMARK);
 	}
 }
 
@@ -207,11 +247,11 @@ int64_t zf_usb_device_next_deadline(void)
 	}
 	int64_t deadline = telemetry_at + TELEMETRY_PERIOD_MS;
 
-	if (ZF_ENABLE_STORAGE && storage_at + STORAGE_PERIOD_MS < deadline) {
-		deadline = storage_at + STORAGE_PERIOD_MS;
+	if (IS_ENABLED(CONFIG_ZF_STORAGE) && storage_check_at + STORAGE_PERIOD_MS < deadline) {
+		deadline = storage_check_at + STORAGE_PERIOD_MS;
 	}
-	if (ZF_ENABLE_STORAGE_BENCHMARK && benchmark_at + STORAGE_PERIOD_MS < deadline) {
-		deadline = benchmark_at + STORAGE_PERIOD_MS;
+	if (IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK) && benchmark_check_at + STORAGE_PERIOD_MS < deadline) {
+		deadline = benchmark_check_at + STORAGE_PERIOD_MS;
 	}
 	return deadline;
 }
@@ -221,7 +261,7 @@ bool zf_usb_device_configured(void)
 	return atomic_get(&ready) != 0;
 }
 
-#if ZF_ENABLE_USB_MSC
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 int zf_usb_device_reconnect(void)
 {
 	int err = usbd_disable(&zephyrforge_usbd);

@@ -51,21 +51,22 @@ typedef struct {
 	uint8_t radio;
 	bool ble_allowed;
 	bool usb_msc;
+	bool proof_required;
 } opcode_policy_t;
 
 static const opcode_policy_t opcode_policy[ZF_OP_SCAN_ENTRY + 1] = {
-	[ZF_OP_LED] = {ZF_CAP_LED, 0, true, false},
-	[ZF_OP_REBOOT] = {ZF_CAP_REBOOT, 0, true, false},
-	[ZF_OP_MSC] = {ZF_CAP_STORAGE, 0, false, true},
-	[ZF_OP_BENCHMARK] = {ZF_CAP_BENCHMARK, 0, false, false},
-	[ZF_OP_SAVE] = {ZF_CAP_SETTINGS, 0, true, false},
-	[ZF_OP_STAGE_SSID] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
-	[ZF_OP_STAGE_PASSWORD] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
-	[ZF_OP_STAGE_KEY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_BLE, false, false},
-	[ZF_OP_TEST_WIFI] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
-	[ZF_OP_CANCEL_TEST] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
-	[ZF_OP_SCAN] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
-	[ZF_OP_SCAN_ENTRY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false},
+	[ZF_OP_LED] = {ZF_CAP_LED, 0, true, false, false},
+	[ZF_OP_REBOOT] = {ZF_CAP_REBOOT, 0, true, false, true},
+	[ZF_OP_MSC] = {ZF_CAP_STORAGE, 0, false, true, true},
+	[ZF_OP_BENCHMARK] = {ZF_CAP_BENCHMARK, 0, false, false, true},
+	[ZF_OP_SAVE] = {ZF_CAP_SETTINGS, 0, true, false, true},
+	[ZF_OP_STAGE_SSID] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
+	[ZF_OP_STAGE_PASSWORD] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
+	[ZF_OP_STAGE_KEY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_BLE, false, false, true},
+	[ZF_OP_TEST_WIFI] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
+	[ZF_OP_CANCEL_TEST] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
+	[ZF_OP_SCAN] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
+	[ZF_OP_SCAN_ENTRY] = {ZF_CAP_WIRELESS, ZF_WIRELESS_WIFI, false, false, true},
 };
 
 void zf_control_init(void)
@@ -127,7 +128,7 @@ static bool capable(const request_t *request)
 
 	return policy->capability != 0 && (ZF_CAPABILITIES & policy->capability) != 0 &&
 	       (policy->radio == 0 || (ZF_RADIO_MASK & policy->radio) != 0) &&
-	       (!policy->usb_msc || ZF_ENABLE_USB_MSC) && (!request->ble || policy->ble_allowed);
+	       (!policy->usb_msc || IS_ENABLED(CONFIG_ZF_USB_MSC)) && (!request->ble || policy->ble_allowed);
 }
 
 /** Map a platform admission result: zero Completed, -EBUSY Busy, any other error Failed. */
@@ -178,10 +179,6 @@ static bool apply_commit(void)
 		return false;
 	}
 	if (stage.password_staged && !zf_settings_set_wifi_password(stage.password)) {
-		return false;
-	}
-	if ((stage.ssid_staged || stage.password_staged) &&
-	    !zf_settings_set_wifi_auth_state(ZF_WIFI_AUTH_TRY_WPA2)) {
 		return false;
 	}
 	return !stage.key_staged || zf_settings_set_ble_key(stage.key_clear ? NULL : stage.key);
@@ -399,27 +396,61 @@ static void scan_entry(const request_t *request, result_t *result)
 	uint8_t length = 0;
 	int8_t rssi = 0;
 	uint8_t security = 0;
+	int err;
 
-	if (zf_wifi_scan_active()) {
+	err = zf_wifi_scan_entry(generation, request->args[0], ssid, &length, &rssi, &security);
+	if (err == -EBUSY) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
-		return;
-	}
-	if (zf_wifi_scan_state() != ZF_SCAN_COMPLETE || generation != zf_wifi_scan_generation()) {
+	} else if (err == -ESTALE) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_DETAIL_SCAN_STALE);
-		return;
-	}
-	if (request->args[0] >= zf_wifi_scan_count() ||
-	    zf_wifi_scan_entry(request->args[0], ssid, &length, &rssi, &security) != 0) {
+	} else if (err != 0) {
 		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_DETAIL_SCAN_INDEX);
-		return;
+	} else {
+		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+		zf_report_encode_scan_entry_result(result->data, generation, request->args[0], ssid, length, rssi,
+						   security);
 	}
-	finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
-	zf_report_encode_scan_entry_result(result->data, generation, request->args[0], ssid, length, rssi, security);
 }
 
 static bool args_clear(const request_t *request, size_t from)
 {
 	return request->flags == 0 && zero(request->args + from, ARGS_SIZE - from);
+}
+
+static void cancel_wifi_test(const request_t *request, result_t *result)
+{
+	if (!args_clear(request, 0)) {
+		finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
+	} else if (reject_if_reset_blocked(result)) {
+		return;
+	} else {
+		zf_credential_stage_reset(&stage);
+		zf_wifi_test_cancel();
+		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	}
+}
+
+static void start_wifi_scan(const request_t *request, result_t *result)
+{
+	if (!args_clear(request, 0)) {
+		finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
+	} else if (reject_if_reset_blocked(result)) {
+		return;
+	} else if (zf_wifi_test_active()) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
+	} else if (zf_wifi_scan_active()) {
+		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
+	} else {
+		int err = zf_wifi_scan_start();
+
+		if (err == -EBUSY) {
+			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
+		} else if (err != 0) {
+			finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
+		} else {
+			finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+		}
+	}
 }
 
 static void led(const request_t *request, result_t *result)
@@ -446,16 +477,14 @@ static void benchmark(const request_t *request, result_t *result)
 	bool start = request->args[0] == 1;
 	int detail;
 
-	if ((start && (size == 0 || size > ZF_BENCHMARK_MAX_MIB)) || (!start && size != 0)) {
-		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, ZF_BENCHMARK_ERROR_SIZE);
-		return;
-	}
 	if (reject_if_reset_blocked(result)) {
 		return;
 	}
 	detail = zf_benchmark_request(start, size);
 	if (detail == ZF_BENCHMARK_ERROR_NONE) {
 		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+	} else if (detail == ZF_BENCHMARK_ERROR_SIZE) {
+		finish(result, ZF_STATUS_INVALID, ZF_ERROR_ARGUMENT, (uint8_t)detail);
 	} else if (detail == ZF_BENCHMARK_ERROR_BUSY || detail == ZF_BENCHMARK_ERROR_USB) {
 		finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, (uint8_t)detail);
 	} else {
@@ -532,37 +561,10 @@ static void execute(const request_t *request, result_t *result, int64_t now_ms)
 		}
 		break;
 	case ZF_OP_CANCEL_TEST:
-		if (!args_clear(request, 0)) {
-			finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
-			break;
-		}
-		if (reject_if_reset_blocked(result)) {
-			break;
-		}
-		zf_credential_stage_reset(&stage);
-		zf_wifi_test_cancel();
-		finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
+		cancel_wifi_test(request, result);
 		break;
 	case ZF_OP_SCAN:
-		if (!args_clear(request, 0)) {
-			finish(result, ZF_STATUS_INVALID, ZF_ERROR_MALFORMED, 0);
-		} else if (reject_if_reset_blocked(result)) {
-			break;
-		} else if (zf_wifi_test_active()) {
-			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_TEST_ACTIVE);
-		} else if (zf_wifi_scan_active()) {
-			finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
-		} else {
-			int err = zf_wifi_scan_start();
-
-			if (err == -EBUSY) {
-				finish(result, ZF_STATUS_BUSY, ZF_ERROR_BUSY, ZF_DETAIL_SCAN_ACTIVE);
-			} else if (err != 0) {
-				finish(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
-			} else {
-				finish(result, ZF_STATUS_COMPLETED, ZF_ERROR_NONE, 0);
-			}
-		}
+		start_wifi_scan(request, result);
 		break;
 	case ZF_OP_SCAN_ENTRY:
 		if (!args_clear(request, 3)) {
@@ -611,9 +613,7 @@ static void encode(const result_t *result, uint8_t *out, size_t data_size)
 void zf_control_usb_get(uint8_t out[ZF_CONTROL_SIZE])
 {
 	encode(&usb_result, out, sizeof(usb_result.data));
-	if (usb_save_result_unread) {
-		usb_save_result_unread = false;
-	}
+	usb_save_result_unread = false;
 	zf_storage_result_read(usb_result.transaction_id);
 }
 
@@ -646,6 +646,12 @@ bool zf_control_ble_execute(const uint8_t request[ZF_BLE_CONTROL_SIZE], int64_t 
 void zf_control_ble_get(uint8_t out[ZF_BLE_CONTROL_SIZE])
 {
 	encode(&ble_result, out, ZF_BLE_CONTROL_SIZE - 5);
+}
+
+bool zf_control_ble_proof_required(uint8_t opcode)
+{
+	return opcode > ZF_OP_SCAN_ENTRY || opcode_policy[opcode].capability == 0 ||
+	       !opcode_policy[opcode].ble_allowed || opcode_policy[opcode].proof_required;
 }
 
 void zf_control_tick(int64_t now_ms)

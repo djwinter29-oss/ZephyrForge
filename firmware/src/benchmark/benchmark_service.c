@@ -83,12 +83,11 @@ void zf_benchmark_report(uint8_t sequence, uint8_t *out)
 bool zf_benchmark_service_publish(const zf_benchmark_t *status)
 {
 	zf_storage_t storage;
-	bool present = zf_storage_media_present();
 
 	zf_storage_snapshot(&storage);
 	k_mutex_lock(&benchmark_lock, K_FOREVER);
 	benchmark = *status;
-	if (storage.filesystem_format != 0 && present) {
+	if (storage.filesystem_format != 0 && storage.present) {
 		benchmark.flags |= ZF_BENCHMARK_MOUNTED;
 	}
 	benchmark.filesystem_result = status->error == ZF_BENCHMARK_ERROR_IO ||

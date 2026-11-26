@@ -104,6 +104,14 @@ static uint8_t wifi_state(void)
 	return report[1];
 }
 
+static zf_wireless_t scan_snapshot(void)
+{
+	zf_wireless_t status = {0};
+
+	(void)zf_wifi_status(&status);
+	return status;
+}
+
 static void poll_for(uint8_t state)
 {
 	for (int i = 0; i < 100; ++i) {
@@ -120,12 +128,12 @@ static void poll_scan_for(uint8_t state)
 {
 	for (int i = 0; i < 100; ++i) {
 		zf_wifi_poll();
-		if (zf_wifi_scan_state() == state) {
+		if (scan_snapshot().scan_state == state) {
 			return;
 		}
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(zf_wifi_scan_state(), state);
+	zassert_equal(scan_snapshot().scan_state, state);
 }
 
 static void start_test_for(const char *ssid, uint8_t ssid_length, const char *password)
@@ -169,6 +177,11 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	struct net_if *iface = net_if_get_default();
 	struct wifi_status success = {.status = 0};
 	struct wifi_scan_result scan_result = {.ssid = "partial", .ssid_length = 7, .rssi = -30};
+	uint8_t entry_ssid[ZF_SSID_MAX_BYTES];
+	uint8_t entry_length;
+	int8_t entry_rssi;
+	uint8_t entry_security;
+	uint16_t scan_generation;
 	int64_t before;
 
 	zassert_not_null(iface);
@@ -176,6 +189,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
 	zf_app_unlock();
+	scan_generation = scan_snapshot().scan_generation;
+	zassert_equal(-EBUSY, zf_wifi_scan_entry(scan_generation, 0, entry_ssid, &entry_length, &entry_rssi,
+						 &entry_security));
 	before = k_uptime_get();
 	zf_wifi_poll();
 	zassert_true(k_uptime_get() - before < 100, "scan blocked the management loop");
@@ -189,12 +205,16 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	}
 	k_sleep(K_MSEC(20));
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_DONE, iface, &success, sizeof(success));
-	for (int i = 0; i < 100 && zf_wifi_scan_state() != ZF_SCAN_COMPLETE; ++i) {
+	for (int i = 0; i < 100 && scan_snapshot().scan_state != ZF_SCAN_COMPLETE; ++i) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_COMPLETE);
+	zassert_equal(scan_snapshot().scan_state, ZF_SCAN_COMPLETE);
 	zassert_false(zf_wifi_scan_active(), "scan completion must release quarantine after event queue overflow");
+	zassert_equal(-ESTALE, zf_wifi_scan_entry(scan_generation - 1, 0, entry_ssid, &entry_length, &entry_rssi,
+						  &entry_security));
+	zassert_equal(-EINVAL, zf_wifi_scan_entry(scan_generation, 0, entry_ssid, &entry_length, &entry_rssi,
+						  &entry_security));
 	finish_request();
 
 	zf_app_lock();
@@ -206,7 +226,7 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	success.status = -EIO;
 	net_mgmt_event_notify_with_info(NET_EVENT_WIFI_SCAN_DONE, iface, &success, sizeof(success));
 	poll_scan_for(ZF_SCAN_FAILED);
-	zassert_equal(zf_wifi_scan_count(), 0, "failed scans must discard partial results");
+	zassert_equal(scan_snapshot().scan_count, 0, "failed scans must discard partial results");
 	finish_request();
 
 	zf_app_lock();
@@ -214,11 +234,11 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zf_app_unlock();
 	zf_wifi_poll();
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
-	while (zf_wifi_scan_state() == ZF_SCAN_RUNNING) {
+	while (scan_snapshot().scan_state == ZF_SCAN_RUNNING) {
 		zf_wifi_poll();
 		k_sleep(K_MSEC(10));
 	}
-	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_FAILED);
+	zassert_equal(scan_snapshot().scan_state, ZF_SCAN_FAILED);
 	zf_app_lock();
 	zassert_equal(zf_wifi_scan_start(), -EBUSY, "do not replace a scan whose driver is still active");
 	zf_app_unlock();
@@ -228,7 +248,7 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 		zf_wifi_poll();
 		k_sleep(K_MSEC(5));
 	}
-	zassert_equal(zf_wifi_scan_state(), ZF_SCAN_FAILED, "late completion must not publish the timed-out scan");
+	zassert_equal(scan_snapshot().scan_state, ZF_SCAN_FAILED, "late completion must not publish the timed-out scan");
 	finish_request();
 
 	zf_app_lock();
@@ -285,7 +305,7 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 		}
 	}
 	zassert_ok(start_status, "start %d, scan active %d, scan state %u", start_status, zf_wifi_scan_active(),
-		   zf_wifi_scan_state());
+		   scan_snapshot().scan_state);
 	zf_wifi_poll();
 	zassert_ok(k_sem_take(&entered, K_SECONDS(1)));
 	net_mgmt_event_notify(NET_EVENT_IPV4_DHCP_BOUND, iface);

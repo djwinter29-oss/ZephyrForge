@@ -8,14 +8,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
+#include "protocol/management_protocol.h"
 
-/** Report 12 ble_state values. */
-#define ZF_BLE_OFF 0u /**< Bluetooth is not advertising: disabled, stopped or between connections. */
-#define ZF_BLE_ADVERTISING 1u /**< Connectable advertising is running at the fast or slow interval. */
-#define ZF_BLE_CONNECTED 2u /**< A central holds the single connection. */
-
-#if ZF_ENABLE_BLUETOOTH
+#if IS_ENABLED(CONFIG_ZF_BLUETOOTH)
 /** Start Bluetooth when the saved switch is on and a Control key is saved. */
 void zf_ble_gatt_init(bool enabled);
 /** Current Report 12 ble_state value. */

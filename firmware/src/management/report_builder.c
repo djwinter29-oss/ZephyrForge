@@ -14,30 +14,46 @@
 #include "settings/settings.h"
 #include "platform/sysclk.h"
 
+#include <stddef.h>
+
+/** Report ID metadata shared by management sizing and USB report-type validation. */
+typedef struct {
+	uint8_t id; /**< ZF_REPORT_* identifier. */
+	uint16_t size; /**< Payload size excluding the transport report ID. */
+	zf_management_report_type_t type; /**< HID feature or input category. */
+} report_descriptor_t;
+
+static const report_descriptor_t reports[] = {
+	{ZF_REPORT_IDENTITY, ZF_IDENTITY_SIZE, ZF_MANAGEMENT_REPORT_FEATURE},
+	{ZF_REPORT_CONFIG, ZF_CONFIG_SIZE, ZF_MANAGEMENT_REPORT_FEATURE},
+	{ZF_REPORT_MEMORY, ZF_MEMORY_SIZE, ZF_MANAGEMENT_REPORT_FEATURE},
+	{ZF_REPORT_TELEMETRY, ZF_TELEMETRY_SIZE, ZF_MANAGEMENT_REPORT_INPUT},
+	{ZF_REPORT_STORAGE, ZF_STORAGE_SIZE, ZF_MANAGEMENT_REPORT_INPUT},
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
+	{ZF_REPORT_BENCHMARK, ZF_BENCHMARK_SIZE, ZF_MANAGEMENT_REPORT_INPUT},
+#endif
+	{ZF_REPORT_WIRELESS, ZF_WIRELESS_SIZE, ZF_MANAGEMENT_REPORT_FEATURE},
+	{ZF_REPORT_CONTROL, ZF_CONTROL_SIZE, ZF_MANAGEMENT_REPORT_FEATURE},
+};
+
 uint16_t zf_management_report_size(uint8_t id)
 {
-	switch (id) {
-	case ZF_REPORT_IDENTITY:
-		return ZF_IDENTITY_SIZE;
-	case ZF_REPORT_CONFIG:
-		return ZF_CONFIG_SIZE;
-	case ZF_REPORT_MEMORY:
-		return ZF_MEMORY_SIZE;
-	case ZF_REPORT_TELEMETRY:
-		return ZF_TELEMETRY_SIZE;
-	case ZF_REPORT_STORAGE:
-		return ZF_STORAGE_SIZE;
-#if ZF_ENABLE_STORAGE_BENCHMARK
-	case ZF_REPORT_BENCHMARK:
-		return ZF_BENCHMARK_SIZE;
-#endif
-	case ZF_REPORT_WIRELESS:
-		return ZF_WIRELESS_SIZE;
-	case ZF_REPORT_CONTROL:
-		return ZF_CONTROL_SIZE;
-	default:
-		return 0;
+	for (size_t i = 0; i < sizeof(reports) / sizeof(reports[0]); ++i) {
+		if (reports[i].id == id) {
+			return reports[i].size;
+		}
 	}
+	return 0;
+}
+
+zf_management_report_type_t zf_management_report_type(uint8_t id)
+{
+	for (size_t i = 0; i < sizeof(reports) / sizeof(reports[0]); ++i) {
+		if (reports[i].id == id) {
+			return reports[i].type;
+		}
+	}
+	return ZF_MANAGEMENT_REPORT_UNSUPPORTED;
 }
 
 uint16_t zf_management_report_build(uint8_t id, uint8_t sequence, uint8_t *out)
@@ -86,7 +102,7 @@ uint16_t zf_management_report_build(uint8_t id, uint8_t sequence, uint8_t *out)
 	case ZF_REPORT_STORAGE:
 		zf_storage_report(sequence, out);
 		return ZF_STORAGE_SIZE;
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 	case ZF_REPORT_BENCHMARK:
 		zf_benchmark_report(sequence, out);
 		return ZF_BENCHMARK_SIZE;

@@ -3,7 +3,7 @@
  */
 #include "transport/ble_gatt.h"
 #include "platform/board.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "management/control.h"
 #include "management/report_builder.h"
 #include "settings/settings.h"
@@ -28,14 +28,14 @@ LOG_MODULE_REGISTER(zf_ble, LOG_LEVEL_INF);
 #define SLOW_INTERVAL 800  /* 500 ms */
 #define FAST_PERIOD_MS 30000
 
-#define CHR_IDENTITY 0x0001u
-#define CHR_CONFIG 0x0002u
-#define CHR_TELEMETRY 0x0003u
-#define CHR_STORAGE 0x000Au
-#define CHR_BENCHMARK 0x000Bu
-#define CHR_MEMORY 0x000Du
-#define CHR_WIRELESS 0x000Cu
-#define CHR_CONTROL 0x0014u
+#define CHR_IDENTITY ZF_REPORT_IDENTITY
+#define CHR_CONFIG ZF_REPORT_CONFIG
+#define CHR_TELEMETRY ZF_REPORT_TELEMETRY
+#define CHR_STORAGE ZF_REPORT_STORAGE
+#define CHR_BENCHMARK ZF_REPORT_BENCHMARK
+#define CHR_MEMORY ZF_REPORT_MEMORY
+#define CHR_WIRELESS ZF_REPORT_WIRELESS
+#define CHR_CONTROL ZF_REPORT_CONTROL
 #define CHR_NONCE 0x0100u
 #define CHR_PROOF 0x0101u
 
@@ -257,7 +257,6 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 	const uint8_t *request = buf;
 	int64_t now = k_uptime_get();
 	ssize_t result = len;
-	bool save_request = false;
 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(attr);
@@ -270,12 +269,13 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 	} else if (!zf_control_ble_envelope(request, len)) {
 		result = BT_GATT_ERR(ZF_ATT_ERR_ENVELOPE);
 	} else {
-		uint8_t err = request[2] == ZF_OP_LED ? 0 : zf_ble_auth_authorize(&session, request, len, now);
+		uint8_t err = zf_control_ble_proof_required(request[2])
+				      ? zf_ble_auth_authorize(&session, request, len, now)
+				      : 0;
 
 		if (err) {
 			result = BT_GATT_ERR(err);
 		} else {
-			save_request = request[2] == ZF_OP_SAVE;
 			if (!zf_control_ble_execute(request, now)) {
 				result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 			}
@@ -304,7 +304,7 @@ BT_GATT_SERVICE_DEFINE(zephyrforge_service,
 	REPORT_CHR(CHR_MEMORY),
 	REPORT_CHR(CHR_TELEMETRY),
 	REPORT_CHR(CHR_STORAGE),
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 	REPORT_CHR(CHR_BENCHMARK),
 #endif
 	REPORT_CHR(CHR_WIRELESS),

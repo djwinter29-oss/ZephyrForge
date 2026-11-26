@@ -23,7 +23,7 @@ Capitalized requirement words follow the [protocol convention](usb-hid.md#scope-
 | --- | --- | --- | --- |
 | CPU clock (`zf_sysclk_profile_t`) | Default (S3 240 MHz, C6 160 MHz), 80, 160 or 240 MHz on S3; at most 160 MHz on C6 | Default | Early boot, before storage and radios |
 | Wi-Fi / Bluetooth switches | Enabled or disabled | Enabled | Radio initialization at boot |
-| Wi-Fi SSID, passphrase and auth state | See [record format](#record-format) | None | Saved-network connect at boot |
+| Wi-Fi SSID and passphrase | See [record format](#record-format) | None | Saved-network connect at boot |
 | Control key | 32 raw bytes, see [record format](#record-format) | None | [BLE control](bluetooth-le.md) authentication; BLE does not start without a key |
 
 An erased, missing or invalid record uses these defaults.
@@ -59,7 +59,7 @@ Each writer MUST validate and stage every requested value, then save once. Rejec
 a failed save restores the last confirmed RAM values:
 
 - **Opcode `5`:** stages the clock and radio switches and, when the commit flag is set, the wireless values staged
-  by opcodes `6`-`8` (SSID, passphrase with auth state `0`, try WPA2, and Control key).
+  by opcodes `6`-`8` (SSID, passphrase and Control key).
   Flash-save failure calls `zf_settings_discard()`.
 - Opcodes `6`-`8` hold separate wireless candidates, not settings-service state, until opcode `5`
   commits them. Opcode `9` tests staged credentials without saving them.
@@ -80,7 +80,7 @@ the [architecture reference](../development/architecture.md#lifecycle-and-failur
 Defaults include no credentials.
 
 A record is valid only if all of these hold: magic `EFCF`, version `1`, size `148`, matching CRC-32, clock profile
-`0`–`3`, a zero byte 9, no unknown service bits, Wi-Fi auth state `0`–`3`, SSID length at most 32 with zero padding,
+`0`–`3`, a zero byte 9, no unknown service bits, legacy byte 11 at most `3`, SSID length at most 32 with zero padding,
 an empty or 8–63 byte NUL-terminated passphrase with zero padding, zero reserved bits, and a zero key whenever the
 key-present flag is clear. Fields MUST NOT be applied partially. Loading MUST NOT write flash. An erased partition
 (`0xFF`) loads defaults. `zf_settings_source()` reports which case occurred.
@@ -127,7 +127,7 @@ incorrect size or CRC mismatch and load complete defaults.
 | 8 | 1 | CPU clock profile (`0` Default, `1` 80 MHz, `2` 160 MHz, `3` 240 MHz) |
 | 9 | 1 | Reserved, zero; no saved SD-card speed profile |
 | 10 | 1 | Disabled services: bit 0 Wi-Fi, bit 1 Bluetooth; other bits invalid |
-| 11 | 1 | Wi-Fi authentication state (`0` try WPA2, `1` try WPA3-SAE, `2` WPA2, `3` WPA3-SAE) |
+| 11 | 1 | Reserved legacy authentication byte; new records write zero, old values `0`–`3` are ignored |
 | 12 | 1 | Wi-Fi SSID length (`0`–`32`) |
 | 13 | 32 | Raw Wi-Fi SSID bytes; unused bytes zero |
 | 45 | 64 | Wi-Fi passphrase, NUL-terminated; empty or 8–63 bytes; unused bytes zero |
@@ -145,9 +145,9 @@ USB staging is stricter: its specification requires printable ASCII.
 Any 32-byte key value is representable, including all zero; clearing it removes the presence flag and zeros
 the bytes. Users SHOULD provision a cryptographically random key, not an all-zero production key.
 
-Auth-state values `1` and `3` retain their WPA3-SAE meanings in the record, but the current radio implementation
-does not probe or join WPA3-SAE. It uses open networks for an empty password and WPA2-PSK otherwise.
-A stored enum value does not enable an unsupported radio mode.
+Earlier records used byte 11 for an authentication mode. The station currently supports open networks and WPA2-PSK
+only, so the byte is now reserved and ignored. Decoding still accepts legacy values `0`–`3`; subsequent saves write
+zero there without changing the record version.
 
 CRC-32 uses the reflected IEEE polynomial `0xEDB88320`, initial value `0xFFFFFFFF` and final XOR `0xFFFFFFFF`.
 It covers bytes 0-143; the result occupies bytes 144-147 in little-endian order.
@@ -224,9 +224,8 @@ Later callers MUST acquire the application lock, check each setter's boolean res
 rejection and handle the save return value explicitly. Release the lock after the transaction.
 The low-level save API does not schedule reboot; the control dispatcher does so after successful saving.
 
-The header also exposes SSID (string and opaque bytes), passphrase, auth-state and Control-key accessors. Unprefixed
-getters return the staged copy, `boot_` getters return the policy loaded for this boot, and
-`zf_settings_wireless_restart_required()` ignores clock-only changes. The inline `zf_sysclk_profile_mhz()` (`0`
+The header exposes opaque SSID bytes, passphrase, radio-switch and Control-key accessors. Unprefixed getters return
+the staged copy, `boot_` getters return the policy loaded for this boot. The inline `zf_sysclk_profile_mhz()` (`0`
 for Default) and `zf_sysclk_profile_from_mhz()` convert between profile IDs and wire MHz.
 The MHz-to-profile conversion returns an out-of-range profile for unknown MHz; callers MUST reject it rather
 than convert it back into a default setting.

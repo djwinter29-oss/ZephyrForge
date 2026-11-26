@@ -8,8 +8,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/** Start the temperature/load sampling windows. */
+/** Initialize cached telemetry without sampling until a management transport is active. */
 void zf_telemetry_init(void);
+/** Enable or pause periodic sampling based on active USB/BLE management clients. */
+void zf_telemetry_set_active(bool active);
 /** Refresh the cached temperature and load window; call from the main loop. */
 void zf_telemetry_poll(void);
 /** Return the next CPU-load or temperature sampling deadline. */

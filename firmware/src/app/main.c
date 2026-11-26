@@ -15,8 +15,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#define SERVICE_MAX_IDLE_MS 1000
-
 int main(void)
 {
 	uint8_t radios;
@@ -53,37 +51,29 @@ int main(void)
 	zf_storage_start();
 
 	while (true) {
-		int64_t deadline;
-		int64_t telemetry_deadline;
-		int64_t wifi_deadline;
-		int64_t usb_deadline;
-
 		zf_app_lock();
 		zf_control_tick(k_uptime_get());
-		deadline = zf_control_next_deadline();
+		int64_t control_deadline = zf_control_next_deadline();
 		zf_app_unlock();
+		zf_telemetry_set_active(zf_usb_device_configured() || zf_ble_gatt_state() == ZF_BLE_CONNECTED);
 		zf_wifi_poll();
 		zf_telemetry_poll();
 		zf_usb_device_poll();
 		int64_t now = k_uptime_get();
-		telemetry_deadline = zf_telemetry_next_deadline();
-		wifi_deadline = zf_wifi_next_deadline();
-		usb_deadline = zf_usb_device_next_deadline();
-		if (telemetry_deadline < deadline) {
-			deadline = telemetry_deadline;
-		}
-		if (wifi_deadline < deadline) {
-			deadline = wifi_deadline;
-		}
-		if (usb_deadline < deadline) {
-			deadline = usb_deadline;
-		}
-		int64_t fallback = now + SERVICE_MAX_IDLE_MS;
+		const int64_t deadlines[] = {
+			control_deadline,
+			zf_telemetry_next_deadline(),
+			zf_wifi_next_deadline(),
+			zf_usb_device_next_deadline(),
+		};
+		int64_t deadline = INT64_MAX;
 
-		if (deadline == INT64_MAX || deadline > fallback) {
-			deadline = fallback;
+		for (size_t i = 0; i < ARRAY_SIZE(deadlines); ++i) {
+			if (deadlines[i] < deadline) {
+				deadline = deadlines[i];
+			}
 		}
-		zf_app_wait(MAX(0, deadline - now));
+		zf_app_wait(deadline == INT64_MAX ? INT64_MAX : MAX(0, deadline - now));
 	}
 	return 0;
 }

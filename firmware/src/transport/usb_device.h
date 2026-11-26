@@ -9,9 +9,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 
-#if ZF_ENABLE_USB_HID
+#if IS_ENABLED(CONFIG_ZF_USB_HID)
 /** Register the USB HID composite device. Returns 0 or a negative errno. */
 int zf_usb_device_init(void);
 /** True while the host has configured the USB device. */

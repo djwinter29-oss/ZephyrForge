@@ -1,6 +1,6 @@
 #include "storage/storage.h"
 #include "platform/board.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "protocol/report_codec.h"
 #include "storage/storage_export.h"
 #include "transport/usb_msc.h"
@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(zf_storage, LOG_LEVEL_INF);
 #define STORAGE_POLL_MS 50
 /* Far below the host's 30 s SCSI command timeout; the worker holds the lock only briefly while the card is exported. */
 #define USB_LOCK_WAIT_MS 1000
+#define OWNER_HANDOFF_DELAY_MS 1000
 
 K_MUTEX_DEFINE(media_lock);
 K_MUTEX_DEFINE(snapshot_lock);
@@ -94,7 +95,7 @@ int zf_storage_request(bool usb, uint8_t transaction)
 	zf_storage_request_t action = usb ? ZF_STORAGE_USB_OWNER : ZF_STORAGE_FIRMWARE_OWNER;
 	int err = 0;
 
-	if (!ZF_ENABLE_USB_MSC) {
+	if (!IS_ENABLED(CONFIG_ZF_USB_MSC)) {
 		return -ENOTSUP;
 	}
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
@@ -108,7 +109,7 @@ int zf_storage_request(bool usb, uint8_t transaction)
 	} else {
 		request_generation = media_generation;
 		request_transaction = transaction;
-		request_ready_at = k_uptime_get() + ZF_REBOOT_DELAY_MS;
+		request_ready_at = k_uptime_get() + OWNER_HANDOFF_DELAY_MS;
 		request_pending = true;
 		snapshot.busy = true;
 		snapshot.sample_valid = false;
@@ -183,7 +184,7 @@ int zf_storage_run_exclusive(zf_storage_exclusive_job_t job, void *context)
 	return err;
 }
 
-#if ZF_ENABLE_USB_MSC
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 bool zf_storage_export_ready(uint32_t *blocks)
 {
 	bool ready;
@@ -204,7 +205,7 @@ bool zf_storage_export_ready(uint32_t *blocks)
 
 bool zf_storage_export_lock(uint32_t *blocks)
 {
-	if (!zf_storage_export_ready(NULL) || k_mutex_lock(&media_lock, K_MSEC(USB_LOCK_WAIT_MS)) != 0) {
+	if (k_mutex_lock(&media_lock, K_MSEC(USB_LOCK_WAIT_MS)) != 0) {
 		return false;
 	}
 	if (zf_storage_export_ready(blocks)) {
@@ -329,7 +330,7 @@ void zf_storage_init(void)
 				err = 0;
 			}
 		}
-#if ZF_ENABLE_USB_MSC
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 		if (err == 0) {
 			err = zf_usb_msc_register();
 		}

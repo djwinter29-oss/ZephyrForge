@@ -19,21 +19,15 @@
 #include <stdint.h>
 
 #include "platform/sysclk.h"
-#include "protocol/wireless_types.h"
+#include "protocol/report_codec.h"
+/** NUL-terminated Wi-Fi passphrase storage size, including its terminator. */
+#define ZF_WIFI_PASSWORD_SIZE 64u
 /** Control key size in bytes. */
 #define ZF_BLE_KEY_SIZE 32u
 /** Serialized record size in bytes. */
 #define ZF_SETTINGS_RECORD_SIZE 148u
 /** Save request needs no flash write; no completion callback is made. */
 #define ZF_SETTINGS_SAVE_UNCHANGED 1
-
-/** Stored Wi-Fi authentication policy, including the last confirmed mode when available. */
-typedef enum {
-	ZF_WIFI_AUTH_TRY_WPA2 = 0, /**< Mode unknown; try WPA2 first. */
-	ZF_WIFI_AUTH_TRY_SAE = 1,  /**< Mode unknown; try WPA3-SAE. */
-	ZF_WIFI_AUTH_WPA2 = 2,     /**< WPA2 connection was confirmed. */
-	ZF_WIFI_AUTH_SAE = 3,      /**< WPA3-SAE connection was confirmed. */
-} zf_wifi_auth_state_t;
 
 /** Where the RAM copy came from at the last load. */
 typedef enum {
@@ -74,17 +68,6 @@ bool zf_settings_set_radios(uint8_t radios);
 uint8_t zf_settings_boot_radios(void);
 
 /**
- * @brief Copy the staged SSID, or the last confirmed value while a save is in progress, into a NUL-terminated buffer.
- *
- * Opaque SSIDs may contain embedded zeros; use the byte getter for network identity.
- */
-void zf_settings_wifi_ssid(char ssid[ZF_SSID_BUFFER_SIZE]);
-/**
- * @brief Stage an SSID string; an empty string clears it.
- * @return false for null or a string longer than ZF_SSID_MAX_BYTES.
- */
-bool zf_settings_set_wifi_ssid(const char *ssid);
-/**
  * @brief Copy the staged opaque SSID, or the last confirmed value during a save, zero padded to
  *        ZF_SSID_MAX_BYTES.
  * @return Saved byte length, including embedded zero bytes.
@@ -105,22 +88,12 @@ void zf_settings_wifi_password(char password[ZF_WIFI_PASSWORD_SIZE]);
 bool zf_settings_set_wifi_password(const char *password);
 /** @brief Return whether a Wi-Fi passphrase is staged, or last confirmed during a save. */
 bool zf_settings_wifi_password_configured(void);
-/** @brief Return the staged Wi-Fi authentication state, or last confirmed during a save. */
-zf_wifi_auth_state_t zf_settings_wifi_auth_state(void);
-/** @brief Stage the Wi-Fi authentication state; false for an unknown state. */
-bool zf_settings_set_wifi_auth_state(zf_wifi_auth_state_t state);
-
 /** @brief Copy the staged (or last confirmed during a save) private BLE Control key. */
 void zf_settings_ble_key(uint8_t key[ZF_BLE_KEY_SIZE]);
 /** @brief Stage a raw Control key, including all-zero bytes; null clears it. Returns false during a save. */
 bool zf_settings_set_ble_key(const uint8_t key[ZF_BLE_KEY_SIZE]);
 /** @brief Return whether a Control key is staged, or last confirmed during a save. */
 bool zf_settings_ble_key_configured(void);
-
-/** @brief Report whether saved wireless settings differ from the values loaded at boot. */
-bool zf_settings_wireless_restart_required(void);
-/** @brief Report whether any saved setting differs from the values loaded at boot. */
-bool zf_settings_restart_required(void);
 
 /** Settings save completion; called once after the settings record is committed or discarded. */
 typedef void (*zf_settings_save_done_t)(int err);

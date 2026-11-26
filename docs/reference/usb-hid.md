@@ -265,8 +265,10 @@ The current implementation maps Zephyr hardware reset flags to `1`, `2` or `3`, 
 ## Report ID 3: Board telemetry
 
 Published nominally every 250 ms while HID is ready. Input GET returns a current snapshot with sequence `0`.
-Publication sequences wrap modulo 256. The current implementation allocates a sequence when submitting a report;
-failed submissions can therefore leave gaps. Sequences are not delivery acknowledgements.
+Temperature and CPU-load sampling pause when neither HID is configured nor a BLE client is connected; the first
+active poll refreshes the cached measurements. Uptime and clock are encoded from the current snapshot.
+Publication sequences wrap modulo 256 and advance only when HID accepts a submission. Sequences are not delivery
+acknowledgements.
 
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
@@ -297,10 +299,12 @@ temperature.
 
 ## Report ID 10: Storage status
 
-On storage-enabled images, published nominally every 500 ms while HID is ready. Input GET returns a snapshot with
-sequence `0` and does not advance the publication sequence. Publication sequences have the same gap/wrap behavior
-as Report `3`. Images without storage retain the report in the USB descriptor but do not publish it periodically.
-It reflects the storage worker's detection, mount and ownership state; it performs no disk I/O in the HID callback.
+On storage-enabled images, the worker snapshot is checked nominally every 500 ms while HID is ready. The device
+publishes when its payload changes and uses a nominal 1000 ms keepalive while it remains unchanged.
+Input GET returns a snapshot with sequence `0` and does not advance the publication sequence. Publication sequences
+wrap modulo 256 and advance only when HID accepts a submission. Images without storage retain the report in the USB
+descriptor but do not publish it periodically. It reflects the storage worker's detection, mount and ownership
+state; it performs no disk I/O in the HID callback.
 
 | Offset | Size | Field | Meaning |
 | -----: | ---: | ----- | ------- |
@@ -360,8 +364,9 @@ See [SD storage](sd-storage.md) for mount lifecycle and data-safety rules.
 
 ## Report ID 11: Storage benchmark status
 
-When capability bit 5 is set, Input `11` publishes the retained benchmark snapshot nominally every 500 ms.
-Its payload is 32 bytes (33 including USB report ID). When disabled it is absent from the USB descriptor;
+When capability bit 5 is set, Input `11` checks the retained benchmark snapshot nominally every 500 ms and publishes
+on change, with a nominal 1000 ms keepalive while unchanged. Its payload is 32 bytes (33 including USB
+report ID). When disabled it is absent from the USB descriptor;
 the BLE `000b` mirror reads empty. When enabled, authenticated BLE reads the same payload without the ID.
 
 | Offset | Size | Field |

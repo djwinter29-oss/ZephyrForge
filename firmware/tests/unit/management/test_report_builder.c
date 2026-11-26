@@ -34,9 +34,11 @@ void test_report_builder_dispatches_shared_and_transport_independent_payloads(vo
 	zf_telemetry_report_ExpectAnyArgs();
 	TEST_ASSERT_EQUAL_UINT16(ZF_TELEMETRY_SIZE, zf_management_report_build(ZF_REPORT_TELEMETRY, 7, out));
 
+#if IS_ENABLED(CONFIG_ZF_STORAGE)
 	zf_storage_report_ExpectAnyArgs();
+#endif
 	TEST_ASSERT_EQUAL_UINT16(ZF_STORAGE_SIZE, zf_management_report_build(ZF_REPORT_STORAGE, 8, out));
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 	zf_benchmark_report_ExpectAnyArgs();
 	TEST_ASSERT_EQUAL_UINT16(ZF_BENCHMARK_SIZE, zf_management_report_build(ZF_REPORT_BENCHMARK, 9, out));
 #else
@@ -103,15 +105,25 @@ void test_configuration_assembly_merges_saved_policy_with_board_pins(void)
 void test_report_size_matches_supported_payloads_and_rejects_unknown_ids(void)
 {
 	TEST_ASSERT_EQUAL_UINT16(ZF_IDENTITY_SIZE, zf_management_report_size(ZF_REPORT_IDENTITY));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_FEATURE, zf_management_report_type(ZF_REPORT_IDENTITY));
 	TEST_ASSERT_EQUAL_UINT16(ZF_CONFIG_SIZE, zf_management_report_size(ZF_REPORT_CONFIG));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_FEATURE, zf_management_report_type(ZF_REPORT_CONFIG));
 	TEST_ASSERT_EQUAL_UINT16(ZF_MEMORY_SIZE, zf_management_report_size(ZF_REPORT_MEMORY));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_FEATURE, zf_management_report_type(ZF_REPORT_MEMORY));
 	TEST_ASSERT_EQUAL_UINT16(ZF_TELEMETRY_SIZE, zf_management_report_size(ZF_REPORT_TELEMETRY));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_INPUT, zf_management_report_type(ZF_REPORT_TELEMETRY));
 	TEST_ASSERT_EQUAL_UINT16(ZF_STORAGE_SIZE, zf_management_report_size(ZF_REPORT_STORAGE));
-	TEST_ASSERT_EQUAL_UINT16(ZF_ENABLE_STORAGE_BENCHMARK ? ZF_BENCHMARK_SIZE : 0,
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_INPUT, zf_management_report_type(ZF_REPORT_STORAGE));
+	TEST_ASSERT_EQUAL_UINT16(IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK) ? ZF_BENCHMARK_SIZE : 0,
 				 zf_management_report_size(ZF_REPORT_BENCHMARK));
+	TEST_ASSERT_EQUAL(IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK) ? ZF_MANAGEMENT_REPORT_INPUT :
+			  ZF_MANAGEMENT_REPORT_UNSUPPORTED, zf_management_report_type(ZF_REPORT_BENCHMARK));
 	TEST_ASSERT_EQUAL_UINT16(ZF_WIRELESS_SIZE, zf_management_report_size(ZF_REPORT_WIRELESS));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_FEATURE, zf_management_report_type(ZF_REPORT_WIRELESS));
 	TEST_ASSERT_EQUAL_UINT16(ZF_CONTROL_SIZE, zf_management_report_size(ZF_REPORT_CONTROL));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_FEATURE, zf_management_report_type(ZF_REPORT_CONTROL));
 	TEST_ASSERT_EQUAL_UINT16(0, zf_management_report_size(0xFF));
+	TEST_ASSERT_EQUAL(ZF_MANAGEMENT_REPORT_UNSUPPORTED, zf_management_report_type(0xFF));
 }
 
 void test_identity_advertises_only_modules_built_into_the_image(void)
@@ -119,12 +131,12 @@ void test_identity_advertises_only_modules_built_into_the_image(void)
 	uint8_t expected = 0x97;
 	uint8_t out[ZF_IDENTITY_SIZE];
 
-#if !ZF_ENABLE_STORAGE
+#if !IS_ENABLED(CONFIG_ZF_STORAGE)
 	expected = 0x87;
-#elif ZF_ENABLE_STORAGE_BENCHMARK
+#elif IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 	expected = 0xB7;
 #endif
-#if ZF_ENABLE_STORAGE && ZF_STORAGE_SPI
+#if IS_ENABLED(CONFIG_ZF_STORAGE) && IS_ENABLED(CONFIG_SPI_SDHC)
 	expected = (expected & ~ZF_CAP_SDMMC) | ZF_CAP_SPI;
 #endif
 	zf_board_identity_snapshot_ExpectAnyArgs();

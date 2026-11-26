@@ -9,13 +9,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
+#include "protocol/management_protocol.h"
 #include "protocol/report_codec.h"
 
 /** Maximum whole-MiB benchmark request. */
 #define ZF_BENCHMARK_MAX_MIB 1024u
 
-#if ZF_ENABLE_STORAGE_BENCHMARK
+#if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
 /**
  * @brief Admit or cancel a serialized benchmark without disk I/O.
  * @param start True starts a run; false cancels any active run.

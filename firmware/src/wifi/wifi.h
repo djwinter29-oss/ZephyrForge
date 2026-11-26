@@ -11,17 +11,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
+#include "protocol/management_protocol.h"
 #include "protocol/report_codec.h"
 #include "settings/settings.h"
 
-/** Feature 12 scan_state values. */
-#define ZF_SCAN_IDLE 0u /**< No scan has been requested since boot. */
-#define ZF_SCAN_RUNNING 1u /**< A scan is in progress; results are being collected. */
-#define ZF_SCAN_COMPLETE 2u /**< The last scan finished and its table is readable. */
-#define ZF_SCAN_FAILED 3u /**< The last scan failed or timed out; the table is stale. */
-
-#if ZF_ENABLE_WIFI
+#if IS_ENABLED(CONFIG_ZF_WIFI)
 /** Start the Wi-Fi state machine when the saved radio switch is on. */
 void zf_wifi_init(bool enabled);
 /** Advance connects, tests and scans; call from the main service loop. */
@@ -51,14 +46,19 @@ void zf_wifi_test_cancel(void);
 
 /** Request one scan; returns 0 when started, otherwise a negative errno. */
 int zf_wifi_scan_start(void);
-/** Current ZF_SCAN_* state. */
-uint8_t zf_wifi_scan_state(void);
-/** Generation counter identifying the current or last completed scan table. */
-uint16_t zf_wifi_scan_generation(void);
-/** Entry count of the completed scan table. */
-uint8_t zf_wifi_scan_count(void);
-/** Copy one completed scan entry; ssid must hold ZF_SSID_MAX_BYTES bytes. */
-int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi, uint8_t *security);
+/**
+ * @brief Copy one entry from a completed scan generation under one state lock.
+ * @param generation Expected scan generation.
+ * @param index Entry index.
+ * @param ssid Receives ZF_SSID_MAX_BYTES bytes.
+ * @param ssid_length Receives the SSID byte length.
+ * @param rssi Receives signal strength.
+ * @param security Receives the Feature 12 security mask.
+ * @return 0 on success, -EBUSY while a scan is active, -ESTALE for an unavailable generation, or -EINVAL for an
+ *         out-of-range index.
+ */
+int zf_wifi_scan_entry(uint16_t generation, uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi,
+		       uint8_t *security);
 #else
 static inline void zf_wifi_init(bool enabled)
 {
@@ -112,24 +112,10 @@ static inline int zf_wifi_scan_start(void)
 	return -ENOTSUP;
 }
 
-static inline uint8_t zf_wifi_scan_state(void)
+static inline int zf_wifi_scan_entry(uint16_t generation, uint8_t index, uint8_t *ssid, uint8_t *ssid_length,
+				     int8_t *rssi, uint8_t *security)
 {
-	return ZF_SCAN_IDLE;
-}
-
-static inline uint16_t zf_wifi_scan_generation(void)
-{
-	return 0;
-}
-
-static inline uint8_t zf_wifi_scan_count(void)
-{
-	return 0;
-}
-
-static inline int zf_wifi_scan_entry(uint8_t index, uint8_t *ssid, uint8_t *ssid_length, int8_t *rssi,
-				     uint8_t *security)
-{
+	(void)generation;
 	(void)index;
 	(void)ssid;
 	(void)ssid_length;

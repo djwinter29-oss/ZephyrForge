@@ -42,30 +42,33 @@
     :test_pico_board:
       - ZF_MCU=ZF_MCU_RP2040
       - ZF_BOARD_MODEL=ZF_BOARD_PICO
-      - ZF_ENABLE_LED=0
-      - ZF_ENABLE_WIFI=0
-      - ZF_ENABLE_BLUETOOTH=0
-      - ZF_ENABLE_SETTINGS_SAVE=0
-      - ZF_ENABLE_STORAGE=0
-      - ZF_ENABLE_STORAGE_BENCHMARK=0
+      - CONFIG_ZF_LED=0
+      - CONFIG_ZF_WIFI=0
+      - CONFIG_ZF_BLUETOOTH=0
+      - CONFIG_ZF_SETTINGS_SAVE=0
+      - CONFIG_ZF_STORAGE=0
+      - CONFIG_ZF_USB_MSC=0
+      - CONFIG_ZF_STORAGE_BENCHMARK=0
     :test_pico_w_board:
       - ZF_MCU=ZF_MCU_RP2040
       - ZF_BOARD_MODEL=ZF_BOARD_PICO_W
-      - ZF_ENABLE_LED=0
-      - ZF_ENABLE_WIFI=1
-      - ZF_ENABLE_BLUETOOTH=0
-      - ZF_ENABLE_SETTINGS_SAVE=0
-      - ZF_ENABLE_STORAGE=0
-      - ZF_ENABLE_STORAGE_BENCHMARK=0
+      - CONFIG_ZF_LED=0
+      - CONFIG_ZF_WIFI=1
+      - CONFIG_ZF_BLUETOOTH=0
+      - CONFIG_ZF_SETTINGS_SAVE=0
+      - CONFIG_ZF_STORAGE=0
+      - CONFIG_ZF_USB_MSC=0
+      - CONFIG_ZF_STORAGE_BENCHMARK=0
     :test_wifi_disabled:
-      - ZF_ENABLE_WIFI=0
+      - CONFIG_ZF_WIFI=0
     # A hypothetical BLE-only override exercising the radio-mask half of control admission.
     :test_ble_only_board:
-      - ZF_ENABLE_LED=0
-      - ZF_ENABLE_WIFI=0
-      - ZF_ENABLE_BLUETOOTH=1
-      - ZF_ENABLE_STORAGE=0
-      - ZF_ENABLE_STORAGE_BENCHMARK=0
+      - CONFIG_ZF_LED=0
+      - CONFIG_ZF_WIFI=0
+      - CONFIG_ZF_BLUETOOTH=1
+      - CONFIG_ZF_STORAGE=0
+      - CONFIG_ZF_USB_MSC=0
+      - CONFIG_ZF_STORAGE_BENCHMARK=0
 
 :cmock:
   :mock_prefix: mock_

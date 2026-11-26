@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <zephyr/drivers/flash.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/flash_map.h>
@@ -10,13 +11,13 @@
 LOG_MODULE_REGISTER(zf_settings_flash, LOG_LEVEL_INF);
 
 #define SETTINGS_PARTITION storage_partition
-#define SETTINGS_SECTOR_SIZE 4096u
 #define VERIFY_CHUNK_SIZE 32u
 
 int zf_settings_flash_write(const uint8_t *record, size_t size)
 {
 	uint8_t verify[VERIFY_CHUNK_SIZE];
 	const struct flash_area *area;
+	struct flash_pages_info page;
 	int64_t started;
 	int err;
 
@@ -27,8 +28,15 @@ int zf_settings_flash_write(const uint8_t *record, size_t size)
 	if (err) {
 		return err;
 	}
+	err = flash_get_page_info_by_offs(area->fa_dev, area->fa_off, &page);
+	if (err == 0 &&
+	    (page.start_offset != area->fa_off || page.size < size || page.size > area->fa_size)) {
+		err = -EINVAL;
+	}
 	started = k_uptime_get();
-	err = flash_area_erase(area, 0, SETTINGS_SECTOR_SIZE);
+	if (!err) {
+		err = flash_area_erase(area, 0, page.size);
+	}
 	if (!err) {
 		err = flash_area_write(area, 0, record, size);
 	}

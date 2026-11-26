@@ -90,8 +90,9 @@ the [settings reference](../reference/boot-settings.md) defines its lifecycle an
 Board selection defines hardware identity and wiring; feature selection defines which services are linked.
 Shared report encoding and control policy are independent of USB and BLE transport implementations.
 Kconfig owns target module selection; portable build definitions exercise the same feature gates in unit tests.
-Wi-Fi and BLE each have a board-independent disabled implementation. Advertised radio support follows the built
-services rather than the physical board's possible radios. Runtime radio switches cannot restore omitted modules.
+Wi-Fi and BLE expose type-safe inline stubs when their Kconfig modules are omitted. Advertised radio support follows
+the built services rather than the physical board's possible radios. Runtime radio switches cannot restore omitted
+modules.
 Storage policy remains separate from worker/admission and disk/FAT adapters. The USB transport implements the
 storage export contract; export can be omitted without removing FAT mounting. Benchmark file operations belong
 to the benchmark and run only after storage grants exclusive media ownership.
@@ -129,6 +130,9 @@ Keep this order when adding cross-service calls.
 - **Wi-Fi events** are queued and wake the main loop; module state is guarded by its own mutex. Connect, disconnect,
   and scan requests run on a dedicated queue outside that mutex.
 - **Storage** runs in a worker outside the application lock. Native MSC block I/O runs in its own USB class thread.
+  Flash, Wi-Fi driver and filesystem operations may block, so their dedicated workers are not merged into the
+  latency-sensitive system work queue. Stack budgets are not reduced until high-water measurements cover supported
+  targets and worst-case operations; native simulation cannot establish MCU stack requirements.
 
 ### Command completion and recovery
 

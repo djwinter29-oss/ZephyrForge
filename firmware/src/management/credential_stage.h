@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "protocol/management_protocol.h"
 #include "protocol/report_codec.h"
 
 /** Unrefreshed staged candidates expire after this many milliseconds. */
@@ -18,14 +19,6 @@
 #define ZF_CREDENTIAL_STAGE_PASSWORD_MAX 63u
 /** Staged Control key size in bytes. */
 #define ZF_CREDENTIAL_STAGE_KEY_SIZE 32u
-
-/** Feature 20 wireless detail values owned by staging (dispatchers own 1-15 and 22-28). */
-#define ZF_DETAIL_SSID_LENGTH 16u /**< Staged SSID exceeds ZF_SSID_MAX_BYTES. */
-#define ZF_DETAIL_PASSWORD 17u /**< Staged password fails the length or printable-byte rules. */
-#define ZF_DETAIL_KEY_LENGTH 18u /**< Staged key length is neither 0 nor 32. */
-#define ZF_DETAIL_PAIR_INCOMPLETE 19u /**< A new SSID lacks a staged password pair. */
-#define ZF_DETAIL_EXPIRED 20u /**< The staging window expired before the action. */
-#define ZF_DETAIL_NOTHING_STAGED 21u /**< No staged value exists to test or commit. */
 
 /** Feature 12 flag bits owned by staging (bits 0-3 belong to Wi-Fi). */
 #define ZF_CREDENTIAL_STAGE_FLAG_SSID 0x10u /**< An SSID is staged. */

@@ -14,17 +14,7 @@ endif()
 if(NOT CONFIG_ZF_USB_HID AND NOT CONFIG_ZF_BLUETOOTH)
   message(FATAL_ERROR "Firmware needs a management link: enable CONFIG_ZF_USB_HID or CONFIG_ZF_BLUETOOTH")
 endif()
-# Module switches are Kconfig symbols; these definitions let native unit tests select the same variants.
-target_compile_definitions(app PRIVATE ZF_STORAGE_SPI=$<BOOL:${CONFIG_SPI_SDHC}>
-  ZF_ENABLE_LED=$<BOOL:${CONFIG_ZF_LED}>
-  ZF_ENABLE_WIFI=$<BOOL:${CONFIG_ZF_WIFI}>
-  ZF_ENABLE_BLUETOOTH=$<BOOL:${CONFIG_ZF_BLUETOOTH}>
-  ZF_ENABLE_CPU_LOAD=$<BOOL:${CONFIG_ZF_CPU_LOAD}>
-  ZF_ENABLE_USB_HID=$<BOOL:${CONFIG_ZF_USB_HID}>
-  ZF_ENABLE_STORAGE=$<BOOL:${CONFIG_ZF_STORAGE}>
-  ZF_ENABLE_USB_MSC=$<BOOL:${CONFIG_ZF_USB_MSC}>
-  ZF_ENABLE_SETTINGS_SAVE=$<BOOL:${CONFIG_ZF_SETTINGS_SAVE}>
-  ZF_ENABLE_STORAGE_BENCHMARK=$<BOOL:${CONFIG_ZF_STORAGE_BENCHMARK}>)
+# Kconfig symbols are the only firmware module switches.
 if(CONFIG_ZF_STORAGE_BENCHMARK)
   target_compile_definitions(app PRIVATE
     ZF_BENCHMARK_CHUNK_SIZE=${CONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE})
@@ -78,24 +68,17 @@ else()
   endif()
 endif()
 
-if(CONFIG_ZF_WIFI)
-  target_sources(app PRIVATE src/wifi/wifi_station.c src/wifi/wifi_driver.c
-    src/wifi/wifi_policy.c src/wifi/wifi_scan_table.c)
-endif()
-if(CONFIG_ZF_BLUETOOTH)
-  target_sources(app PRIVATE src/transport/ble_gatt.c src/transport/ble_auth.c src/transport/sha256.c)
-endif()
+target_sources_ifdef(CONFIG_ZF_WIFI app PRIVATE src/wifi/wifi_station.c src/wifi/wifi_driver.c
+  src/wifi/wifi_policy.c src/wifi/wifi_scan_table.c)
+target_sources_ifdef(CONFIG_ZF_BLUETOOTH app PRIVATE src/transport/ble_gatt.c src/transport/ble_auth.c
+  src/transport/sha256.c)
 target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board})
 
-if(CONFIG_ZF_STORAGE)
-  target_sources(app PRIVATE src/storage/storage_service.c src/storage/storage_media.c
-    src/storage/storage_policy.c)
-  target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/transport/usb_msc.c)
-endif()
-if(CONFIG_ZF_STORAGE_BENCHMARK)
-  target_sources(app PRIVATE src/benchmark/benchmark_engine.c src/benchmark/benchmark_service.c
-    src/benchmark/benchmark_media.c)
-endif()
+target_sources_ifdef(CONFIG_ZF_STORAGE app PRIVATE src/storage/storage_service.c src/storage/storage_media.c
+  src/storage/storage_policy.c)
+target_sources_ifdef(CONFIG_ZF_USB_MSC app PRIVATE src/transport/usb_msc.c)
+target_sources_ifdef(CONFIG_ZF_STORAGE_BENCHMARK app PRIVATE src/benchmark/benchmark_engine.c
+  src/benchmark/benchmark_service.c src/benchmark/benchmark_media.c)
 target_sources(app PRIVATE
   src/app/main.c
   src/app/runtime.c
@@ -108,9 +91,7 @@ target_sources(app PRIVATE
   src/settings/settings_flash_read.c
   src/platform/telemetry.c
   src/management/wireless_status.c)
-if(CONFIG_ZF_SETTINGS_SAVE)
-  target_sources(app PRIVATE src/settings/settings_flash_write.c)
-endif()
+target_sources_ifdef(CONFIG_ZF_SETTINGS_SAVE app PRIVATE src/settings/settings_flash_write.c)
 target_sources_ifdef(CONFIG_ZF_LED app PRIVATE src/platform/led.c)
 target_sources_ifdef(CONFIG_ZF_USB_HID app PRIVATE src/transport/usb_device.c)
 target_include_directories(app PRIVATE src)

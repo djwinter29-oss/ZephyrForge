@@ -1,6 +1,6 @@
 #include "settings/settings.h"
 #include "settings/settings_flash.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "app/runtime.h"
 
 #include <errno.h>
@@ -15,7 +15,6 @@
 struct settings {
 	uint8_t sysclk;
 	uint8_t disabled;
-	uint8_t auth;
 	uint8_t ssid_length;
 	uint8_t ssid[ZF_SSID_MAX_BYTES];
 	char password[ZF_WIFI_PASSWORD_SIZE];
@@ -29,7 +28,7 @@ static struct settings saved;
 static struct settings boot;
 static bool saving;
 static zf_settings_source_t source;
-#if ZF_ENABLE_SETTINGS_SAVE
+#if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 static uint8_t save_record[ZF_SETTINGS_RECORD_SIZE];
 static zf_settings_save_done_t save_done;
 
@@ -68,7 +67,7 @@ uint32_t zf_settings_crc32(const uint8_t *data, size_t size)
 	return ~crc;
 }
 
-#if ZF_ENABLE_SETTINGS_SAVE
+#if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 static void put_u16(uint8_t *out, uint16_t value)
 {
 	out[0] = (uint8_t)value;
@@ -107,7 +106,7 @@ static bool password_valid(const char *password, size_t capacity)
 	return length < capacity && (length == 0 || (length >= 8 && length <= 63));
 }
 
-#if ZF_ENABLE_SETTINGS_SAVE
+#if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 static void encode(const struct settings *config, uint8_t record[ZF_SETTINGS_RECORD_SIZE])
 {
 	memset(record, 0, ZF_SETTINGS_RECORD_SIZE);
@@ -116,7 +115,7 @@ static void encode(const struct settings *config, uint8_t record[ZF_SETTINGS_REC
 	put_u16(record + 6, ZF_SETTINGS_RECORD_SIZE);
 	record[8] = config->sysclk;
 	record[10] = config->disabled;
-	record[11] = config->auth;
+	record[11] = 0; /* Legacy Wi-Fi auth mode is reserved; the station currently selects WPA2 by password. */
 	record[12] = config->ssid_length;
 	memcpy(record + 13, config->ssid, sizeof(config->ssid));
 	memcpy(record + 45, config->password, sizeof(config->password));
@@ -137,7 +136,7 @@ static bool decode(const uint8_t record[ZF_SETTINGS_RECORD_SIZE], struct setting
 		return false;
 	}
 	if (record[8] > ZF_SYSCLK_MAX_PROFILE || record[9] != 0 || (record[10] & ~SERVICE_BITS) ||
-	    record[11] > ZF_WIFI_AUTH_SAE || record[12] > ZF_SSID_MAX_BYTES ||
+	    record[11] > 3u || record[12] > ZF_SSID_MAX_BYTES ||
 	    !zero(record + 13 + record[12], ZF_SSID_MAX_BYTES - record[12]) ||
 	    !password_valid(password, ZF_WIFI_PASSWORD_SIZE) || (record[141] & ~KEY_PRESENT) ||
 	    (!(record[141] & KEY_PRESENT) && !zero(record + 109, ZF_BLE_KEY_SIZE)) || record[142] || record[143]) {
@@ -150,7 +149,6 @@ static bool decode(const uint8_t record[ZF_SETTINGS_RECORD_SIZE], struct setting
 	memset(config, 0, sizeof(*config));
 	config->sysclk = record[8];
 	config->disabled = record[10];
-	config->auth = record[11];
 	config->ssid_length = record[12];
 	memcpy(config->ssid, record + 13, sizeof(config->ssid));
 	memcpy(config->password, password, sizeof(config->password));
@@ -176,7 +174,7 @@ void zf_settings_load(void)
 	staged = loaded;
 	boot = loaded;
 	saving = false;
-#if ZF_ENABLE_SETTINGS_SAVE
+#if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 	save_done = NULL;
 	memset(save_record, 0, sizeof(save_record));
 #endif
@@ -227,26 +225,6 @@ uint8_t zf_settings_boot_radios(void)
 	return (uint8_t)(~boot.disabled & SERVICE_BITS);
 }
 
-void zf_settings_wifi_ssid(char ssid[ZF_SSID_BUFFER_SIZE])
-{
-	memcpy(ssid, visible()->ssid, sizeof(staged.ssid));
-	ssid[ZF_SSID_BUFFER_SIZE - 1] = '\0';
-}
-
-bool zf_settings_set_wifi_ssid(const char *ssid)
-{
-	if (!ssid) {
-		return false;
-	}
-	size_t length = 0;
-
-	while (length < ZF_SSID_BUFFER_SIZE && ssid[length]) {
-		++length;
-	}
-	return length < ZF_SSID_BUFFER_SIZE &&
-	       zf_settings_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)length);
-}
-
 uint8_t zf_settings_wifi_ssid_bytes(uint8_t ssid[ZF_SSID_MAX_BYTES])
 {
 	const struct settings *current = visible();
@@ -288,20 +266,6 @@ bool zf_settings_wifi_password_configured(void)
 	return visible()->password[0] != '\0';
 }
 
-zf_wifi_auth_state_t zf_settings_wifi_auth_state(void)
-{
-	return (zf_wifi_auth_state_t)visible()->auth;
-}
-
-bool zf_settings_set_wifi_auth_state(zf_wifi_auth_state_t state)
-{
-	if (saving || (unsigned)state > ZF_WIFI_AUTH_SAE) {
-		return false;
-	}
-	staged.auth = (uint8_t)state;
-	return true;
-}
-
 void zf_settings_ble_key(uint8_t key[ZF_BLE_KEY_SIZE])
 {
 	memcpy(key, visible()->key, sizeof(staged.key));
@@ -327,20 +291,7 @@ bool zf_settings_ble_key_configured(void)
 	return (visible()->flags & KEY_PRESENT) != 0;
 }
 
-bool zf_settings_wireless_restart_required(void)
-{
-	return saved.disabled != boot.disabled || saved.auth != boot.auth ||
-	       saved.ssid_length != boot.ssid_length || memcmp(saved.ssid, boot.ssid, sizeof(saved.ssid)) ||
-	       memcmp(saved.password, boot.password, sizeof(saved.password)) || saved.flags != boot.flags ||
-	       memcmp(saved.key, boot.key, sizeof(saved.key));
-}
-
-bool zf_settings_restart_required(void)
-{
-	return saved.sysclk != boot.sysclk || zf_settings_wireless_restart_required();
-}
-
-#if ZF_ENABLE_SETTINGS_SAVE
+#if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 static int save_prepare(uint8_t record[ZF_SETTINGS_RECORD_SIZE])
 {
 	if (saving) {

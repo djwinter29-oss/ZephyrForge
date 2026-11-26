@@ -81,7 +81,8 @@ int main(void) {
             fixture.write_text(source)
             subprocess.run([
                 os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
-                "-I", str(ROOT / "firmware/src"), str(fixture),
+                "-I", str(ROOT / "firmware/src"), "-I", str(ROOT / "firmware/tests/unit/support"),
+                str(fixture),
                 str(ROOT / "firmware/src/settings/settings.c"), "-o", str(binary),
             ], check=True, capture_output=True)
             subprocess.run([str(binary)], input=PROVISION.settings_page(bytes(range(32))), check=True)

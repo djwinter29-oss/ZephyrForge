@@ -1,5 +1,5 @@
 #include "storage/storage.h"
-#include "app/build_config.h"
+#include <zephyr/sys/util.h>
 #include "transport/usb_msc.h"
 #include "storage/storage_policy.h"
 
@@ -15,7 +15,7 @@
 LOG_MODULE_DECLARE(zf_storage, LOG_LEVEL_INF);
 
 #define DISK_NAME ZF_STORAGE_DISK_NAME
-#if ZF_STORAGE_SPI
+#if IS_ENABLED(CONFIG_SPI_SDHC)
 #define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(zephyrforge_sd), spi_max_frequency)
 #else
 #define BUS_CLOCK_HZ DT_PROP(DT_ALIAS(zephyrforge_sd), max_bus_freq)
@@ -99,7 +99,7 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage)
 	storage->initialized = true;
 	storage->capacity_valid = true;
 	storage->bus_clock_hz = BUS_CLOCK_HZ;
-	storage->bus_mode = ZF_STORAGE_SPI ? ZF_STORAGE_BUS_SPI : ZF_STORAGE_BUS_SD4;
+	storage->bus_mode = IS_ENABLED(CONFIG_SPI_SDHC) ? ZF_STORAGE_BUS_SPI : ZF_STORAGE_BUS_SD4;
 	err = disk_access_ioctl(DISK_NAME, DISK_IOCTL_GET_SD_CID, storage->cid);
 	if (err == 0) {
 		storage->cid_valid = true;
@@ -122,7 +122,7 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage)
 		mounted = true;
 		storage->filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
 	} else {
-#if ZF_ENABLE_USB_MSC
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
 		err = zf_usb_msc_reconnect();
 		if (err != 0) {
 			return err;

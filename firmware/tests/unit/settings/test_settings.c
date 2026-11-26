@@ -15,6 +15,11 @@ static size_t queued_size;
 static zf_settings_done_t queued_done;
 static int save_result;
 
+static bool set_ssid(const char *ssid)
+{
+	return zf_settings_set_wifi_ssid_bytes((const uint8_t *)ssid, (uint8_t)strlen(ssid));
+}
+
 void zf_app_lock(void)
 {
 }
@@ -97,22 +102,20 @@ static void save_valid_record(void)
 {
 	erase_flash();
 	zf_settings_load();
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid("lab"));
+	TEST_ASSERT_TRUE(set_ssid("lab"));
 	TEST_ASSERT_TRUE(zf_settings_set_wifi_password("password"));
 	TEST_ASSERT_EQUAL_INT(0, save_settings());
 }
 
 static void assert_defaults(void)
 {
-	char ssid[ZF_SSID_BUFFER_SIZE];
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
 
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_settings_radios());
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_sysclk());
-	TEST_ASSERT_EQUAL_INT(ZF_WIFI_AUTH_TRY_WPA2, zf_settings_wifi_auth_state());
 	TEST_ASSERT_FALSE(zf_settings_wifi_password_configured());
 	TEST_ASSERT_FALSE(zf_settings_ble_key_configured());
-	zf_settings_wifi_ssid(ssid);
-	TEST_ASSERT_EQUAL_STRING("", ssid);
+	TEST_ASSERT_EQUAL_UINT8(0, zf_settings_wifi_ssid_bytes(ssid));
 }
 
 void setUp(void)
@@ -155,7 +158,6 @@ void test_erased_flash_loads_defaults_with_both_radios(void)
 	TEST_ASSERT_EQUAL_INT(ZF_SETTINGS_DEFAULTS, zf_settings_source());
 	assert_defaults();
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_settings_boot_radios());
-	TEST_ASSERT_FALSE(zf_settings_restart_required());
 }
 
 void test_read_error_loads_defaults(void)
@@ -174,8 +176,7 @@ void test_record_layout_matches_documented_offsets(void)
 	memset(key, 0xA5, sizeof(key));
 	TEST_ASSERT_TRUE(zf_settings_set_sysclk(ZF_SYSCLK_160MHZ));
 	TEST_ASSERT_TRUE(zf_settings_set_radios(ZF_WIRELESS_BLE));
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_auth_state(ZF_WIFI_AUTH_SAE));
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid("lab"));
+	TEST_ASSERT_TRUE(set_ssid("lab"));
 	TEST_ASSERT_TRUE(zf_settings_set_wifi_password("password"));
 	TEST_ASSERT_TRUE(zf_settings_set_ble_key(key));
 	TEST_ASSERT_EQUAL_INT(0, save_settings());
@@ -189,7 +190,7 @@ void test_record_layout_matches_documented_offsets(void)
 	TEST_ASSERT_EQUAL_UINT8(ZF_SYSCLK_160MHZ, flash[8]);
 	TEST_ASSERT_EQUAL_UINT8(0, flash[9]);
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI, flash[10]);
-	TEST_ASSERT_EQUAL_UINT8(ZF_WIFI_AUTH_SAE, flash[11]);
+	TEST_ASSERT_EQUAL_UINT8(0, flash[11]);
 	TEST_ASSERT_EQUAL_UINT8(3, flash[12]);
 	TEST_ASSERT_EQUAL_MEMORY("lab", flash + 13, 3);
 	TEST_ASSERT_EQUAL_STRING("password", (const char *)flash + 45);
@@ -215,12 +216,8 @@ void test_saved_record_round_trips_and_applies_at_next_boot(void)
 
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_settings_boot_radios());
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_boot_sysclk());
-	TEST_ASSERT_TRUE(zf_settings_restart_required());
-	TEST_ASSERT_TRUE(zf_settings_wireless_restart_required());
-
 	zf_settings_load();
 	TEST_ASSERT_EQUAL_INT(ZF_SETTINGS_SAVED, zf_settings_source());
-	TEST_ASSERT_FALSE(zf_settings_restart_required());
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI, zf_settings_boot_radios());
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_80MHZ, zf_settings_boot_sysclk());
 	TEST_ASSERT_EQUAL_UINT8(3, zf_settings_wifi_ssid_bytes(ssid));
@@ -229,34 +226,16 @@ void test_saved_record_round_trips_and_applies_at_next_boot(void)
 	TEST_ASSERT_EQUAL_STRING("12345678", password);
 }
 
-void test_clock_only_change_does_not_require_wireless_restart(void)
+void test_legacy_auth_state_is_accepted_but_new_records_reserve_the_byte(void)
 {
-	TEST_ASSERT_TRUE(zf_settings_set_sysclk(ZF_SYSCLK_240MHZ));
-	TEST_ASSERT_EQUAL_INT(0, save_settings());
-	TEST_ASSERT_TRUE(zf_settings_restart_required());
-	TEST_ASSERT_FALSE(zf_settings_wireless_restart_required());
-}
-
-void test_key_only_change_requires_wireless_restart(void)
-{
-	uint8_t key[ZF_BLE_KEY_SIZE];
-
-	memset(key, 0x11, sizeof(key));
-	TEST_ASSERT_TRUE(zf_settings_set_ble_key(key));
-	TEST_ASSERT_EQUAL_INT(0, save_settings());
-	/* The record comparison must notice the key alone, or a committed key saves without BLE restart. */
-	TEST_ASSERT_TRUE(zf_settings_wireless_restart_required());
+	save_valid_record();
+	flash[11] = 3;
+	reseal();
 	zf_settings_load();
-	TEST_ASSERT_FALSE(zf_settings_wireless_restart_required());
-}
-
-void test_auth_only_change_requires_wireless_restart(void)
-{
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_auth_state(ZF_WIFI_AUTH_SAE));
+	TEST_ASSERT_EQUAL_INT(ZF_SETTINGS_SAVED, zf_settings_source());
+	TEST_ASSERT_TRUE(set_ssid("new-network"));
 	TEST_ASSERT_EQUAL_INT(0, save_settings());
-	TEST_ASSERT_TRUE(zf_settings_wireless_restart_required());
-	zf_settings_load();
-	TEST_ASSERT_FALSE(zf_settings_wireless_restart_required());
+	TEST_ASSERT_EQUAL_UINT8(0, flash[11]);
 }
 
 void test_save_maps_positive_flash_error_to_eio(void)
@@ -292,12 +271,12 @@ void test_async_save_keeps_confirmed_values_visible_while_writing(void)
 
 	save_valid_record();
 	TEST_ASSERT_TRUE(zf_settings_set_sysclk(ZF_SYSCLK_80MHZ));
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid("next-network"));
+	TEST_ASSERT_TRUE(set_ssid("next-network"));
 	TEST_ASSERT_TRUE(zf_settings_set_wifi_password("next-password"));
 	defer_write = true;
 	TEST_ASSERT_EQUAL_INT(0, zf_settings_save_async(save_done));
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_sysclk());
-	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid("late-change"));
+	TEST_ASSERT_FALSE(set_ssid("late-change"));
 	TEST_ASSERT_FALSE(zf_settings_set_wifi_password("late-password"));
 	TEST_ASSERT_FALSE(zf_settings_set_ble_key(NULL));
 	zf_settings_wifi_password(password);
@@ -305,7 +284,7 @@ void test_async_save_keeps_confirmed_values_visible_while_writing(void)
 	complete_write();
 	TEST_ASSERT_EQUAL_INT(0, save_result);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_80MHZ, zf_settings_sysclk());
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid("after-save"));
+	TEST_ASSERT_TRUE(set_ssid("after-save"));
 	memset(password, 0, sizeof(password));
 }
 
@@ -315,40 +294,35 @@ void test_failed_save_discards_staged_values(void)
 	TEST_ASSERT_TRUE(zf_settings_set_radios(0));
 	TEST_ASSERT_EQUAL_INT(-EIO, save_settings());
 	TEST_ASSERT_EQUAL_UINT8(ZF_WIRELESS_WIFI | ZF_WIRELESS_BLE, zf_settings_radios());
-	TEST_ASSERT_FALSE(zf_settings_restart_required());
 }
 
 void test_discard_restores_last_saved_values(void)
 {
 	save_valid_record();
-	TEST_ASSERT_TRUE(zf_settings_set_wifi_ssid(""));
+	TEST_ASSERT_TRUE(set_ssid(""));
 	TEST_ASSERT_TRUE(zf_settings_set_sysclk(ZF_SYSCLK_80MHZ));
 	zf_settings_discard();
-	char ssid[ZF_SSID_BUFFER_SIZE];
-	zf_settings_wifi_ssid(ssid);
-	TEST_ASSERT_EQUAL_STRING("lab", ssid);
+	uint8_t ssid[ZF_SSID_MAX_BYTES];
+	TEST_ASSERT_EQUAL_UINT8(3, zf_settings_wifi_ssid_bytes(ssid));
+	TEST_ASSERT_EQUAL_MEMORY("lab", ssid, 3);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_sysclk());
 }
 
 void test_setters_reject_invalid_values_without_change(void)
 {
-	char long_ssid[34];
+	uint8_t long_ssid[33];
 	char long_password[65];
 
 	memset(long_ssid, 'a', 33);
-	long_ssid[33] = '\0';
 	memset(long_password, 'p', 64);
 	long_password[64] = '\0';
 	TEST_ASSERT_FALSE(zf_settings_set_sysclk((zf_sysclk_profile_t)4));
 	TEST_ASSERT_FALSE(zf_settings_set_radios(4));
-	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid(long_ssid));
-	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid(NULL));
 	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid_bytes(NULL, 1));
-	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid_bytes((const uint8_t *)long_ssid, 33));
+	TEST_ASSERT_FALSE(zf_settings_set_wifi_ssid_bytes(long_ssid, 33));
 	TEST_ASSERT_FALSE(zf_settings_set_wifi_password("short"));
 	TEST_ASSERT_FALSE(zf_settings_set_wifi_password(long_password));
 	TEST_ASSERT_FALSE(zf_settings_set_wifi_password(NULL));
-	TEST_ASSERT_FALSE(zf_settings_set_wifi_auth_state((zf_wifi_auth_state_t)4));
 	assert_defaults();
 	TEST_ASSERT_EQUAL_INT(0, save_settings());
 	TEST_ASSERT_EQUAL_INT(0, write_calls);

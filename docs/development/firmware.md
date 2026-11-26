@@ -28,18 +28,19 @@ shared payload types and encodes bytes, and never depends on build configuration
 Wi-Fi is a station service, while Bluetooth is a management transport.
 
 Name files and APIs after their responsibility. Keep small, single-responsibility features in one file.
-For split implementations, use `_engine` or `_policy` for portable logic, `_service` for admission and scheduling,
-and `_media` for physical I/O. Disabled features use `_none.c` against the same service header. Public
-functions are prefixed with their owner: the folder for a feature (`zf_storage_*`, `zf_wifi_*`), or the file's
-component name inside a layer folder (`zf_control_*`, `zf_board_*`, `zf_usb_device_*`, `zf_sha256_*`, `zf_sdio_*`).
-Management report composition uses `zf_management_*` and wire encoding `zf_report_*`. Hooks between split files also name the implementing role, such as `zf_storage_media_open()`,
-`zf_storage_service_publish()` and `zf_usb_msc_register()`. Includes are qualified from `src/`, for example
-`"storage/storage.h"`.
+For split implementations, use `_engine` or `_policy` for portable logic, `_service` for admission and scheduling, and
+`_media` for physical I/O. A disabled feature replaces its prototypes with `static inline` stubs in its service header,
+behind the same `CONFIG_ZF_*` Kconfig symbol, so calls compile away and no stub source is linked. Public functions are prefixed
+with their owner: the folder for a feature (`zf_storage_*`, `zf_wifi_*`), or the file's component name inside a layer
+folder (`zf_control_*`, `zf_board_*`, `zf_usb_device_*`, `zf_sha256_*`, `zf_sdio_*`). Management report composition uses
+`zf_management_*` and wire encoding `zf_report_*`. Hooks between split files also name the implementing role, such as
+`zf_storage_media_open()`, `zf_storage_service_publish()` and `zf_usb_msc_register()`. Includes are qualified from
+`src/`, for example `"storage/storage.h"`.
 
 The benchmark owns its engine and FatFs media adapter; storage grants exclusive media ownership rather than
 implementing benchmark file operations. Board integration supplies hardware snapshots without reading saved settings or
-encoding management reports. Shared radio and SSID values live in `protocol/wireless_types.h`, independently of
-settings and service implementations.
+encoding management reports. Radio-switch bits and the SSID limit are wire values owned by the protocol; settings owns
+credential storage sizes, and `app/capabilities.h` derives the radios built into the image.
 
 `app/` owns startup, runtime synchronization, version and build capabilities. Kconfig selects target features;
 portable test definitions exercise the same feature gates. A helper lives beside its only consumer, as SHA-256 does
@@ -68,7 +69,7 @@ Repository-wide build, package, documentation and tooling tests live at `tests/t
 Add a unit test under the matching `tests/unit/` folder. Mock narrow service interfaces rather than recreating
 Zephyr internals with fake headers. Changes to reports or commands also need matching host and specification updates.
 Keep board wiring in overlays, not runtime board code. Portable modules must not depend on transport implementations;
-USB and BLE both consume the shared protocol. Disabled-service implementations belong with their service rather than
+USB and BLE both consume the shared protocol. Disabled-service stubs belong in their service header rather than
 inside a particular board's hooks. Add a module as one `CONFIG_ZF_*` symbol that selects its Zephyr subsystems,
 as described in [optional modules](firmware-build.md#optional-modules); do not add a second switch for it.
 The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
@@ -122,9 +123,9 @@ the tests do not mount, format, or write a real card.
 Run the report-composition and control suites with SPI, no storage, and storage without USB mass storage.
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_report_builder test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_report_builder test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1]}}' test:test_report_builder test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [CONFIG_ZF_STORAGE=0, CONFIG_ZF_USB_MSC=0, CONFIG_ZF_STORAGE_BENCHMARK=0]}}' test:test_report_builder test:test_control
+bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
 ```
 
 The no-MSC configuration retains storage while checking that card-export commands are unsupported.

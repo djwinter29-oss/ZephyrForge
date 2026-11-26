@@ -149,8 +149,8 @@ jobs:
       - name: Run Ceedling
         run: |
           bundle exec ceedling test:all
-          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
-          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [ZF_ENABLE_USB_MSC=0]}}' test:test_report_builder test:test_control
+          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1, CONFIG_ZF_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
+          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
 
   wifi-native:
     name: Wi-Fi lifecycle tests
