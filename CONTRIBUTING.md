@@ -1,6 +1,6 @@
 # Contributing
 
-Start with the [architecture](docs/reference/architecture.md) and the guide for the component you are changing in
+Start with the [architecture](docs/development/architecture.md) and the guide for the component you are changing in
 the [documentation index](docs/README.md). Keep changes focused. Preserve board pin/memory constraints and
 no-format storage behavior; update all affected hosts when a protocol changes.
 
@@ -21,22 +21,22 @@ dated validation results unchanged except for link maintenance. Internal refacto
 only when an interface or operating procedure changes. Write for the reader's task: explain why a constraint
 matters, state each limitation in its authoritative home, and avoid repeated closing disclaimers.
 
+Choose the content's home before adding a page:
+
+- `docs/getting-started.md`: one first-run path, not an inventory of every option.
+- `docs/hardware/`: board identity, connectors, wiring, and physical commissioning.
+- `docs/guides/`: operating tasks; dashboard guides share controls and recovery in their landing page.
+- `docs/development/`: architecture, builds, extensions, software checks, and releases.
+- `docs/reference/`: exact protocol, API, persistence, storage, and security contracts.
+- `docs/validation/`: current coverage and test procedures; dated observations stay under `records/`.
+
+Keep component READMEs as entry points to these pages rather than second copies of installation or API guides.
+Add a new task to the documentation index, and update incoming links when moving its page.
+
 Run `python3 tools/check_docs.py` and `git diff --check` after moving or editing documents.
 
-<details>
-<summary>Optional local branch cleanup</summary>
+## Repository maintenance
 
-From the repository root:
-
-```sh
-./tools/host/remove-local-branches.sh
-```
-
-**Warning:** this immediately force-deletes every local branch except `main`, including unmerged branches.
-There is no confirmation or `--apply` flag. Retain any needed commits before running; remote branches are untouched.
-
-The script does not switch branches. If a non-main branch is checked out in any worktree, it stops before deleting
-anything. Switch that worktree to `main` or detach it first.
-Use `./tools/host/remove-local-branches.sh --help` to view usage without deleting branches.
-
-</details>
+`./tools/host/remove-local-branches.sh --help` shows usage. Running the script force-deletes every local branch
+except `main`, including unmerged branches. It does not touch remote branches and stops if another worktree has a
+non-main branch checked out. Retain needed commits and move affected worktrees before running it.

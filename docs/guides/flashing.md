@@ -1,11 +1,17 @@
 # Flashing firmware
 
+[Documentation](../README.md) / Guides / Flashing
+
 Choose the procedure for a downloaded release or an existing source build. Both replace firmware on the board.
 Check the exact board and memory variant first; images for boards with the same MCU are not necessarily compatible.
 
+- [Install a release image](#flash-a-release-image)
+- [Upload a source build](#from-a-source-build)
+- [Troubleshoot flashing or startup](#if-flashing-or-startup-fails)
+
 ## Flash a release image
 
-For first use on a factory-fresh ESP32-C6, start with [first-key commissioning](boards/esp32c6-commissioning.md).
+For first use on a factory-fresh ESP32-C6, start with [first-key commissioning](../hardware/esp32c6-commissioning.md).
 It requires an initialized source build matching the flashed image.
 
 On [GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest), look for
@@ -24,8 +30,8 @@ version, and source commit in `BUILD-INFO.txt`.
 
 Firmware ZIPs contain an image, build identity, and licenses, not a Zephyr build directory or offline documentation.
 Use the guides linked from the release **at its tag**, and save them before working offline.
-For SD-enabled images, check the matching [wiring guide](hardware.md#sd-card-wiring). Before changing buses,
-follow the [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
+For SD-enabled images, check the matching [wiring guide](../hardware/sd-card-wiring.md). Before changing buses,
+follow the [card power-cycle instruction](../reference/sd-storage.md#safety-and-ownership).
 
 ### ESP32-S3 release image
 
@@ -52,7 +58,7 @@ After flashing, use the **USB** connector for HID management and the **UART** co
 ### ESP32-C6 release image
 
 Use this path for an ESP32-C6 with a saved Control key. For a factory-fresh board, follow
-[first-key commissioning](boards/esp32c6-commissioning.md).
+[first-key commissioning](../hardware/esp32c6-commissioning.md).
 
 Use only the ESP32-C6-DevKitC-1 N8 target named in `BUILD-INFO.txt`. Connect its serial flashing port, close other
 serial clients, and install esptool 5 as above. From the extracted ZIP directory:
@@ -74,7 +80,7 @@ RP2040 and RP2350 images are not interchangeable.
 3. Wait for the board to restart. The same connector now carries USB HID management.
 
 For console logs, use a 3.3 V USB-UART adapter wired as shown in the
-[Pico hardware guide](hardware.md#raspberry-pi-pico-targets). Leave the adapter's supply output disconnected.
+[Pico hardware guide](../hardware/README.md#raspberry-pi-pico-targets). Leave the adapter's supply output disconnected.
 
 ## From a source build
 
@@ -105,7 +111,7 @@ venv to identify ports on Linux; fix serial permissions rather than running the 
 The wrapper checks the board, storage profile, artifacts, and flash limits. Missing or empty artifacts cause a
 build, **including during `--dry-run`**. A complete existing build is reused, so rebuild after changing source.
 Uploads replace image sectors without requesting a full-chip erase. Saved
-[boot settings](../reference/settings.md#flash-reservation) survive normal uploads; the wrapper does not access
+[boot settings](../reference/boot-settings.md#flash-reservation) survive normal uploads; the wrapper does not access
 the SD card.
 
 The flash wrapper selects default images only. For a build customized with `--without`, use manual

@@ -1,44 +1,46 @@
 # Documentation
 
-For a first installation, follow [getting started](guides/getting-started.md). For an existing setup or a code
-change, choose the relevant guide below.
+**New to ZephyrForge?** Follow [Get a board running](getting-started.md) from image selection to live telemetry.
 
-## Set up and use a board
+## Use a board
 
-- [Hardware](guides/hardware.md) - identify your board, connectors, and electrical limits.
-- [SD-card wiring](guides/hardware.md#sd-card-wiring) - choose a pinout for your board and storage image.
-- [Flashing](guides/flashing.md) - install a release image or upload a source build.
-- [Wireless](guides/wireless.md) - scan/test Wi-Fi, save credentials, and connect over BLE.
-- [C6 commissioning](guides/boards/esp32c6-commissioning.md) - set the first BLE Control key through the flashing port.
-- [Diagnostic shells](guides/console.md) - read logs and use the diagnostic terminal.
-
-Dashboard installation and use: [Direct](../host/direct/README.md),
-[Python](../host/python/README.md), or [.NET](../host/dotnet/ZephyrForge/README.md).
+| Task | Read |
+| --- | --- |
+| Identify a board, connector, or reserved pin | [Boards and connections](hardware/README.md) |
+| Wire and prepare an SD card | [SD-card wiring](hardware/sd-card-wiring.md) |
+| Install or replace firmware | [Flashing firmware](guides/flashing.md) |
+| Set the first Control key on a C6 | [C6 commissioning](hardware/esp32c6-commissioning.md) |
+| Choose, install, or use a dashboard | [Dashboards](guides/dashboards/README.md) |
+| Export or return an SD card | [USB drive handoff](reference/sd-storage.md#usb-drive-handoff) |
+| Run a storage benchmark | [Storage benchmark](reference/sd-storage.md#optional-storage-benchmark) |
+| Set up Wi-Fi or Bluetooth | [Wireless setup](guides/wireless.md) |
+| Read logs or open a diagnostic terminal | [Diagnostic shells](guides/console.md) |
 
 ## Build and develop
 
-- [Architecture](reference/architecture.md) - service boundaries, startup, and locking.
-- [Firmware builds](development/firmware-build.md) - workspace setup, board/storage selection, and image outputs.
-- [Firmware development](development/firmware.md) - where to add application code and how to test it.
-- [Host development](development/host-tools.md) - dashboards, codecs, packaging, and software checks.
-- [Releases](development/releases.md) - package and publish a release.
-- [Contributing](../CONTRIBUTING.md) - prepare a change for review.
+| Task | Read |
+| --- | --- |
+| Understand services, startup, and locking | [Firmware architecture](development/architecture.md) |
+| Build an image or enable/disable modules | [Firmware builds](development/firmware-build.md) |
+| Add firmware behavior and run its tests | [Firmware development](development/firmware.md) |
+| Change a host or dashboard and run its checks | [Host development](development/host-tools.md) |
+| Package and publish a release | [Release procedure](development/releases.md) |
+| Submit a change | [Contributing](../CONTRIBUTING.md) |
 
 ## Look up a contract
 
-Use these when implementing firmware or a client. They define the exact fields, behavior, and error handling.
+These pages own exact fields, APIs, and error semantics; operating instructions stay in the guides above.
 
-- [USB HID](reference/usb-hid.md) - discovery, report layouts, control commands, and host validation.
-- [Bluetooth LE](reference/bluetooth.md) - advertising, GATT, authentication, and BLE control.
-- [Boot settings](reference/settings.md) - record format, defaults, load/save lifecycle, API, and flash safety.
-- [SD storage](reference/sdcard.md) - driver configuration, mounting, ownership, reporting, and benchmarks.
-- [Shared dashboard HTTP API](../host/web/README.md) - Python/.NET routes, JSON fields, and request/error semantics.
+| Contract | Contents |
+| --- | --- |
+| [USB HID](reference/usb-hid.md) | Device discovery, report layouts, commands, and host validation |
+| [Bluetooth LE](reference/bluetooth-le.md) | Advertising, GATT, authentication, and BLE control; reuses USB report layouts |
+| [Dashboard HTTP API](reference/http-api.md) | Python/.NET routes, JSON fields, responses, and errors |
+| [Boot settings](reference/boot-settings.md) | Defaults, record format, load/save API, and flash safety |
+| [SD storage](reference/sd-storage.md) | Drivers, mounting, exclusive ownership, and benchmarks |
+| [Security boundaries](reference/security.md) | Management links, local hosts, and stored credentials |
 
 ## Check what has been tested
 
-- [Qualification gaps](validation/qualification-gaps.md) - what remains unverified.
-- [Firmware qualification](validation/firmware-qualification.md) - target-test procedures and acceptance criteria.
-- [Validation records](validation/records/README.md) - dated software and hardware observations.
-
-Builds and simulated tests are not hardware qualification. Records apply to the revision, board, and configuration
-they describe; they are not installation instructions for the current release.
+- [Validation and qualification](validation/README.md) - board coverage, open gaps, and dated records.
+- [Firmware qualification procedure](validation/firmware-qualification.md) - how to run and record target checks.

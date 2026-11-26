@@ -2,8 +2,64 @@
 
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+
+
+def heading_anchors(markdown: str) -> set[str]:
+    """Return GitHub-style anchors for Markdown headings, including duplicate suffixes."""
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    in_fence = False
+    fence_marker = ""
+    for line in markdown.splitlines():
+        fence = re.match(r"^\s{0,3}(```+|~~~+)", line)
+        if fence:
+            marker = fence.group(1)[0]
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                in_fence = False
+            continue
+        if in_fence:
+            continue
+        heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if not heading:
+            continue
+        text = heading.group(1)
+        text = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", text)
+        text = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", text)
+        text = re.sub(r"`([^`]*)`", r"\1", text)
+        text = re.sub(r"<[^>]*>", "", text)
+        text = unicodedata.normalize("NFC", text).lower()
+        slug = "".join(
+            "-"
+            if character.isspace()
+            else character
+            for character in text
+            if character in "-_" or character.isspace() or unicodedata.category(character)[0] in "LN"
+        ).strip("-")
+        duplicate = counts.get(slug, 0)
+        counts[slug] = duplicate + 1
+        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
+    return anchors
+
+
+def link_failure(source: Path, target: str) -> str | None:
+    """Return a diagnostic when a local Markdown target or its heading anchor is missing."""
+    url = urlsplit(target)
+    if url.scheme or url.netloc:
+        return None
+    destination = source.parent / unquote(url.path) if url.path else source
+    if not destination.exists():
+        return f"{source}: missing {target}"
+    if url.fragment and destination.is_file() and unquote(url.fragment) not in heading_anchors(
+        destination.read_text(encoding="utf-8")
+    ):
+        return f"{source}: missing fragment {target}"
+    return None
 
 
 def main() -> int:
@@ -16,11 +72,11 @@ def main() -> int:
     for file in files:
         for target in re.findall(r"\[[^\]]*\]\(([^)\s]+)\)", file.read_text()):
             url = urlsplit(target)
-            if url.scheme or not url.path:
-                continue
-            count += 1
-            if not (file.parent / unquote(url.path)).exists():
-                failures.append(f"{file.relative_to(root)}: missing {target}")
+            failure = link_failure(file, target)
+            if failure:
+                failures.append(failure.removeprefix(f"{root}/") if failure.startswith(f"{root}/") else failure)
+            elif not url.scheme and not url.netloc and (url.path or url.fragment):
+                count += 1
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1

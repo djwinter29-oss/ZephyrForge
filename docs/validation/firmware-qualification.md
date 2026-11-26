@@ -1,8 +1,10 @@
 # Firmware qualification procedure
 
+[Documentation](../README.md) / [Validation](README.md) / Firmware qualification
+
 - **Check installed firmware:** start with the [USB runner](#runnable-usb-target-checks) for read-only diagnostics.
 - **Qualify an ESP32-S3-DevKitC-1 N16R8 image:** follow the [test stages](#test-stages), including the software gate
-  and manual matrices. Add results to the dated [validation records](records/README.md).
+  and manual matrices. Add results to the dated [validation records](README.md#validation-records).
 
 C6 and Pico do not yet have complete board-specific procedures. Their images need separate test plans; see
 [adapting checks](#adapting-checks-to-other-boards).
@@ -37,11 +39,12 @@ the board, ports, card, network, and test interval; agreement on one action does
 ## Ownership and safety prerequisites
 
 - Use only the board and ports selected for this run. Never select an arbitrary connected board.
-- Use the N16R8 image and [wiring](../reference/sdcard.md#pin-allocation) matching the selected storage transport.
+- Use the N16R8 image and [wiring](../hardware/sd-card-wiring.md#esp32-s3-devkitc-1-n16r8) matching the selected
+  storage transport.
   Preserve 16 MB flash, 8 MB octal PSRAM, native USB pins and the native image's 10 mA SD pad drive.
 - Use a backed-up, dedicated card containing only expendable test data. Prepare FAT16, FAT32 or exFAT on a computer;
   no check may format or repair a card from firmware. Before changing buses, follow the
-  [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
+  [card power-cycle instruction](../reference/sd-storage.md#safety-and-ownership).
 - Provision any required Wi-Fi network and BLE Control key through the existing dashboards. Keep credentials out
   of logs, screenshots, command lines, and result records. Control-key authentication is not BLE link encryption.
 
@@ -73,7 +76,8 @@ For qualification, complete these checks before testing the board:
 
 1. Run the [portable C suite](../development/firmware.md#host-native-unit-tests) and the
    [SPI and no-storage report and control tests](../development/firmware.md#storage-feature-gates).
-2. Build the ESP32-S3 SDMMC and SPI images using the [build wrapper](../development/firmware-build.md#build-with-the-wrapper).
+2. Build ESP32-S3 SDMMC and SPI images using the
+   [build wrapper](../development/firmware-build.md#build-with-the-wrapper).
 3. Run the [firmware tooling tests](../development/firmware.md#build-and-tooling-checks).
 
 Inspect generated configuration: correct PROCPU target, 16 MB flash, 8 MB octal PSRAM, selected storage driver,
@@ -94,9 +98,9 @@ The runner starts with [read-only HID checks](#read-only-checks). [Wi-Fi scans](
 to interpret the JSON and exit status.
 
 For an installed-image read-only check, use a running board with USB HID management and install the
-[Python host package](../../host/python/README.md#install) in an active venv. Find the exact board serial in the
+[Python host package](../guides/dashboards/python.md#install) in an active venv. Find the exact board serial in the
 dashboard, then close it and any other management clients. On Linux, check
-[HID permissions](../../host/direct/README.md#linux-usb-permissions) if needed. The read-only check works with
+[HID permissions](../guides/dashboards/README.md#linux-usb-permissions) if needed. The read-only check works with
 the installed firmware and can run with the card slot empty.
 
 ### Read-only checks
@@ -147,7 +151,7 @@ fails or its outcome is unclear, it stops instead of canceling or retrying it.
 A passing run requires observed benchmark activity before accepting its terminal result, exact completed byte counts,
 zero mismatches or errors, successful cleanup, and restoration of the original identified card's firmware mount.
 If a run finishes before activity can be observed, treat it as inconclusive rather than attributing an old result.
-The benchmark uses only the reserved file and safety rules in the [storage contract](../reference/sdcard.md).
+The benchmark uses only the reserved file and safety rules in the [storage contract](../reference/sd-storage.md).
 
 ### Reading the runner report
 
@@ -199,7 +203,7 @@ The single-copy settings save is not power-loss atomic.
 
 Settings saves erase, program, and verify flash synchronously in a transport callback while holding the application
 mutex. The 20 ms management-loop period does not guarantee callback latency. Capture the
-[flash-operation timing entry](../reference/settings.md#saving) with the host measurements; it excludes mutex wait
+[flash-operation timing entry](../reference/boot-settings.md#saving) with the host measurements; it excludes mutex wait
 and full transport-response time.
 
 Use UART logs and Direct for manual BLE observations. The USB runner is not a BLE central; it cannot qualify MTU
@@ -211,7 +215,7 @@ endurance, and RF, EMC, and regulatory qualification remain separate product wor
 These are prerequisites for a future board-specific procedure, not evidence that S3 results carry over.
 Select that board's image, pin allocation, and available commands before adapting the matrices.
 
-**ESP32-C6:** run [initial physical commissioning](../guides/boards/esp32c6-commissioning.md) separately and record
+**ESP32-C6:** run [initial physical commissioning](../hardware/esp32c6-commissioning.md) separately and record
 its verified outcome before management testing. The USB runner cannot manage C6; BLE checks need a separate
 procedure. Keep keys out of logs and records, and follow the commissioning utility's no-replay rules.
 

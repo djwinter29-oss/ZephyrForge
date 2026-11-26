@@ -30,4 +30,4 @@ when connected.
 
 All browser checks used a fake Web Serial device or simulated preview. No real board, Bluetooth
 connection, Wi-Fi association or SD card was used, and GitHub-hosted workflows have not run.
-See [qualification gaps](../qualification-gaps.md).
+See [qualification gaps](../README.md).

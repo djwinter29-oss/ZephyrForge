@@ -1,4 +1,6 @@
-# First BLE Control key on ESP32-C6
+# Commission an ESP32-C6
+
+[Documentation](../README.md) / [Hardware](README.md) / C6 commissioning
 
 Use this procedure once to commission an ESP32-C6-DevKitC-1 N8 for Direct BLE management. A fresh image does not
 advertise until a Control key is saved. The C6 has no native USB HID, so this procedure writes the first key through
@@ -10,8 +12,8 @@ to the board and no other application using that port. It has software checks, n
 ## Prepare the board and build
 
 1. Check the module marking. In a trusted, initialized Zephyr workspace,
-   [build the selected C6 image](../../development/firmware-build.md#build-with-the-wrapper) and
-   [flash it](../flashing.md#from-a-source-build).
+   [build the selected C6 image](../development/firmware-build.md#build-with-the-wrapper) and
+   [flash it](../guides/flashing.md#from-a-source-build).
 2. Retain the matching build directory, including compiled configuration and devicetree. The utility derives the
    settings address from that build; it does not prove the matching image is installed.
 3. Close all other programs using the port. The `--allow-settings-write` flag in the next step enables the
@@ -79,5 +81,5 @@ The utility removes its private temporary files on normal success or failure. Ab
 private files to clean up manually.
 
 Keys and settings remain unencrypted in flash; Control-key authentication does not encrypt BLE traffic.
-See [boot settings](../../reference/settings.md) for the record format and power-loss limits, and
-[wireless setup](../wireless.md#bluetooth-le) for connecting afterward.
+See [boot settings](../reference/boot-settings.md) for the record format and power-loss limits, and
+[wireless setup](../guides/wireless.md#bluetooth-le) for connecting afterward.

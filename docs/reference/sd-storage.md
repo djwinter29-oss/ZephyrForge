@@ -1,33 +1,24 @@
-# SD storage
+# SD storage and ownership
+
+[Documentation](../README.md) / Reference / SD storage
 
 Storage-enabled images use Zephyr disk access and FatFs to mount an existing volume at `/SD:` (disk name `SD`).
 Firmware owns the card until the user explicitly hands it to USB mass storage on a board that supports it.
 There is no automatic formatting or runtime bus fallback.
-Hardware reports cover selected card and wiring combinations only; see
-[qualification gaps](../validation/qualification-gaps.md).
+See [qualification gaps](../validation/README.md) for tested card and wiring combinations.
 
-ESP32-S3 and Pico images offer native four-bit SDMMC or SPI; C6 offers SPI only.
-The [build guide](../development/firmware-build.md) also describes the `none` image, which omits SD and filesystem
-support entirely. This is an SD memory-card interface, not an SDIO peripheral/function API.
+Select the controller and optional modules through the [build guide](../development/firmware-build.md).
+The `none` image omits SD and filesystem support entirely. This is an SD memory-card interface, not an SDIO
+peripheral/function API.
 
 For runtime behavior, see [mounting](#boot-and-runtime-mount-lifecycle), [USB handoff](#usb-drive-handoff),
 or the [optional benchmark](#optional-storage-benchmark).
 
 ## Pin allocation
 
-GPIO numbers are MCU signals, not physical header positions. Use the wiring guide for the exact board and storage
-variant from [SD-card wiring](../guides/hardware.md#sd-card-wiring). Read
-[safety and ownership](#safety-and-ownership) before changing buses.
-
-### Reported allocation
-
-Report `2` publishes storage GPIOs in CLK, CMD, DAT0, DAT1, DAT2, DAT3 order for native SDMMC, and in SCK, MOSI,
-MISO, CS, unassigned, unassigned order for SPI.
-
-Unassigned GPIOs are encoded as `255`; card detect is reported separately.
-The reported values must match the corresponding [wiring guide](#pin-allocation).
-If a downstream board changes the wiring, its hardware configuration and reported pin allocation MUST agree;
-validate the new allocation before use.
+Use the [SD-card wiring guide](../hardware/sd-card-wiring.md) for physical allocations and
+[Report `2`](usb-hid.md#report-id-2-board-configuration) for their wire encoding. A downstream wiring change MUST
+keep hardware configuration and reported allocation consistent; validate the new allocation before use.
 
 ## Driver and filesystem configuration
 
@@ -115,22 +106,10 @@ command. See the [USB control contract](usb-hid.md#msc-command-rules) for exact 
 
 ## Status reporting
 
-Report `10` carries live detection/ownership snapshots, hardware identity, filesystem type and available capacity
-over USB HID and BLE.
-The [USB HID specification](usb-hid.md#report-id-10-storage-status) defines field values, flags, and validation.
-Detection distinguishes confirmed absence from an inserted card whose mount failed.
-During media work or USB ownership, the firmware SD sample is invalid and current SD fields are cleared.
-Capacity counts the whole volume in 512-byte sectors, not free space. The reported clock is the configured
-ceiling, not a runtime measurement. CID reports manufacturer/product/revision, serial and manufacturing date even
-when no filesystem is mounted. Negotiated bus state is not reported.
-The pinned SD stack includes a public-ioctl extension that retains CID during hardware initialization.
-
-The mount error code is **only logged**, not retained in Report `10`. Hosts can distinguish detected absence and
-hardware initialization from a mounted filesystem, but cannot classify a mount error from this report alone.
-Use the UART log for diagnosis, and do not label every uninitialized sample "no card".
-
-Hosts accept zero or one advertised storage transport and validate its pin layout and bus-mode reports. The C6 has
-no native USB HID, so Direct BLE can read storage status but cannot start the USB-only benchmark or handoff commands.
+The [USB HID Report `10` contract](usb-hid.md#report-id-10-storage-status) defines the fields and validation.
+It reports detection, hardware initialization, mount format and ownership; mount errors appear only in the UART log.
+Capacity is the whole volume, not free space. The clock field shows the configured ceiling.
+The C6 exposes storage status over BLE but has no USB-only benchmark or handoff commands.
 
 ## Optional storage benchmark
 
@@ -167,8 +146,8 @@ qualification.
 
 ## Safety and ownership
 
-Back up the card and prepare a FAT16, FAT32, or exFAT volume on a computer. Firmware mounts the existing
-volume at `/SD:` without formatting it. This includes factory-formatted exFAT cards.
+Back up the card and follow [card preparation](../hardware/sd-card-wiring.md#card-preparation-and-qualification)
+before use.
 
 - Firmware and USB have exclusive ownership; they never mount/access the same medium concurrently.
 - Reboot and settings-save are Busy while the storage worker is active or USB owns the medium.

@@ -1,13 +1,21 @@
 # Firmware development
 
+[Documentation](../README.md) / Development / Firmware
+
 For workspace setup, board selection, and image outputs, use [firmware builds](firmware-build.md).
 This guide covers application changes and the checks to run before submitting them.
+
+- [Place a change](#where-to-put-a-change)
+- [Run portable unit tests](#host-native-unit-tests) and [feature-gate checks](#storage-feature-gates)
+- [Run Zephyr native tests](#zephyr-native-wi-fi-tests)
+- [Check builds and tooling](#build-and-tooling-checks)
+- [Board-specific ESP32-S3 LED integration](#esp32-s3-rgb-led-integration)
 
 ## Where to put a change
 
 Keep portable policy separate from Zephyr drivers and callbacks. Product-specific work belongs in its own service,
 not in the management loop or under the application lock. Read the
-[architecture](../reference/architecture.md) before changing startup, concurrency, or resource ownership.
+[architecture](architecture.md) before changing startup, concurrency, or resource ownership.
 
 | Directory under `firmware/` | Responsibility |
 | --- | --- |
@@ -31,13 +39,16 @@ inside a particular board's hooks. Use the existing Zephyr feature symbols and
 The Pico W random source is suitable for noncryptographic network identifiers only; authentication challenges
 must use a cryptographically secure source.
 
-## ESP32-S3 RGB LED integration
+### Example: extending an optional module
 
-The WS2812-compatible LED uses SPI2 MOSI only. Keep SPI2's output idle-low: the ESP32 default high idle level
-prevents the required low reset interval. The driver sends eight-bit transfers at up to 6.4 MHz, uses a MOSI
-pull-down and holds the reset interval low for 350 microseconds. The LED starts Off at low fixed intensity; a
-transmission error disables control until reboot. Keep the configured pin and reported board facts aligned when
-supporting another board revision.
+The storage benchmark shows how an optional behavior crosses the build, portable code, and test boundaries:
+
+1. Select it with the existing `benchmark` build option; disabling it also removes its advertised capability.
+2. Keep the benchmark lifecycle and admission policy in the storage service, separate from USB/BLE transport.
+3. Exercise its behavior in the focused storage and control suites, then check the disabled configuration as well.
+
+Use the [optional-module build instructions](firmware-build.md#optional-modules) and the
+[host-native test commands](#host-native-unit-tests) rather than adding a second feature switch or a new test harness.
 
 ## Host-native unit tests
 
@@ -125,4 +136,12 @@ for installed-image checks and [runner unit tests](../validation/firmware-qualif
 for software-only checks.
 
 Builds and software tests do not flash boards, write cards, or perform fault injection. Record physical results
-separately in dated [validation records](../validation/records/README.md).
+separately in dated [validation records](../validation/README.md#validation-records).
+
+## ESP32-S3 RGB LED integration
+
+The WS2812-compatible LED uses SPI2 MOSI only. Keep SPI2's output idle-low: the ESP32 default high idle level
+prevents the required low reset interval. The driver sends eight-bit transfers at up to 6.4 MHz, uses a MOSI
+pull-down and holds the reset interval low for 350 microseconds. The LED starts Off at low fixed intensity; a
+transmission error disables control until reboot. Keep the configured pin and reported board facts aligned when
+supporting another board revision.

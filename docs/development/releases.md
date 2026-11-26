@@ -1,18 +1,22 @@
 # Release procedure
 
+[Documentation](../README.md) / Development / Releases
+
 Use this guide to publish packages. For installation, see [Flashing](../guides/flashing.md).
+Complete [one-time publisher setup](#before-the-first-release) for the channels you use, then follow the
+stable-tag checklist below.
 
-## Release sequence
-
-Complete [one-time publisher setup](#before-the-first-release) for the channels you use. For each release,
-follow [the stable-tag checklist](#publish-a-stable-tag).
+- [Publish a stable tag](#publish-a-stable-tag)
+- [Inspect release assets](#release-assets)
+- [Understand publication and retries](#direct-pages-pypi-and-retries)
+- [Use packaging helpers locally](#package-and-publication-helpers)
 
 ## Publish a stable tag
 
 1. On the intended source ref, run [Release build packages](../../.github/workflows/release.yml) manually with
    the proposed tag, for example `v0.1.0`. The preflight builds and tests packages and attaches artifacts.
    Creating the tag is a separate step.
-2. Inspect the artifacts, dependency license notices, and [hardware qualification limits](../validation/qualification-gaps.md).
+2. Inspect the artifacts, dependency license notices, and [hardware qualification limits](../validation/README.md).
    Review radio and regulatory requirements before distributing radio-enabled binaries. Confirm preflight and
    PR checks passed on the exact commit you plan to tag.
 3. Check out that commit, then create and push the tag. Use `vMAJOR.MINOR.PATCH` with components from 0 to 255
@@ -78,9 +82,9 @@ variant. W firmware packages include Infineon HAL and blob license notices.
 `BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
 These images provide Wi-Fi only; a release build does not qualify the radio hardware.
 
-For host installation, see [Python](../../host/python/README.md#install),
-[.NET](../../host/dotnet/ZephyrForge/README.md#run-the-host), and
-[Direct](../../host/direct/README.md#choose-how-to-run-it). Windows and macOS packages ship without publisher
+For host installation, see [Python](../guides/dashboards/python.md#install),
+[.NET](../guides/dashboards/dotnet.md#run-the-host), and
+[Direct](../guides/dashboards/direct.md#choose-how-to-run-it). Windows and macOS packages ship without publisher
 signatures or notarization. Local OS security policy may require explicit approval.
 
 ## GitHub workflows

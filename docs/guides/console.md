@@ -1,5 +1,7 @@
 # Diagnostic shells
 
+[Documentation](../README.md) / Guides / Diagnostic shells
+
 ZephyrForge enables Zephyr's native diagnostic shell on the UART connector and, on the ESP32-S3, as a raw TCP stream
 on port **2323**.
 Neither shell carries dashboard commands or changes saved settings, wireless credentials or SD ownership.
@@ -9,10 +11,10 @@ USB HID and authenticated BLE remain the management interfaces.
 
 Open the board's USB-to-UART bridge port in a serial terminal at **115200 baud, 8N1**, with flow control and local
 echo disabled. The Raspberry Pi Pico boards have no bridge; use a 3.3 V USB-UART adapter on UART0, wired as in the
-[hardware guide](hardware.md#raspberry-pi-pico-targets). The prompt is `ZephyrForge> `. Enter submits a command;
-Tab lists or completes native commands.
+[hardware guide](../hardware/README.md#raspberry-pi-pico-targets). The prompt is `ZephyrForge> `.
+Enter submits a command; Tab lists or completes native commands.
 Boot messages and logs share this UART and may interrupt the prompt. Close the terminal before flashing.
-The native USB connector has HID and MSC, not a CDC serial shell.
+The native USB connector has HID, plus MSC when included, not a CDC serial shell.
 
 ## Raw TCP
 
@@ -40,11 +42,10 @@ secrets. Logs are not forwarded to TCP, and command history is disabled on both 
 ### In-browser terminal
 
 With fresh connected Wi-Fi status, open the shell link in the dashboard. Python and .NET provide a relay.
-Direct needs its [local server](../../host/direct/README.md#wi-fi-shell). The terminal uses the board's reported
+Direct needs its [local server](dashboards/direct.md#wi-fi-shell). The terminal uses the board's reported
 IPv4 address and shows an error if the shell is unreachable.
 
-**The board's TCP shell is unauthenticated plaintext.** Use it on a trusted, isolated network and keep
-secrets out of the terminal.
+Apply the [TCP shell security limits](../reference/security.md#management-links) before opening a session.
 
 Click the terminal to type. It displays plain text and supports native editing, including arrows, Tab and
 Control keys. Use Shift+Tab to leave the terminal and confirm multiline paste before sending. Opening a
@@ -52,7 +53,7 @@ session clears unfinished input from the previous client and enables echo for th
 
 Close the tab to disconnect. The relay closes the session after 15 seconds without requests. If a send
 fails or its outcome is uncertain, close the session and check the board. Avoid replaying uncertain input.
-For the bridge endpoints and session rules, see the [HTTP contract](../../host/web/README.md#browser-shell).
+For the bridge endpoints and session rules, see the [HTTP contract](../reference/http-api.md#browser-shell).
 
 ## Commands and limits
 

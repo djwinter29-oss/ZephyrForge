@@ -2,7 +2,7 @@
 
 ## Scope
 
-Adapted PicoForge's boot settings design (commit `5e61572`) as [settings.md](../../reference/settings.md).
+Adapted PicoForge's boot settings design (commit `5e61572`) as [settings.md](../../reference/boot-settings.md).
 Added `firmware/src/boot_config.c/.h`, which keeps PicoForge's 148-byte record offsets with magic `EFCF` version 1.
 Also added `boot_flash.c/.h` (first sector of `storage_partition` through `flash_area`) and `system_clock.c`
 (80/160/240 MHz CPU profiles through ESP32 clock control). `main()` now loads settings, applies the clock, starts

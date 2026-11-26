@@ -1,20 +1,22 @@
-# Qualification gaps
+# Validation and qualification
+
+[Documentation](../README.md) / Validation
 
 This page summarizes recorded hardware results and the checks still needed. ESP32-S3 N16R8 has limited functional
 checks and measurements for selected setups. Pico-family and ESP32-C6 images have software checks only; none of
 these targets has production qualification.
+
+- [Board coverage](#board-coverage) and [open S3 checks](#esp32-s3-checks-still-needed)
+- [Run and record qualification](firmware-qualification.md)
+- [Dated validation records](#validation-records)
 
 ## Board coverage
 
 | Target | Hardware evidence |
 | --- | --- |
 | ESP32-S3-DevKitC-1 N16R8 | Flashing and boot reported working in the [2026-11-14 report](records/2026-11-14-hardware-tests.md). That report lacks firmware revision, image hashes, and PSRAM memory-test output. The later [native SDMMC record](records/2026-11-20-sdmmc-performance.md) identifies its flashed image by hash. |
-| ESP32-C6-DevKitC-1 N8 | No recorded flashing, boot, BLE, Wi-Fi, or card checks on hardware. [First-key commissioning](../guides/boards/esp32c6-commissioning.md) has software tests only. |
+| ESP32-C6-DevKitC-1 N8 | No recorded flashing, boot, BLE, Wi-Fi, or card checks on hardware. [First-key commissioning](../hardware/esp32c6-commissioning.md) has software tests only. |
 | Pico, Pico W, Pico 2, Pico 2 W | No recorded UF2 flashing, boot, USB HID/MSC, UART, PIO SD, SPI storage, or W-board Wi-Fi checks on hardware. |
-
-Other board variants are not supported targets: ESP32-S3 N4/N8 and octal-flash modules need different configuration,
-as do other S3 boards, C6 boards other than the configured DevKitC-1 N8, and Pico-compatible boards outside the four
-listed above.
 
 ## ESP32-S3 checks still needed
 
@@ -50,14 +52,6 @@ with fake devices. Benchmark safety checks use simulated media.
 These checks help catch software regressions; they do not establish electrical behavior, over-the-air performance,
 or physical reconnect reliability.
 
-## Product and security limits
-
-- Pico W images have no BLE transport. C6 has no native USB HID dashboard path or USB-controlled benchmark.
-- BLE Control keys authenticate commands, but do not encrypt the link. Saved credentials are unencrypted in flash.
-  USB management and UART commissioning rely on physical access, and the diagnostic TCP shell is unauthenticated
-  plaintext. Local hosts stay on loopback. See
-  [wireless security boundaries](../guides/wireless.md#security-boundaries).
-
 ## Recording further checks
 
 Use the [firmware qualification procedure](firmware-qualification.md) for safety prerequisites, opt-in target checks,
@@ -66,3 +60,28 @@ procedures, durations, and observed results in a new dated record. Use backups a
 destructive or fault-injection tests.
 
 Add only observed results to dated records; the procedure is a plan, not evidence that a check passed.
+
+## Validation records
+
+These are past observations for their stated revision, configuration, tools, and test limits, not installation
+instructions or evidence for the current release as a whole.
+
+### Hardware and target checks
+
+- 2026-11-20: [Native SDMMC clock and throughput](records/2026-11-20-sdmmc-performance.md)
+- 2026-11-20: [Firmware software gates and qualification checks](records/2026-11-20-firmware-qualification.md)
+- 2026-11-20: [Native SDMMC write reliability](records/2026-11-20-sd-write-reliability.md)
+- 2026-11-14: [Functional hardware test report](records/2026-11-14-hardware-tests.md)
+
+### Initial software checks (2026-11-07)
+
+- [Initial software setup](records/2026-11-07-setup.md)
+- [Native firmware unit-test setup](records/2026-11-07-ceedling.md)
+- [USB upload wrapper](records/2026-11-07-usb-upload.md)
+- [Direct dashboard completion](records/2026-11-07-direct-dashboard.md)
+- [Direct dashboard independence](records/2026-11-07-direct-independence.md)
+- [Shared bridge dashboard layout](records/2026-11-07-shared-web-layout.md)
+- [Python host package layout](records/2026-11-07-python-package-layout.md)
+- [Boot settings](records/2026-11-07-boot-settings.md)
+- [USB HID, BLE and Wi-Fi implementation](records/2026-11-07-hid-ble-implementation.md)
+- [N16R8 flash and PSRAM](records/2026-11-07-n16r8-flash-psram.md)

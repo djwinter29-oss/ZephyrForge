@@ -1,9 +1,13 @@
-# Bluetooth LE specification
+# Bluetooth LE protocol
+
+[Documentation](../README.md) / Reference / Bluetooth LE
 
 - **Find the board and service** · [Advertising](#advertising), [GATT layout](#gatt-layout)
 - **Open a session** · [Pairing and bonding](#pairing-and-bonding), [session unlock](#session-unlock)
-- **Send a command** · [Command proofs](#command-proofs), [exchange sequence](#exchange-sequence), [control request and result](#control-characteristic)
-- **Diagnose a failure** · [Validation order](#validation-order), [uncertain outcomes](#uncertain-outcomes), [ATT errors](#att-errors)
+- **Send a command** · [Command proofs](#command-proofs), [exchange sequence](#exchange-sequence),
+  [control request and result](#control-characteristic)
+- **Diagnose a failure** · [Validation order](#validation-order), [uncertain outcomes](#uncertain-outcomes),
+  [ATT errors](#att-errors)
 
 For connecting a dashboard, use [Wireless Setup](../guides/wireless.md#bluetooth-le).
 
@@ -13,7 +17,7 @@ This specification defines startup gating, advertising, GATT, session unlock, pe
 control form, and ATT error codes. Breaking wire changes use a
 new service UUID; compatible additions MAY retain this UUID. Byte 0 of each report and control payload remains its
 payload version. Payload layouts reused from USB and cross-transport command semantics are defined once in the [USB HID
-reference](usb-hid.md). Credential persistence is defined in [boot settings](settings.md).
+reference](usb-hid.md). Credential persistence is defined in [boot settings](boot-settings.md).
 
 The Direct dashboard implements BLE through Web Bluetooth. Python and .NET dashboards use USB HID only.
 
@@ -23,12 +27,10 @@ in bytes. Multibyte report and control integers are little-endian unless stated 
 canonical text form; characteristic suffixes are hexadecimal. The nonce and proof are raw byte strings,
 not hexadecimal text on the wire.
 
-The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described
-in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
+Capitalized requirement words follow the [protocol convention](usb-hid.md#scope-and-conventions).
 
 Protocol requirements apply to any client or server implementation of this service. References to Zephyr and
 the Direct dashboard describe the current implementation, not additional wire fields.
-Software tests do not establish hardware qualification; see [Conformance](#conformance).
 
 ## Availability
 
@@ -46,10 +48,9 @@ Report `12` byte 3 (`ble_state`) publishes the controller state:
 | `1` | Advertising | Controller working and discoverable; no central connected. |
 | `2` | Connected | One central is connected. |
 
-A Bluetooth startup failure is logged and can appear as Report `12` detail `1` in the saved-network state when
-no Wi-Fi failure detail takes precedence. This detail is not a dedicated BLE error field. Dashboards show `0` with BLE
-enabled and a key saved as "starting". State `0` intentionally conflates off, missing key, startup and failure; it
-is not an exact reason code, and no separate Starting state is published.
+Report `12` may surface a Bluetooth startup failure through its Wi-Fi detail field; see the
+[wireless status contract](usb-hid.md#report-id-12-wireless-status) for precedence. State `0` conflates off, missing
+key, startup and failure; no separate Starting state is published.
 
 ## Advertising
 
@@ -76,7 +77,7 @@ application access. The default firmware does not enable a pairing or bonding wo
 or persist peer keys. Pairing is not an alternative to the Control key. BLE cannot provision credentials, but its
 settings-save command can write the settings record. On USB-HID boards the Control key is provisioned through USB
 and loaded from boot settings. The ESP32-C6 has no native USB HID,
-so use [initial physical commissioning](../guides/boards/esp32c6-commissioning.md).
+so use [initial physical commissioning](../hardware/esp32c6-commissioning.md).
 A fresh C6 image leaves Bluetooth off until a Control key is saved; this requirement is not bypassed with
 unauthenticated access.
 
@@ -86,8 +87,7 @@ Service UUID: `ef5c0000-7c91-4d70-8b32-6e856443f502`.
 Characteristic UUIDs use `ef5cXXXX-7c91-4d70-8b32-6e856443f502`, where `XXXX` is the suffix below.
 Breaking wire changes require a new service UUID. Report characteristics use the hexadecimal USB report ID and
 return that report's payload **without** the report ID byte. Suffixes `0001`–`00ff` are reserved for report mirrors;
-`0100` and above are BLE-specific.
-and above are BLE-specific. Clients MUST reject an unsupported payload version for a known report or control
+`0100` and above are BLE-specific. Clients MUST reject an unsupported payload version for a known report or control
 characteristic. Clients MAY ignore unknown characteristics unless they are required for an operation they use.
 
 The Generic Attribute service includes Service Changed (`0x2A05`) and Database Hash (`0x2B2A`). The database is
@@ -143,10 +143,9 @@ full-range Service Changed indication on every subscription.
 Clients MUST honor any Service Changed indication they receive and rediscover the database; they MUST NOT reuse
 cached handles across connections. This avoids persisting per-peer cache state.
 
-The Direct client subscribes before ZephyrForge service discovery when Generic Attribute and Service Changed are
-available, then continues without waiting for an indication.
-If lookup or subscription fails with `NotAllowedError`, `NotFoundError`, `NotSupportedError` or `SecurityError`, it
-warns and continues with the platform's own cache behavior; other errors abort setup.
+Browser-specific Service Changed subscription fallback is described in the
+[Direct protocol notes](../development/host-tools.md#direct-protocol-behavior). It does not change the requirement to
+rediscover the service and avoid reusing cached handles across connections.
 
 ### Read snapshots
 
@@ -246,12 +245,10 @@ sequenceDiagram
     participant C as Central
     participant P as GATT server
     C->>P: Connect (locked)
-    alt Generic Attribute and Service Changed available
+    opt Client subscribes to Service Changed
         C->>P: Write CCCD 2902 = 2
         P-->>C: Write Response
         Note over C,P: Continue discovery without waiting for an indication
-    else Subscription unavailable or fails with a supported fallback error
-        Note over C: Continue with platform cache behavior
     end
     C->>P: Read 0001 - extract UID at payload offset 3
     C->>P: Read 0100 - receive nonce
@@ -378,22 +375,11 @@ These security properties and residual risks are accepted tradeoffs for a local 
 ## Operational notes
 
 Connection interval and supervision timeout are managed by the server and central stacks; this specification does not
-promise a disconnect-detection deadline. Application notifications are intentionally omitted. The Direct dashboard
-serializes GATT reads and writes, including each proof with its command, and waits 250 ms between status-read rounds.
-Read latency therefore adds to the round period. Wireless status retains its separate polling schedule.
-Queued commands whose write deadline expires are canceled rather than sent later; uncertain outcomes still require
-explicit reconciliation and are never replayed.
+promise a disconnect-detection deadline. Application notifications are intentionally omitted. Standard Service
+Changed indications are managed by the Bluetooth stack.
 
-Direct marks BLE telemetry stale after 3 seconds without a valid receipt, and storage/benchmark status after 6 seconds.
-These bounded windows allow for multi-characteristic ATT reads; USB Input freshness deadlines are unchanged.
-Invalid reports do not refresh receipt times. Wireless status expires after three of its polling intervals
-(1.5 seconds during a test/scan, 6 seconds otherwise). Disconnect clears connection snapshots immediately.
-
-Standard Service Changed indications are managed by the Bluetooth stack; the Direct subscription is ephemeral
-and used only for cache invalidation. The browser chooses MTU negotiation for Web Bluetooth clients.
-
-BLE cannot stage credentials, test or scan Wi-Fi, run benchmarks, change radio switches, or change USB storage
-ownership.
+Direct's polling windows, queued-command deadlines, and browser cache compatibility are documented in the
+[Direct protocol notes](../development/host-tools.md#direct-protocol-behavior); USB Input freshness deadlines are unchanged.
 
 ## Conformance
 
@@ -406,20 +392,7 @@ ownership.
 
 These tests use portable modules and simulated browser transports. They do not qualify the Zephyr GATT callbacks,
 controller startup, over-the-air advertising, negotiated MTU or live cache behavior; those require ESP32-S3 or
-ESP32-C6 hardware. See the [qualification gaps](../validation/qualification-gaps.md).
-
-## Implementation
-
-The current firmware uses Zephyr's Bluetooth host with the ESP32-S3 or ESP32-C6 controller.
-`CONFIG_BT_GATT_SERVICE_CHANGED` and `CONFIG_BT_GATT_CACHING` enable the standard caching attributes.
-Challenges use the SoC entropy source through Zephyr's cryptographically secure random API.
-Accepted reboot commands use a 1000 ms grace period.
-
-Bluetooth callbacks run in the Zephyr Bluetooth thread. They hold the application mutex while accessing
-authentication, read snapshots and the shared control dispatcher. Advertising slowdown uses delayed Zephyr work;
-connectable advertising restarts when the disconnected connection object is recycled.
-Python and .NET hosts do not use BLE. See [architecture](architecture.md#lifecycle-and-failure-handling)
-for cross-transport locking and lifecycle rules.
+ESP32-C6 hardware. See the [qualification gaps](../validation/README.md).
 
 ## Specification history
 
