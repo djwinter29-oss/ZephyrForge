@@ -35,7 +35,8 @@ the Direct dashboard describe the current implementation, not additional wire fi
 ## Availability
 
 ESP32-S3 and ESP32-C6 provide BLE; Pico-family images do not. Report `1` capability bit 7 denotes wireless support,
-not BLE specifically. At boot the firmware loads the saved Control key and
+not BLE specifically; bit 6 independently denotes USB mass-storage support on images that provide USB HID.
+At boot the firmware loads the saved Control key and
 then starts the controller only when the Report `2` Bluetooth switch is on **and** a key is saved. Enabling the
 switch without a key logs a warning and leaves the controller off. Saving or clearing the key takes effect at the
 next boot. The separate [diagnostic TCP shell](../guides/console.md) is not protected by the BLE Control key.

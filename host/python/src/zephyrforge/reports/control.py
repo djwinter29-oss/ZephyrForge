@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .models import BootSettings, ControlResult, SupportedHardwareIdentity, WirelessNetwork
 
 from .common import (
-    CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
+    CAP_MSC, CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
     CONTROL_ERROR_NAMES, CONTROL_PAYLOAD_SIZE, CONTROL_REPORT_ID, CONTROL_STATUS_NAMES, REPORT_VERSION,
     ControlDetail, ControlError, ControlOpcode, ControlStatus, InvalidRequest, ProtocolError,
     ALLOWED_STATUS_ERRORS, OPCODE_STATUSES, report_bytes, feature_payload, validate_settings,
@@ -190,9 +190,9 @@ def parse_control_result_report(
         raise ValueError("unknown HID opcode must be unsupported")
     if opcode_enum in _UNSUPPORTED_OPCODES and status not in (ControlStatus.IDLE, ControlStatus.UNSUPPORTED):
         raise ValueError("HID control result reports an operation ZephyrForge does not provide")
-    # Opcode 5 may be Unsupported for a forced save even though settings save is advertised.
     if status == ControlStatus.UNSUPPORTED and error == ControlError.CAPABILITY and identity is not None:
         required = CAP_REBOOT if opcode_enum == ControlOpcode.REBOOT else (
+            CAP_MSC if opcode_enum == ControlOpcode.MSC else
             CAP_SELF_TEST if opcode_enum == ControlOpcode.SELF_TEST else None)
         if opcode_enum is not None and ControlOpcode.STAGE_SSID <= opcode_enum <= ControlOpcode.WIFI_ENTRY:
             required = CAP_WIRELESS

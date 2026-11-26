@@ -61,6 +61,7 @@ to omit a module or `--with MODULE` to explicitly enable one (both are repeatabl
 | `tcp-shell` | `CONFIG_ZF_TCP_SHELL` | Off | No unauthenticated plaintext TCP diagnostic shell |
 | UART shell | `CONFIG_ZF_UART_SHELL` | Off | No UART diagnostic shell |
 | CPU load | `CONFIG_ZF_CPU_LOAD` | On | Runtime accounting is disabled and telemetry reports load unavailable |
+| Die temperature | `CONFIG_ZF_TEMPERATURE` | Boards with a temperature sensor node | Sampling omitted; telemetry unavailable |
 | Settings save | `CONFIG_ZF_SETTINGS_SAVE` | ESP32 with flash-map support | Boot settings remain readable but cannot be changed persistently; save capability and writer are omitted |
 | `usb-hid` | `CONFIG_ZF_USB_HID` | Boards with a HID node | No native USB HID management; Bluetooth must remain enabled |
 | `usb-msc` | `CONFIG_ZF_USB_MSC` | Storage with USB HID | Keeps storage but cannot export the card over USB; card-export commands report unsupported |
@@ -69,6 +70,9 @@ to omit a module or `--with MODULE` to explicitly enable one (both are repeatabl
 
 Use `--benchmark-chunk-size BYTES` to set the benchmark's aligned transfer buffer from 4 to 32 KiB
 (default 32 KiB). Smaller values reduce static RAM use and increase the number of filesystem operations.
+
+Telemetry Report `3` remains available in every image because hosts use its uptime to track device freshness.
+CPU-load and die-temperature fields independently report unavailable when their modules are omitted.
 
 Diagnostic shells are disabled by default. `--with uart-shell` and `--with tcp-shell` enable them; the TCP shell
 requires Wi-Fi and is unauthenticated plaintext for trusted networks only.
@@ -107,8 +111,9 @@ No-storage builds must have `CONFIG_USBD_MSC_CLASS`, `CONFIG_DISK_ACCESS` and `C
 Storage-enabled builds must keep both `CONFIG_FS_FATFS_MOUNT_MKFS` and `CONFIG_FS_FATFS_MKFS` disabled.
 A successful build checks software only, not physical wiring, card detection, mounting, or USB ownership.
 
-CI builds the supported targets and packages each image with build identity and dependency license notices. Firmware
-packages do not include the west manifest, generated configuration or flashing instructions; see the
+CI builds the supported targets, builds representative Wi-Fi, Bluetooth, MSC and settings-save-disabled variants,
+and packages default images with build identity and dependency license notices. Firmware packages do not include
+the west manifest, generated configuration or flashing instructions; see the
 [release package contents](releases.md#release-assets) and the linked flashing guides.
 `ZEPHYRFORGE_VERSION=MAJOR.MINOR.PATCH` sets the release firmware version; unset, builds use the development default
 in `firmware/CMakeLists.txt`. Each component must be from 0 to 255 to fit the firmware identity report, and invalid

@@ -6,14 +6,18 @@
 
 static zf_benchmark_t benchmark;
 static K_MUTEX_DEFINE(benchmark_lock);
-static uint32_t queued_size_mib;
 static bool active;
 static bool cancelled;
 
 static void run(void *context)
 {
-	uint32_t size_mib = *(const uint32_t *)context;
+	uint32_t size_mib;
 
+	ARG_UNUSED(context);
+
+	k_mutex_lock(&benchmark_lock, K_FOREVER);
+	size_mib = benchmark.target_bytes / (1024u * 1024u);
+	k_mutex_unlock(&benchmark_lock);
 	zf_benchmark_media_reset();
 	zf_benchmark_engine_run(size_mib);
 	k_mutex_lock(&benchmark_lock, K_FOREVER);
@@ -44,12 +48,11 @@ int zf_benchmark_request(bool start, uint32_t size_mib)
 		.state = ZF_BENCHMARK_QUEUED,
 		.target_bytes = size_mib * 1024u * 1024u,
 	};
-	queued_size_mib = size_mib;
 	active = true;
 	cancelled = false;
 	k_mutex_unlock(&benchmark_lock);
 
-	err = zf_storage_run_exclusive(run, &queued_size_mib);
+	err = zf_storage_run_exclusive(run, NULL);
 	if (err != 0) {
 		k_mutex_lock(&benchmark_lock, K_FOREVER);
 		active = false;

@@ -1,9 +1,9 @@
 #include "storage/storage.h"
 #include "platform/board.h"
+#include "app/runtime.h"
 #include <zephyr/sys/util.h>
 #include "protocol/report_codec.h"
 #include "storage/storage_export.h"
-#include "transport/usb_msc.h"
 #include "storage/storage_policy.h"
 
 #include <errno.h>
@@ -34,6 +34,7 @@ static zf_storage_request_t request_action;
 static uint32_t media_generation;
 static uint32_t request_generation;
 static bool last_presence;
+static bool media_removed;
 static bool storage_thread_started;
 static zf_storage_exclusive_job_t exclusive_job;
 static void *exclusive_context;
@@ -45,8 +46,6 @@ static void detect_changed(const struct device *port, struct gpio_callback *call
 	ARG_UNUSED(pins);
 	k_sem_give(&storage_wakeup);
 }
-
-static bool media_removed;
 
 /** Latch removal before an exclusive media job can touch replacement media. */
 bool zf_storage_media_present(void)
@@ -72,7 +71,14 @@ bool zf_storage_media_present(void)
 
 void zf_storage_service_publish(const zf_storage_t *storage)
 {
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
+	bool msc_changed;
+#endif
+
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
+	msc_changed = snapshot.msc_enabled != storage->msc_enabled;
+#endif
 	snapshot = *storage;
 	if (request_pending) {
 		snapshot.busy = true;
@@ -80,6 +86,11 @@ void zf_storage_service_publish(const zf_storage_t *storage)
 		snapshot.msc_transition_pending = true;
 	}
 	k_mutex_unlock(&snapshot_lock);
+#if IS_ENABLED(CONFIG_ZF_USB_MSC)
+	if (msc_changed) {
+		zf_app_wakeup();
+	}
+#endif
 }
 
 void zf_storage_snapshot(zf_storage_t *out)
@@ -95,6 +106,7 @@ int zf_storage_request(bool usb, uint8_t transaction)
 	zf_storage_request_t action = usb ? ZF_STORAGE_USB_OWNER : ZF_STORAGE_FIRMWARE_OWNER;
 	int err = 0;
 
+	/* Protocol admission also checks this; retain the service guard for direct callers. */
 	if (!IS_ENABLED(CONFIG_ZF_USB_MSC)) {
 		return -ENOTSUP;
 	}
@@ -330,11 +342,6 @@ void zf_storage_init(void)
 				err = 0;
 			}
 		}
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
-		if (err == 0) {
-			err = zf_usb_msc_register();
-		}
-#endif
 	}
 	if (err != 0) {
 		LOG_ERR("SD service setup failed: %d after %lld ms", err,

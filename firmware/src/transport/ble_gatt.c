@@ -28,14 +28,6 @@ LOG_MODULE_REGISTER(zf_ble, LOG_LEVEL_INF);
 #define SLOW_INTERVAL 800  /* 500 ms */
 #define FAST_PERIOD_MS 30000
 
-#define CHR_IDENTITY ZF_REPORT_IDENTITY
-#define CHR_CONFIG ZF_REPORT_CONFIG
-#define CHR_TELEMETRY ZF_REPORT_TELEMETRY
-#define CHR_STORAGE ZF_REPORT_STORAGE
-#define CHR_BENCHMARK ZF_REPORT_BENCHMARK
-#define CHR_MEMORY ZF_REPORT_MEMORY
-#define CHR_WIRELESS ZF_REPORT_WIRELESS
-#define CHR_CONTROL ZF_REPORT_CONTROL
 #define CHR_NONCE 0x0100u
 #define CHR_PROOF 0x0101u
 
@@ -116,7 +108,7 @@ static void slow_down(struct k_work *work)
 		}
 		break;
 	case ZF_BLE_OFF:
-		if (!failed && name[0] != '\0') {
+		if (!atomic_get(&failed) && name[0] != '\0') {
 			err = advertise(false);
 		}
 		break;
@@ -134,8 +126,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (err != 0) {
 		return;
 	}
-	/* Waits for a running slow_down before the state changes, so no stop/start races the connection. */
-	(void)k_work_cancel_delayable(&slow_work);
+	struct k_work_sync sync;
+
+	/* Synchronize with queued advertising work before changing connection state. */
+	(void)k_work_cancel_delayable_sync(&slow_work, &sync);
 	zf_app_lock();
 	current = bt_conn_ref(conn);
 	zf_ble_auth_session_reset(&session);
@@ -163,7 +157,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 static void recycled(void)
 {
 	zf_app_lock();
-	if (atomic_get(&state) == ZF_BLE_OFF && !failed && name[0] != '\0') {
+	if (atomic_get(&state) == ZF_BLE_OFF && !atomic_get(&failed) && name[0] != '\0') {
 		if (advertise(true) != 0) {
 			(void)k_work_reschedule(&slow_work, K_MSEC(FAST_PERIOD_MS));
 		}
@@ -179,7 +173,7 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 
 static uint16_t build(uint16_t chr, uint8_t *out)
 {
-	if (chr == CHR_CONTROL) {
+	if (chr == ZF_REPORT_CONTROL) {
 		zf_control_ble_get(out);
 		return ZF_BLE_CONTROL_SIZE;
 	}
@@ -190,14 +184,14 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 		zf_ble_auth_set_nonce(&session, out);
 		return ZF_BLE_AUTH_NONCE_SIZE;
 	}
-	if (chr == CHR_TELEMETRY || chr == CHR_STORAGE || chr == CHR_BENCHMARK) {
+	if (chr == ZF_REPORT_TELEMETRY || chr == ZF_REPORT_STORAGE || chr == ZF_REPORT_BENCHMARK) {
 		return zf_management_report_build(chr, ++sequence, out);
 	}
 	switch (chr) {
-	case CHR_IDENTITY:
-	case CHR_CONFIG:
-	case CHR_MEMORY:
-	case CHR_WIRELESS:
+	case ZF_REPORT_IDENTITY:
+	case ZF_REPORT_CONFIG:
+	case ZF_REPORT_MEMORY:
+	case ZF_REPORT_WIRELESS:
 		return zf_management_report_build(chr, 0, out);
 	default:
 		return 0;
@@ -206,7 +200,7 @@ static uint16_t build(uint16_t chr, uint8_t *out)
 
 static bool open_while_locked(uint16_t chr)
 {
-	return chr == CHR_IDENTITY || chr == CHR_NONCE;
+	return chr == ZF_REPORT_IDENTITY || chr == CHR_NONCE;
 }
 
 static ssize_t read_report(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf, uint16_t len,
@@ -268,6 +262,8 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 		result = BT_GATT_ERR(ZF_ATT_ERR_REJECTED);
 	} else if (!zf_control_ble_envelope(request, len)) {
 		result = BT_GATT_ERR(ZF_ATT_ERR_ENVELOPE);
+	} else if (zf_control_ble_busy()) {
+		result = BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	} else {
 		uint8_t err = zf_control_ble_proof_required(request[2])
 				      ? zf_ble_auth_authorize(&session, request, len, now)
@@ -299,18 +295,18 @@ static ssize_t read_text(struct bt_conn *conn, const struct bt_gatt_attr *attr, 
 
 BT_GATT_SERVICE_DEFINE(zephyrforge_service,
 	BT_GATT_PRIMARY_SERVICE(ZF_UUID_DECLARE(0x0000u)),
-	REPORT_CHR(CHR_IDENTITY),
-	REPORT_CHR(CHR_CONFIG),
-	REPORT_CHR(CHR_MEMORY),
-	REPORT_CHR(CHR_TELEMETRY),
-	REPORT_CHR(CHR_STORAGE),
+	REPORT_CHR(ZF_REPORT_IDENTITY),
+	REPORT_CHR(ZF_REPORT_CONFIG),
+	REPORT_CHR(ZF_REPORT_MEMORY),
+	REPORT_CHR(ZF_REPORT_TELEMETRY),
+	REPORT_CHR(ZF_REPORT_STORAGE),
 #if IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
-	REPORT_CHR(CHR_BENCHMARK),
+	REPORT_CHR(ZF_REPORT_BENCHMARK),
 #endif
-	REPORT_CHR(CHR_WIRELESS),
-	BT_GATT_CHARACTERISTIC(ZF_UUID_DECLARE(CHR_CONTROL), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+	REPORT_CHR(ZF_REPORT_WIRELESS),
+	BT_GATT_CHARACTERISTIC(ZF_UUID_DECLARE(ZF_REPORT_CONTROL), BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_report, write_control,
-			       UINT_TO_POINTER(CHR_CONTROL)),
+			       UINT_TO_POINTER(ZF_REPORT_CONTROL)),
 	REPORT_CHR(CHR_NONCE),
 	BT_GATT_CHARACTERISTIC(ZF_UUID_DECLARE(CHR_PROOF), BT_GATT_CHRC_WRITE, BT_GATT_PERM_WRITE, NULL, write_proof,
 			       NULL));

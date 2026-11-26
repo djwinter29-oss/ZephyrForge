@@ -7,6 +7,77 @@
 
 #include <stdint.h>
 
+/** Feature report IDs on the ZephyrForge HID collection. */
+#define ZF_REPORT_IDENTITY 1u /**< Report 1: identity and capabilities. */
+#define ZF_REPORT_CONFIG 2u /**< Report 2: saved configuration and pin allocation. */
+#define ZF_REPORT_TELEMETRY 3u /**< Report 3: telemetry snapshot. */
+#define ZF_REPORT_STORAGE 10u /**< Report 10: storage snapshot. */
+#define ZF_REPORT_BENCHMARK 11u /**< Report 11: benchmark progress. */
+#define ZF_REPORT_WIRELESS 12u /**< Report 12: Wi-Fi, BLE and staging state. */
+#define ZF_REPORT_MEMORY 13u /**< Read-only boot memory inventory. */
+#define ZF_REPORT_CONTROL 20u /**< Feature 20: control request/result envelope. */
+
+/** Wi-Fi radio switch bit in stored and commanded radio masks. */
+#define ZF_WIRELESS_WIFI 1u
+/** BLE radio switch bit in stored and commanded radio masks. */
+#define ZF_WIRELESS_BLE 2u
+/** Maximum Wi-Fi SSID length in bytes (IEEE 802.11 limit and wire field width). */
+#define ZF_SSID_MAX_BYTES 32u
+
+/** Payload sizes excluding the report ID, matching the encoded wire layout. */
+#define ZF_IDENTITY_SIZE 26u /**< Report 1 payload. */
+#define ZF_CONFIG_SIZE 17u /**< Report 2 payload. */
+#define ZF_TELEMETRY_SIZE 22u /**< Report 3 payload. */
+#define ZF_STORAGE_SIZE 34u /**< Report 10 payload. */
+#define ZF_BENCHMARK_SIZE 32u /**< Report 11 Input payload. */
+#define ZF_WIRELESS_SIZE 48u /**< Report 12 payload. */
+#define ZF_MEMORY_SIZE 16u /**< Report 13 payload. */
+#define ZF_CONTROL_SIZE 68u /**< Feature 20 control payload. */
+#define ZF_BLE_CONTROL_SIZE 9u /**< BLE control characteristic request/result payload. */
+#define ZF_SCAN_ENTRY_RESULT_SIZE 38u /**< Wi-Fi scan entry in a control result. */
+
+/** Identity extension flag: Report 13 memory inventory is available. */
+#define ZF_EXT_MEMORY 0x01u
+
+/** Report 11 bus mode values. */
+#define ZF_STORAGE_BUS_SPI 2u /**< SPI. */
+#define ZF_STORAGE_BUS_SD4 3u /**< Native four-bit SD. */
+
+/** Product ID advertised in Report 1. */
+#define ZF_PRODUCT_ID 0x0003u
+/** Report 1 MCU enum values. */
+#define ZF_MCU_RP2040 1u /**< Raspberry Pi RP2040. */
+#define ZF_MCU_RP2350 2u /**< Raspberry Pi RP2350. */
+#define ZF_MCU_ESP32S3 3u /**< Espressif ESP32-S3. */
+#define ZF_MCU_ESP32C6 4u /**< Espressif ESP32-C6. */
+/** Report 1 board model enum values. */
+#define ZF_BOARD_DEVKITC 1u /**< Espressif ESP32-S3-DevKitC-1 N16R8. */
+#define ZF_BOARD_PICO 2u /**< Raspberry Pi Pico (RP2040). */
+#define ZF_BOARD_PICO_W 3u /**< Raspberry Pi Pico W (RP2040). */
+#define ZF_BOARD_PICO2 4u /**< Raspberry Pi Pico 2 (RP2350). */
+#define ZF_BOARD_PICO2_W 5u /**< Raspberry Pi Pico 2 W (RP2350). */
+#define ZF_BOARD_ESP32C6_DEVKITC 6u /**< Espressif ESP32-C6-DevKitC-1 N8. */
+/** Report 1 capabilities bits. */
+#define ZF_CAP_LED 0x01u /**< RGB LED control is available. */
+#define ZF_CAP_REBOOT 0x02u /**< The reboot opcode is supported. */
+#define ZF_CAP_SETTINGS 0x04u /**< Saved boot settings are supported. */
+#define ZF_CAP_SPI 0x08u /**< SD memory-card transport over SPI. */
+#define ZF_CAP_SDMMC 0x10u /**< Native SDMMC card transport. */
+#define ZF_CAP_BENCHMARK 0x20u /**< Optional temporary-file benchmark capability. */
+#define ZF_CAP_MSC 0x40u /**< USB mass-storage ownership control is available. */
+#define ZF_CAP_WIRELESS 0x80u /**< Wireless management is supported. */
+
+/** Board unique-identity length in bytes. */
+#define ZF_UID_SIZE 8u
+/** Report 3 load sentinel: no measurement window is available. */
+#define ZF_LOAD_UNAVAILABLE 0xFFFFu
+/** Report 2 pin sentinel: the function is not allocated on this board. */
+#define ZF_GPIO_UNASSIGNED 0xFFu
+
+/** Report 11 benchmark flags. */
+#define ZF_BENCHMARK_FILE_REMAINS 1u /**< This run created a file that could not be removed. */
+#define ZF_BENCHMARK_MOUNTED 2u /**< The firmware filesystem remains mounted. */
+
 /** Feature 20 result status values. */
 #define ZF_STATUS_IDLE 0u
 #define ZF_STATUS_PENDING 1u

@@ -151,16 +151,18 @@ Each nonzero board model requires the MCU listed under [board models](#board-mod
 | 3 | SPI storage transport | SD-over-SPI only | SD-over-SPI only | SD-over-SPI only |
 | 4 | Native SDMMC storage transport | Native image only | Clear | Native image only |
 | 5 | Storage benchmark | Optional | Clear | Optional |
-| 6 | Forced settings save | Clear | Clear | Clear |
+| 6 | USB mass-storage ownership control | Optional | Clear | Optional |
 | 7 | Wireless capability | Set | Set | W boards only |
 
 Exactly one storage capability is set in SD-enabled images; both bits are clear when storage is omitted.
+Capability bit 6 independently advertises USB mass-storage ownership control; it is clear when MSC is omitted.
 Custom builds clear wireless bit 7 when both radios are omitted; Report `2` masks next-boot radio flags to services
 built into the image. Identity `capabilities_extension` bit 0 advertises Report `13`; other extension bits are
 reserved.
 Hosts also accept older firmware without RGB or memory inventory. Unassigned extension bits MUST be transmitted
 as zero and ignored by hosts. Firmware version is diagnostic information, not a substitute for capabilities.
-Hosts MUST NOT offer LED, settings-save or wireless operations whose capability bit is clear.
+Hosts MUST NOT offer LED, settings-save, MSC or wireless operations whose capability bit is clear. Older images may
+advertise MSC only through Report `2` board flag bit 6.
 
 Bits 1 and 2 identify reboot and settings-save support. Bit 4 selects the six-signal native SDMMC layout of Report `2`;
 bit 3 selects its four-signal SPI layout. When both bits are clear, the image has no SD storage; Report `2` reports
@@ -531,8 +533,9 @@ A 64-character hexadecimal raw Wi-Fi PSK is not supported.
 
 ### MSC command rules
 
-Report `2` flag bit 6 advertises this workflow; Report `1` capabilities are unchanged.
-Older firmware with bit 6 clear and card-detect GPIO `255` remains readable, but hosts MUST hide MSC controls.
+Report `1` capability bit 6 advertises MSC in current firmware. Report `2` board flag bit 6 also reports whether the
+selected board image includes MSC. Hosts may use Report `2` flag bit 6 as a fallback for older firmware that did
+not advertise the capability bit; hide MSC controls when neither report advertises it.
 Opcode `3` is USB-only; BLE returns Unsupported/error `4`.
 Images built without USB mass storage also return Unsupported/error `4`, even when SD storage is present.
 

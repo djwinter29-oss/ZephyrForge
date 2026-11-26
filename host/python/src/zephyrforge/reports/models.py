@@ -29,6 +29,7 @@ class SupportedHardwareIdentity(TypedDict):
     settings_supported: bool
     storage_transport: str | None
     self_test_supported: bool
+    msc_supported: bool
     wireless_supported: bool
     ram_total_bytes: int
     ram_reserved_bytes: int
@@ -56,6 +57,7 @@ class UnsupportedHardwareIdentity(TypedDict):
     reboot_available: bool
     settings_supported: bool
     self_test_supported: bool
+    msc_supported: bool
     wireless_supported: bool
 
 

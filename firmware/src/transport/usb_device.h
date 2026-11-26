@@ -20,8 +20,6 @@ bool zf_usb_device_configured(void);
 void zf_usb_device_poll(void);
 /** Return the next Input publication deadline, or INT64_MAX when USB is idle. */
 int64_t zf_usb_device_next_deadline(void);
-/** Restart the USB device after a storage ownership handoff so the host can remount its LUN. */
-int zf_usb_device_reconnect(void);
 #else
 static inline int zf_usb_device_init(void)
 {
@@ -42,10 +40,6 @@ static inline int64_t zf_usb_device_next_deadline(void)
 	return INT64_MAX;
 }
 
-static inline int zf_usb_device_reconnect(void)
-{
-	return -ENOTSUP;
-}
 #endif
 
 #endif

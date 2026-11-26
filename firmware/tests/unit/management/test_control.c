@@ -455,7 +455,9 @@ void test_ble_save_stays_pending_until_the_write_fails_and_discards(void)
 	defer_writes = true;
 	write_result = -EIO;
 	assert_result(ble(ZF_OP_SAVE, 0, args, 0), ZF_STATUS_PENDING, ZF_ERROR_NONE, 0);
+	TEST_ASSERT_TRUE(zf_control_ble_busy());
 	complete_write();
+	TEST_ASSERT_FALSE(zf_control_ble_busy());
 	zf_control_ble_get(result);
 	assert_result(result, ZF_STATUS_FAILED, ZF_ERROR_FAILED, 0);
 	TEST_ASSERT_EQUAL_INT(ZF_SYSCLK_DEFAULT, zf_settings_sysclk());

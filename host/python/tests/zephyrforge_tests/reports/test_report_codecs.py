@@ -184,11 +184,14 @@ class ProtocolTests(unittest.TestCase):
                 other = parse_identity_report(identity_report(product=product))
                 self.assertFalse(other["supported"])
                 self.assertEqual(other["product_name"], name)
-        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0xCF),
-                        identity_report(capabilities=0xCE), identity_report(capabilities=0xBE),
-                        identity_report(capabilities=0x9e), identity_report(mcu=2, board=1)):
+        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x7D),
+                        identity_report(capabilities=0xBE), identity_report(capabilities=0x9e),
+                        identity_report(mcu=2, board=1)):
             with self.subTest(report=invalid), self.assertRaises(ValueError):
                 parse_identity_report(invalid)
+        msc = parse_identity_report(identity_report(capabilities=0xD6))
+        self.assertTrue(msc["msc_supported"])
+        self.assertFalse(parse_identity_report(identity_report())["msc_supported"])
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
         self.assertEqual(unknown_mcu["mcu"], "unknown (9)")
         self.assertEqual(unknown_mcu["board_model"], "Unknown / unspecified")

@@ -7,8 +7,11 @@ conf=prj.conf
 disabled=()
 enabled=()
 benchmark_chunk_size=""
-module_names=(wifi bluetooth tcp-shell uart-shell cpu-load settings-save usb-hid usb-msc benchmark led)
-module_symbols=(WIFI BLUETOOTH TCP_SHELL UART_SHELL CPU_LOAD SETTINGS_SAVE USB_HID USB_MSC STORAGE_BENCHMARK LED)
+module_names=(wifi bluetooth tcp-shell uart-shell cpu-load temperature settings-save usb-hid usb-msc benchmark led)
+module_symbols=(
+	WIFI BLUETOOTH TCP_SHELL UART_SHELL CPU_LOAD TEMPERATURE SETTINGS_SAVE
+	USB_HID USB_MSC STORAGE_BENCHMARK LED
+)
 
 module_symbol()
 {
@@ -64,7 +67,8 @@ while (($#)); do
 				'Usage: bash tools/firmware/build.sh [--board BOARD] [--storage PROFILE]' \
 				'       [--with MODULE | --without MODULE] (repeatable)' \
 				'       [--benchmark-chunk-size BYTES]' \
-				'       Modules: wifi bluetooth tcp-shell uart-shell cpu-load settings-save usb-hid usb-msc benchmark led'
+				'       Modules: wifi bluetooth tcp-shell uart-shell cpu-load temperature' \
+				'               settings-save usb-hid usb-msc benchmark led'
 			exit 0 ;;
 		*) printf 'Error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
 	esac
@@ -170,6 +174,11 @@ for feature in "${enabled[@]}"; do
 		led)
 			[[ "$board" == esp32s3 ]] || {
 				printf 'Error: led is not available on %s.\n' "$board" >&2
+				exit 1
+			} ;;
+		temperature)
+			[[ "$board" != esp32c6 ]] || {
+				printf 'Error: temperature is not available on %s.\n' "$board" >&2
 				exit 1
 			} ;;
 	esac

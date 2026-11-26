@@ -20,6 +20,8 @@ public sealed class ProtocolTests
     {
         var identityReport = IdentityReport();
         Assert.False(HidProtocol.ParseIdentityReport(identityReport).MemoryReportSupported);
+        identityReport[18] = 0xd6;
+        Assert.True(HidProtocol.ParseIdentityReport(identityReport).MscSupported);
         identityReport[17] = 1;
         var identity = HidProtocol.ParseIdentityReport(identityReport);
         Assert.True(identity.MemoryReportSupported);

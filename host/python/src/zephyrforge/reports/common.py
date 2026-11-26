@@ -210,7 +210,7 @@ CAP_SDMMC = 1 << 4
 
 CAP_SELF_TEST = 1 << 5
 
-CAP_FORCE_SAVE = 1 << 6
+CAP_MSC = 1 << 6
 
 CAP_WIRELESS = 1 << 7
 

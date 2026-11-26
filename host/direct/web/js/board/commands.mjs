@@ -7,7 +7,7 @@
  * descriptor-declared request facts (protocol/opcodes.mjs), never credentials; anything else fails closed.
  */
 import { buildControlRequest, decodeControlResult } from "../protocol/codec.mjs";
-import { OP, REPORT, RESULT } from "../protocol/constants.mjs";
+import { CAP, CONFIG_FLAGS, OP, REPORT, RESULT } from "../protocol/constants.mjs";
 import { allowedOnLink, hasExactKeys, inRange, OPCODES } from "../protocol/opcodes.mjs";
 import { BoardError, errorValue, REASON } from "../state/errors.mjs";
 import { commandBlocked, commandPending } from "../state/selectors.mjs";
@@ -226,7 +226,10 @@ export class Commands {
     if (!hardware) throw new BoardError(REASON.COMMAND_BLOCKED);
     const descriptor = OPCODES[opcode];
     const bit = descriptor?.capability ?? 0;
-    if (bit && !(hardware.capabilities & bit)) throw new BoardError(REASON.CAPABILITY_UNAVAILABLE);
+    const legacyMsc = opcode === OP.MSC && (s.state.settings?.board_flags & CONFIG_FLAGS.MSC);
+    if (bit && !(hardware.capabilities & bit) && !legacyMsc) {
+      throw new BoardError(REASON.CAPABILITY_UNAVAILABLE);
+    }
     const transaction = this.transaction % 255 + 1;
     const report = buildControlRequest(transaction, opcode, options);
     this.transaction = transaction;

@@ -329,12 +329,25 @@ esac
         self.assertIn("-DCONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=8192", commands)
         self.assertIn("-d " + str(self.root / "build/firmware-with-uart-shell-no-cpu-load-benchmark-8192"), commands)
 
+    def test_build_can_enable_and_disable_temperature_sampling(self):
+        result = self.run_script("build.sh", "--without", "temperature")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        self.assertIn("-DCONFIG_ZF_TEMPERATURE=n", commands)
+        self.assertIn("-d " + str(self.root / "build/firmware-no-temperature"), commands)
+
+        self.log.write_text("")
+        result = self.run_script("build.sh", "--board", "pico2", "--with", "temperature")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-DCONFIG_ZF_TEMPERATURE=y", self.commands())
+
     def test_build_rejects_conflicting_or_unavailable_module_options(self):
         for args in (
             ("--with", "wifi", "--without", "wifi"),
             ("--board", "pico", "--with", "wifi"),
             ("--board", "pico_w", "--with", "bluetooth"),
             ("--board", "esp32c6", "--with", "usb-hid"),
+            ("--board", "esp32c6", "--with", "temperature"),
             ("--board", "esp32c6", "--storage", "sd-spi", "--with", "benchmark"),
             ("--with", "tcp-shell", "--without", "wifi"),
             ("--storage", "none", "--with", "benchmark"),

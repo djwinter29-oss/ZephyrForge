@@ -128,13 +128,13 @@ void test_report_size_matches_supported_payloads_and_rejects_unknown_ids(void)
 
 void test_identity_advertises_only_modules_built_into_the_image(void)
 {
-	uint8_t expected = 0x97;
+	uint8_t expected = 0x97 | (IS_ENABLED(CONFIG_ZF_USB_MSC) ? ZF_CAP_MSC : 0u);
 	uint8_t out[ZF_IDENTITY_SIZE];
 
 #if !IS_ENABLED(CONFIG_ZF_STORAGE)
-	expected = 0x87;
+	expected = 0x87 | (IS_ENABLED(CONFIG_ZF_USB_MSC) ? ZF_CAP_MSC : 0u);
 #elif IS_ENABLED(CONFIG_ZF_STORAGE_BENCHMARK)
-	expected = 0xB7;
+	expected = 0xB7 | (IS_ENABLED(CONFIG_ZF_USB_MSC) ? ZF_CAP_MSC : 0u);
 #endif
 #if IS_ENABLED(CONFIG_ZF_STORAGE) && IS_ENABLED(CONFIG_SPI_SDHC)
 	expected = (expected & ~ZF_CAP_SDMMC) | ZF_CAP_SPI;

@@ -188,6 +188,9 @@ ZTEST(wifi_worker, test_blocking_requests_and_dhcp_complete_only_the_current_can
 	zf_wifi_init(false);
 	zf_app_lock();
 	zassert_ok(zf_wifi_scan_start());
+	zassert_equal(-EBUSY, zf_wifi_scan_start(), "reject a duplicate scan before driver dispatch");
+	zassert_equal(-EBUSY, zf_wifi_test_start((const uint8_t *)"candidate", 9, "candidate-password"),
+		      "a candidate join must not overtake a pending scan");
 	zf_app_unlock();
 	scan_generation = scan_snapshot().scan_generation;
 	zassert_equal(-EBUSY, zf_wifi_scan_entry(scan_generation, 0, entry_ssid, &entry_length, &entry_rssi,

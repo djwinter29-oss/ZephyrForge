@@ -102,6 +102,15 @@ config ZF_CPU_LOAD
 	help
 	  Include per-core runtime accounting in telemetry. Disable to reduce scheduler accounting overhead.
 
+config ZF_TEMPERATURE
+	bool "Die-temperature telemetry"
+	default y
+	depends on DT_HAS_ESPRESSIF_ESP32_TEMP_ENABLED || DT_HAS_RASPBERRYPI_PICO_TEMP_ENABLED
+	select SENSOR
+	help
+	  Include die-temperature sampling when the selected board describes a supported sensor. The
+	  telemetry field remains present and reports unavailable when this module is disabled.
+
 config ZF_SETTINGS_SAVE
 	bool "Persistent settings save"
 	default y if SOC_FAMILY_ESPRESSIF_ESP32

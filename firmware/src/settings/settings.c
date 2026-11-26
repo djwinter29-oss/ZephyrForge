@@ -22,10 +22,15 @@ struct settings {
 	uint8_t flags;
 };
 
+struct boot_settings {
+	uint8_t sysclk;
+	uint8_t disabled;
+};
+
 /* Zero is the default for every field: all radios allowed, build clock, no credentials. */
 static struct settings staged;
 static struct settings saved;
-static struct settings boot;
+static struct boot_settings boot;
 static bool saving;
 static zf_settings_source_t source;
 #if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
@@ -172,7 +177,8 @@ void zf_settings_load(void)
 	}
 	saved = loaded;
 	staged = loaded;
-	boot = loaded;
+	boot.sysclk = loaded.sysclk;
+	boot.disabled = loaded.disabled;
 	saving = false;
 #if IS_ENABLED(CONFIG_ZF_SETTINGS_SAVE)
 	save_done = NULL;

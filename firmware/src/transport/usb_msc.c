@@ -6,7 +6,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/usb/class/usbd_msc.h>
-#include "transport/usb_device.h"
 
 LOG_MODULE_DECLARE(zf_storage);
 
@@ -110,9 +109,4 @@ static struct disk_info usb_disk = {.name = USB_DISK_NAME, .ops = &usb_ops};
 int zf_usb_msc_register(void)
 {
 	return disk_access_register(&usb_disk);
-}
-
-int zf_usb_msc_reconnect(void)
-{
-	return zf_usb_device_reconnect();
 }

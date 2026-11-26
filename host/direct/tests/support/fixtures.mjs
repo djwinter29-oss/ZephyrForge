@@ -5,8 +5,8 @@ import { describe } from "../../web/js/ui/messages.mjs";
 import { BoardSession } from "../../web/js/board/session.mjs";
 import { HidTransport } from "../../web/js/transport/hid.mjs";
 
-/** @brief ZephyrForge capabilities: reboot, settings, SDMMC storage, wireless (0x96). */
-export const CAPABILITIES = 2 | 4 | 16 | 128;
+/** @brief ZephyrForge capabilities: reboot, settings, SDMMC, MSC, wireless (0xd6). */
+export const CAPABILITIES = 2 | 4 | 16 | 64 | 128;
 
 export function identity(capabilities = CAPABILITIES) {
   const bytes = new Uint8Array(26);
@@ -17,7 +17,7 @@ export function identity(capabilities = CAPABILITIES) {
 }
 /** @brief Report 2: 240 MHz, UART0 on GPIO43/44, native SDMMC CLK/CMD/DAT0-3 on GPIO12/11/13/14/15/10. */
 export function config(radios = 0) {
-  return Uint8Array.from([1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 4 | radios << 3, 1, 255, 255]);
+  return Uint8Array.from([1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x44 | radios << 3, 1, 255, 255]);
 }
 export function telemetry() {
   const bytes = new Uint8Array(22); bytes[0] = 1; bytes[21] = 5;

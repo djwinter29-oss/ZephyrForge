@@ -1,6 +1,5 @@
 #include "storage/storage.h"
 #include <zephyr/sys/util.h>
-#include "transport/usb_msc.h"
 #include "storage/storage_policy.h"
 
 #include <errno.h>
@@ -121,15 +120,8 @@ int zf_storage_media_open(bool usb, zf_storage_t *storage)
 		}
 		mounted = true;
 		storage->filesystem_format = fatfs.fs_type <= 4 ? fatfs.fs_type : 0;
-	} else {
-#if IS_ENABLED(CONFIG_ZF_USB_MSC)
-		err = zf_usb_msc_reconnect();
-		if (err != 0) {
-			return err;
-		}
-#else
+	} else if (!IS_ENABLED(CONFIG_ZF_USB_MSC)) {
 		return -ENOTSUP;
-#endif
 	}
 	LOG_INF("SD %s: %u sectors", usb ? "export ready" : "mounted", storage->block_count);
 	return 0;

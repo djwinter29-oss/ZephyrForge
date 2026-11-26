@@ -8,7 +8,7 @@ import { Operations } from "../../web/js/board/operations.mjs";
 import { BOARD, connected, radio } from "../support/wireless.mjs";
 
 test("LED commands use reported colour, ignore SD readiness and never replay uncertain writes", async () => {
-  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0x97 });
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: 0xd7 });
   await client.connect();
   const status = telemetry(); status[21] |= 8;
   emit(device, 3, status);
@@ -69,7 +69,7 @@ test("benchmark admission invalidates snapshots and uncertain starts are never r
 
 for (const spi of [false, true]) test(`MSC over ${spi ? "SPI" : "SDMMC"} requires eject and never replays writes`,
   async () => {
-  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: spi ? 0x8e : 0x96 });
+  const { client, device, sent, pendingStore } = fakeConnection({ capabilities: spi ? 0xce : 0x96 });
   const receive = device.receiveFeatureReport;
   device.receiveFeatureReport = async id => {
     if (id !== 2) return receive(id);

@@ -55,24 +55,24 @@ const vectors = {
   radio_init_failed_while_connected: `01020100012a2a2a2a0b${ssid}${"00".repeat(27)}`,
 };
 
-test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3 and valid RAM", () => {
+test("identity requires ZephyrForge product 3, the 0xd6 capability set, ESP32-S3 and valid RAM", () => {
   const report = identity();
   const decoded = decodeIdentityReport(report);
   assert.equal(decoded.product_name, "ZephyrForge");
   assert.equal(decoded.serial_number, "0102030405060708");
   assert.equal(decoded.firmware_version, "1.2.3");
   assert.deepEqual([decoded.mcu, decoded.board_name, decoded.transport], ["ESP32-S3", "ESP32-S3-DevKitC-1", "sdmmc"]);
-  assert.equal(decoded.capabilities, 0x96);
+  assert.equal(decoded.capabilities, 0xd6);
   for (const bytes of [report.slice(0, 25), Uint8Array.from([1, ...report]), new Uint8Array(42)]) {
     assert.throws(() => decodeIdentityReport(bytes));
   }
-  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
+  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0x7d], [17, 0x9e], [17, 0xbe],
     [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
   assert.equal(decodeIdentityReport(identity(2 | 128)).capabilities, 0x82, "capabilities may be a subset");
-  assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
+  assert.equal(decodeIdentityReport(identity(0xce)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ZephyrForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;

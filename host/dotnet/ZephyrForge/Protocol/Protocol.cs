@@ -15,6 +15,7 @@ public sealed record HardwareInfoResponse(string ProductName, string Mcu, byte M
     uint? FlashTotalBytes = null)
 {
     public bool WirelessSupported => (Capabilities & HidProtocol.CapabilityWireless) != 0;
+    public bool MscSupported => (Capabilities & HidProtocol.CapabilityMsc) != 0;
 }
 
 /// <summary>Persisted next-boot clock, SD profile (always 0) and radio enables (bit 0 Wi-Fi, bit 1 BLE).</summary>
@@ -218,7 +219,7 @@ internal static partial class HidProtocol
     public const byte CapabilitySpi = 1 << 3;
     public const byte CapabilitySdmmc = 1 << 4;
     public const byte CapabilitySelfTest = 1 << 5;
-    public const byte CapabilityForcedSave = 1 << 6;
+    public const byte CapabilityMsc = 1 << 6;
     public const byte CapabilityWireless = 1 << 7;
     /// <summary>Feature 2 board flags (<c>PF_HID_BOARD_FLAG_*</c>); bits 3..4 hold the saved radio switches.</summary>
     public const byte BoardFlagCardDetect = 1 << 0;
@@ -274,7 +275,7 @@ internal static partial class HidProtocol
         var sdmmc = (capabilities & CapabilitySdmmc) != 0;
         var spi = (capabilities & CapabilitySpi) != 0;
         const byte supported = CapabilityLed | CapabilityReboot | CapabilitySettings | CapabilitySdmmc |
-            CapabilitySpi | CapabilitySelfTest | CapabilityWireless;
+            CapabilitySpi | CapabilitySelfTest | CapabilityMsc | CapabilityWireless;
         Require(!(sdmmc && spi) && (capabilities & CapabilityReboot) != 0
             && (capabilities & ~supported) == 0, "invalid HID capability flags");
         var mcuId = payload[14];

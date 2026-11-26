@@ -9,11 +9,11 @@ export const PRODUCT_IDS = Object.freeze([0x4021]);
 export const PRODUCT_ID = 0x0003;
 /** Feature 1 capability bits. */
 export const CAP = Object.freeze({
-  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDMMC: 16, SELF_TEST: 32, FORCED_SAVE: 64, WIRELESS: 128,
+  LED: 1, REBOOT: 2, SETTINGS: 4, SPI: 8, SDMMC: 16, SELF_TEST: 32, MSC: 64, WIRELESS: 128,
 });
 /** Capability bits a ZephyrForge board may report; the benchmark is optional. */
 export const ZEPHYRFORGE_CAPABILITIES = CAP.LED | CAP.REBOOT | CAP.SETTINGS | CAP.SPI | CAP.SDMMC
-  | CAP.SELF_TEST | CAP.WIRELESS;
+  | CAP.SELF_TEST | CAP.MSC | CAP.WIRELESS;
 /** Feature 20 control opcodes ZephyrForge implements. */
 export const OP = Object.freeze({
   LED: 1, REBOOT: 2, MSC: 3, BENCHMARK: 4, SAVE_SETTINGS: 5, STAGE_SSID: 6, STAGE_PASSWORD: 7, STAGE_KEY: 8,

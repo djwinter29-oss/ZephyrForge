@@ -3,18 +3,24 @@
 #include "protocol/report_codec.h"
 #include <zephyr/sys/util.h>
 
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 #include <zephyr/device.h>
 #include <zephyr/drivers/sensor.h>
+#endif
 #include <zephyr/kernel.h>
 
 #define LOAD_WINDOW_MS 250
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 #define TEMPERATURE_PERIOD_MS 1000
 
 static const struct device *const temperature_sensor = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(coretemp));
+#endif
 
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 static bool temperature_valid;
 static int16_t temperature_centi_c;
 static int64_t temperature_at;
+#endif
 static uint16_t core0_load = ZF_LOAD_UNAVAILABLE;
 static bool sampling_active;
 #if IS_ENABLED(CONFIG_ZF_CPU_LOAD)
@@ -38,6 +44,7 @@ static bool cpu_cycles(uint64_t *busy, uint64_t *total)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 static void read_temperature(void)
 {
 	struct sensor_value value;
@@ -57,18 +64,23 @@ static void read_temperature(void)
 	temperature_centi_c = centi;
 	k_mutex_unlock(&telemetry_lock);
 }
+#endif
 
 void zf_telemetry_init(void)
 {
 	sampling_active = false;
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 	temperature_valid = false;
 	temperature_centi_c = 0;
+#endif
 	core0_load = ZF_LOAD_UNAVAILABLE;
 #if IS_ENABLED(CONFIG_ZF_CPU_LOAD)
 	window_at = k_uptime_get();
 	(void)cpu_cycles(&window_busy, &window_total);
 #endif
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 	temperature_at = k_uptime_get();
+#endif
 }
 
 void zf_telemetry_set_active(bool active)
@@ -87,11 +99,15 @@ void zf_telemetry_set_active(bool active)
 	window_at = now;
 	(void)cpu_cycles(&window_busy, &window_total);
 #endif
-	temperature_at = now - TEMPERATURE_PERIOD_MS;
 	k_mutex_lock(&telemetry_lock, K_FOREVER);
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 	temperature_valid = false;
+#endif
 	core0_load = ZF_LOAD_UNAVAILABLE;
 	k_mutex_unlock(&telemetry_lock);
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
+	temperature_at = now - TEMPERATURE_PERIOD_MS;
+#endif
 }
 
 void zf_telemetry_poll(void)
@@ -115,10 +131,12 @@ void zf_telemetry_poll(void)
 		window_at = now;
 	}
 #endif
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 	if (now - temperature_at >= TEMPERATURE_PERIOD_MS) {
 		read_temperature();
 		temperature_at = now;
 	}
+#endif
 }
 
 int64_t zf_telemetry_next_deadline(void)
@@ -126,8 +144,11 @@ int64_t zf_telemetry_next_deadline(void)
 	if (!sampling_active) {
 		return INT64_MAX;
 	}
-	int64_t deadline = temperature_at + TEMPERATURE_PERIOD_MS;
+	int64_t deadline = INT64_MAX;
 
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
+	deadline = temperature_at + TEMPERATURE_PERIOD_MS;
+#endif
 #if IS_ENABLED(CONFIG_ZF_CPU_LOAD)
 	if (window_at + LOAD_WINDOW_MS < deadline) {
 		deadline = window_at + LOAD_WINDOW_MS;
@@ -149,8 +170,10 @@ void zf_telemetry_report(uint8_t sequence, bool usb_configured, bool led_availab
 	};
 
 	k_mutex_lock(&telemetry_lock, K_FOREVER);
+#if IS_ENABLED(CONFIG_ZF_TEMPERATURE)
 	telemetry.temperature_valid = temperature_valid;
 	telemetry.temperature_centi_c = temperature_centi_c;
+#endif
 	telemetry.core0_load = core0_load;
 	k_mutex_unlock(&telemetry_lock);
 	zf_report_encode_telemetry(&telemetry, out);

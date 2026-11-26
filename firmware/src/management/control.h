@@ -25,6 +25,8 @@ void zf_control_usb_get(uint8_t out[ZF_CONTROL_SIZE]);
 bool zf_control_ble_envelope(const uint8_t *request, size_t size);
 /** True unless the opcode is a BLE-allowed command that does not require a proof. */
 bool zf_control_ble_proof_required(uint8_t opcode);
+/** True while a BLE settings save is pending; transports must check before consuming a command proof. */
+bool zf_control_ble_busy(void);
 
 /**
  * Execute an authorized BLE request with a valid envelope; replaces the BLE result slot.
