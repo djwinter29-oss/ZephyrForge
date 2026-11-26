@@ -9,20 +9,7 @@
 #include "protocol/report_codec.h"
 #include "storage/storage.h"
 
-#ifndef ZF_MCU
-#if defined(ZF_TARGET_BUILD)
-#error "ZF_MCU must be defined by the selected board in CMake"
-#else
-#define ZF_MCU ZF_MCU_ESP32S3
-#endif
-#endif
-#ifndef ZF_BOARD_MODEL
-#if defined(ZF_TARGET_BUILD)
-#error "ZF_BOARD_MODEL must be defined by the selected board in CMake"
-#else
-#define ZF_BOARD_MODEL ZF_BOARD_DEVKITC
-#endif
-#endif
+/* The build defines ZF_MCU and ZF_BOARD_MODEL for the selected board. */
 /** ZF_WIRELESS_* radios built into this image. */
 #define ZF_RADIO_MASK ((IS_ENABLED(CONFIG_ZF_WIFI) ? ZF_WIRELESS_WIFI : 0u) | \
 		       (IS_ENABLED(CONFIG_ZF_BLUETOOTH) ? ZF_WIRELESS_BLE : 0u))

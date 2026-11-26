@@ -180,6 +180,12 @@ if [[ -f "$cache" ]]; then
 		printf 'Build toolchain changed; cleaning %s before rebuilding.\n' "$root/build/$build"
 		needs_pristine=true
 	fi
+	# CMake keeps earlier -DCONFIG_ZF_* overrides, which would silently survive a changed request.
+	cached_kconfig="$(sed -n 's/^CLI_\(CONFIG_ZF_[A-Z0-9_]*\):[^=]*=/-D\1=/p' "$cache" | sort)"
+	if [[ "$cached_kconfig" != "$(printf '%s\n' "${kconfig[@]}" | sed '/^$/d' | sort)" ]]; then
+		printf 'Module selection changed; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
 	if "$needs_pristine"; then
 		cmake "-DBINARY_DIR=$root/build/$build" "-DSOURCE_DIR=$root/firmware" \
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"

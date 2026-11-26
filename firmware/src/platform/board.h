@@ -28,4 +28,10 @@ void zf_board_config_snapshot(zf_config_t *out);
 /** Queue a reset after ZF_REBOOT_DELAY_MS; returns zero or a negative errno. */
 int zf_board_schedule_reboot(void);
 
+/**
+ * @brief Probe flash and external RAM capacity; implemented once per SoC family and called by zf_board_init().
+ * @param out Zero-initialized inventory to fill; unavailable parts keep their availability flag clear.
+ */
+void zf_soc_memory_inventory(zf_memory_inventory_t *out);
+
 #endif

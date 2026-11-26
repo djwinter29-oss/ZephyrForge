@@ -29,11 +29,8 @@ LOG_MODULE_REGISTER(zf_wifi, LOG_LEVEL_INF);
 #define RETRY_MAX_MS 60000
 #define VERIFY_RETRY_MS 1000
 #define LEAVE_TIMEOUT_MS 5000
-#define SCAN_TIMEOUT_MS (IS_ENABLED(CONFIG_WIFI_AIROC) ? 15000 : 10000)
-
-#define EVENT_MASK                                                                                            \
-	(NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT | NET_EVENT_WIFI_SCAN_RESULT |         \
-	 NET_EVENT_WIFI_SCAN_DONE)
+/* retry_at value while no saved-network retry is armed. */
+#define RETRY_NONE INT64_MAX
 
 /** Link-machine state of the managed Wi-Fi interface. */
 enum link {
@@ -55,7 +52,7 @@ enum action {
 
 /** Event-queue messages consumed by the poll loop. */
 enum event {
-	EVENT_UP, /**< Link established (post-DHCP for AIROC, driver-confirmed otherwise). */
+	EVENT_UP, /**< Link established, as normalized by the driver adapter; verification follows. */
 	EVENT_DOWN_CONNECTED, /**< Link lost after a successful join. */
 	EVENT_DOWN_CONNECTING, /**< A connect attempt failed or was dropped. */
 	EVENT_DISCONNECT_FAILED, /**< A requested disconnect did not complete. */
@@ -82,15 +79,8 @@ K_MSGQ_DEFINE(events, sizeof(struct wifi_event), 16, 4);
 static atomic_t event_overflow_pending = ATOMIC_INIT(0);
 static atomic_t scan_done_pending = ATOMIC_INIT(0);
 static atomic_t scan_done_status;
-#if defined(CONFIG_WIFI_AIROC)
 static atomic_t interface_down_pending;
-#endif
 
-static struct net_mgmt_event_callback event_cb;
-#if defined(CONFIG_WIFI_AIROC)
-static struct net_mgmt_event_callback interface_cb;
-static struct net_mgmt_event_callback dhcp_cb;
-#endif
 static struct net_if *iface;
 K_MUTEX_DEFINE(wifi_lock);
 
@@ -99,7 +89,7 @@ static uint8_t saved_ssid[ZF_SSID_MAX_BYTES];
 static uint8_t saved_ssid_length;
 static uint8_t wifi_state;
 static uint8_t saved_detail;
-static int64_t retry_at;
+static int64_t retry_at = RETRY_NONE;
 static int64_t retry_delay = RETRY_DELAY_MS;
 
 static enum link link;
@@ -250,32 +240,6 @@ static void finish_scan(int status)
 	scan_state = ZF_SCAN_COMPLETE;
 }
 
-static uint8_t security_bits(enum wifi_security_type security)
-{
-	switch (security) {
-	case WIFI_SECURITY_TYPE_NONE:
-		return 0;
-	case WIFI_SECURITY_TYPE_WEP:
-		return ZF_WIFI_SECURITY_PRIVACY;
-	case WIFI_SECURITY_TYPE_WPA_PSK:
-		return ZF_WIFI_SECURITY_PRIVACY | ZF_WIFI_SECURITY_WPA;
-	case WIFI_SECURITY_TYPE_PSK:
-	case WIFI_SECURITY_TYPE_SAE:
-	case WIFI_SECURITY_TYPE_EAP:
-		return ZF_WIFI_SECURITY_PRIVACY | ZF_WIFI_SECURITY_RSN;
-	default:
-		return ZF_WIFI_SECURITY_PRIVACY;
-	}
-}
-
-static void add_scan_result(const struct wifi_scan_result *result)
-{
-	if (scan_state == ZF_SCAN_RUNNING) {
-		zf_wifi_scan_table_add(&scan, result->ssid, result->ssid_length, result->rssi,
-				  security_bits(result->security));
-	}
-}
-
 static void post(uint8_t type, int status, uint32_t generation)
 {
 	struct wifi_event event = {.generation = generation, .status = status, .type = type};
@@ -294,64 +258,38 @@ static void post_scan_done(int status)
 	zf_app_wakeup();
 }
 
-#if defined(CONFIG_WIFI_AIROC)
-static void post_interface_down(void)
+static void driver_event(zf_wifi_driver_event_t event, int status)
 {
-	atomic_set(&interface_down_pending, 1);
-	zf_app_wakeup();
-}
-#endif
-
-static void event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_event, struct net_if *event_iface)
-{
-	const struct wifi_status *status = cb->info;
-
-	if (event_iface != iface) {
-		return;
-	}
-#if defined(CONFIG_WIFI_AIROC)
-	if (mgmt_event == NET_EVENT_IF_DOWN) {
-		post_interface_down();
-		return;
-	}
-#endif
-	switch (mgmt_event) {
-	case NET_EVENT_WIFI_CONNECT_RESULT:
-#ifdef CONFIG_WIFI_AIROC
-		/* AIROC reports association before DHCP; only the bound event completes the join. */
-		if (status != NULL && status->status != 0) {
-			post(EVENT_DOWN_CONNECTING, status->status, 0);
-		}
-#else
-		/* Failed connects are followed by a disconnect event; success is raised after DHCP binds. */
-		if (status != NULL && status->status == 0) {
-			post(EVENT_UP, 0, 0);
-		}
-#endif
-		break;
-	case NET_EVENT_IPV4_DHCP_BOUND:
+	switch (event) {
+	case ZF_WIFI_DRIVER_EVENT_UP:
 		post(EVENT_UP, 0, 0);
 		break;
-	case NET_EVENT_WIFI_DISCONNECT_RESULT:
-		if (status == NULL) {
-			post(EVENT_DISCONNECT_FAILED, -EIO, 0);
-		} else {
-			post(status->status == 0 ? EVENT_DOWN_CONNECTED : EVENT_DISCONNECT_FAILED, status->status, 0);
-		}
+	case ZF_WIFI_DRIVER_EVENT_CONNECT_FAILED:
+		post(EVENT_DOWN_CONNECTING, status, 0);
 		break;
-	case NET_EVENT_WIFI_SCAN_RESULT:
-		if (cb->info != NULL && cb->info_length >= sizeof(struct wifi_scan_result)) {
-			k_mutex_lock(&wifi_lock, K_FOREVER);
-			add_scan_result(cb->info);
-			k_mutex_unlock(&wifi_lock);
-		}
+	case ZF_WIFI_DRIVER_EVENT_DISCONNECTED:
+		post(EVENT_DOWN_CONNECTED, 0, 0);
 		break;
-	case NET_EVENT_WIFI_SCAN_DONE:
-		post_scan_done(status != NULL && cb->info_length >= sizeof(*status) ? status->status : -EIO);
+	case ZF_WIFI_DRIVER_EVENT_DISCONNECT_FAILED:
+		post(EVENT_DISCONNECT_FAILED, status, 0);
 		break;
-	default:
+	case ZF_WIFI_DRIVER_EVENT_INTERFACE_DOWN:
+		atomic_set(&interface_down_pending, 1);
+		zf_app_wakeup();
+		break;
+	case ZF_WIFI_DRIVER_EVENT_SCAN_DONE:
+		post_scan_done(status);
 		break;
 	}
+}
+
+static void driver_scan_result(const uint8_t *ssid, uint8_t ssid_length, int8_t rssi, uint8_t security)
+{
+	k_mutex_lock(&wifi_lock, K_FOREVER);
+	if (scan_state == ZF_SCAN_RUNNING) {
+		zf_wifi_scan_table_add(&scan, ssid, ssid_length, rssi, security);
+	}
+	k_mutex_unlock(&wifi_lock);
 }
 
 static void apply_events(int64_t now)
@@ -427,7 +365,6 @@ static void apply_events(int64_t now)
 	if (atomic_cas(&scan_done_pending, 1, 0)) {
 		finish_scan(atomic_get(&scan_done_status));
 	}
-#if defined(CONFIG_WIFI_AIROC)
 	if (atomic_clear(&interface_down_pending) != 0 &&
 	    (link == LINK_UP || link == LINK_CONNECTING)) {
 		link = LINK_LEAVING;
@@ -436,7 +373,6 @@ static void apply_events(int64_t now)
 		leave_deadline = now;
 		interface_cleanup_pending = true;
 	}
-#endif
 }
 
 static void reconcile_event_overflow(void)
@@ -550,7 +486,7 @@ static enum action next_action(int64_t now, zf_wifi_network_t *network)
 			leave_deadline = now + LEAVE_TIMEOUT_MS;
 			return ACTION_DISCONNECT;
 		}
-		scan_deadline = now + SCAN_TIMEOUT_MS;
+		scan_deadline = now + ZF_WIFI_DRIVER_SCAN_TIMEOUT_MS;
 		scan_driver = SCAN_DRIVER_ACTIVE;
 		return ACTION_SCAN;
 	}
@@ -573,8 +509,8 @@ static enum action next_action(int64_t now, zf_wifi_network_t *network)
 	    !zf_wifi_policy_test_in_progress(command) && command != ZF_WIFI_COMMAND_JOINED &&
 	    scan_state != ZF_SCAN_RUNNING &&
 	    zf_wifi_policy_driver_operation_available(scan_driver_busy(), connect_quarantined) &&
-	    retry_at != 0 && now >= retry_at) {
-		retry_at = 0;
+	    now >= retry_at) {
+		retry_at = RETRY_NONE;
 		wifi_state = ZF_WIFI_CONNECTING;
 		start_connect(ZF_WIFI_OWNER_SAVED, now);
 		network->ssid_length = saved_ssid_length;
@@ -760,9 +696,7 @@ void zf_wifi_init(bool enabled)
 	k_mutex_lock(&wifi_lock, K_FOREVER);
 	atomic_clear(&event_overflow_pending);
 	atomic_clear(&scan_done_pending);
-#if defined(CONFIG_WIFI_AIROC)
 	atomic_clear(&interface_down_pending);
-#endif
 	saved_ssid_length = zf_settings_wifi_ssid_bytes(saved_ssid);
 	saved_enabled = enabled && saved_ssid_length != 0;
 	iface = net_if_get_first_wifi();
@@ -774,14 +708,7 @@ void zf_wifi_init(bool enabled)
 		LOG_ERR("No Wi-Fi interface");
 		return;
 	}
-	net_mgmt_init_event_callback(&event_cb, event_handler, EVENT_MASK);
-	net_mgmt_add_event_callback(&event_cb);
-#if defined(CONFIG_WIFI_AIROC)
-	net_mgmt_init_event_callback(&interface_cb, event_handler, NET_EVENT_IF_DOWN);
-	net_mgmt_add_event_callback(&interface_cb);
-	net_mgmt_init_event_callback(&dhcp_cb, event_handler, NET_EVENT_IPV4_DHCP_BOUND);
-	net_mgmt_add_event_callback(&dhcp_cb);
-#endif
+	zf_wifi_driver_listen(iface, driver_event, driver_scan_result);
 	if (saved_enabled) {
 		wifi_state = ZF_WIFI_CONNECTING;
 		retry_at = k_uptime_get();
@@ -844,7 +771,7 @@ int zf_wifi_test_start(const uint8_t *ssid, uint8_t ssid_length, const char *pas
 	}
 	command = ZF_WIFI_COMMAND_QUEUED;
 	join_detail = ZF_WIRELESS_DETAIL_NONE;
-	retry_at = 0;
+	retry_at = RETRY_NONE;
 	k_mutex_unlock(&wifi_lock);
 	zf_app_wakeup();
 	return 0;
@@ -867,7 +794,7 @@ void zf_wifi_test_cancel(void)
 	if (owner == ZF_WIFI_OWNER_NONE) {
 		wifi_state = saved_enabled ? ZF_WIFI_CONNECTING : ZF_WIFI_OFF;
 		retry_delay = RETRY_DELAY_MS;
-		retry_at = saved_enabled ? k_uptime_get() : 0;
+		retry_at = saved_enabled ? k_uptime_get() : RETRY_NONE;
 	}
 	k_mutex_unlock(&wifi_lock);
 	zf_app_wakeup();
@@ -890,7 +817,7 @@ int zf_wifi_scan_start(void)
 	memset(&scan, 0, sizeof(scan));
 	scan_state = ZF_SCAN_RUNNING;
 	scan_driver = SCAN_DRIVER_PENDING;
-	scan_deadline = k_uptime_get() + SCAN_TIMEOUT_MS;
+	scan_deadline = k_uptime_get() + ZF_WIFI_DRIVER_SCAN_TIMEOUT_MS;
 	k_mutex_unlock(&wifi_lock);
 	zf_app_wakeup();
 	return 0;

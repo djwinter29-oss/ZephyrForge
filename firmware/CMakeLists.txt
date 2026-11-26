@@ -48,7 +48,7 @@ if(CONFIG_SOC_FAMILY_RPI_PICO)
       COMPILE_OPTIONS "-D__uninitialized_ram(name)=__attribute__((section(\".noinit\"))) name;-Dsleep_until=busy_wait_until")
     zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/random/random.h)
   endif()
-  target_sources(app PRIVATE src/platform/sysclk_rpi_pico.c)
+  target_sources(app PRIVATE src/platform/soc_rpi_pico.c)
   target_sources_ifdef(CONFIG_ZF_SDHC_RPI_PICO_PIO app PRIVATE src/drivers/sdhc_rpi_pico_pio.c
     src/drivers/sdio_codec.c)
 else()
@@ -62,7 +62,7 @@ else()
   else()
     message(FATAL_ERROR "Unsupported Espressif SoC")
   endif()
-  target_sources(app PRIVATE src/platform/sysclk_espressif.c)
+  target_sources(app PRIVATE src/platform/soc_espressif.c)
   if(DEFINED zf_sysclk_max_profile)
     target_compile_definitions(app PRIVATE ZF_SYSCLK_MAX_PROFILE=${zf_sysclk_max_profile})
   endif()
@@ -72,7 +72,7 @@ target_sources_ifdef(CONFIG_ZF_WIFI app PRIVATE src/wifi/wifi_station.c src/wifi
   src/wifi/wifi_policy.c src/wifi/wifi_scan_table.c)
 target_sources_ifdef(CONFIG_ZF_BLUETOOTH app PRIVATE src/transport/ble_gatt.c src/transport/ble_auth.c
   src/transport/sha256.c)
-target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board} ZF_TARGET_BUILD=1)
+target_compile_definitions(app PRIVATE ZF_MCU=${zf_mcu} ZF_BOARD_MODEL=${zf_board})
 
 target_sources_ifdef(CONFIG_ZF_STORAGE app PRIVATE src/storage/storage_service.c src/storage/storage_media.c
   src/storage/storage_policy.c)

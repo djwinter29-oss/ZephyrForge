@@ -581,6 +581,19 @@ esac
         self.assertIn("Zephyr installation changed; cleaning", result.stdout)
         self.assertIn("/cmake/pristine.cmake", self.commands())
 
+    def test_build_cleans_cache_when_cached_module_overrides_differ(self):
+        build_dir = self.root / "build/firmware-pico2-no-storage"
+        build_dir.mkdir(parents=True)
+        cache = f"APPLICATION_BINARY_DIR:PATH={build_dir}\n"
+        for cached, cleaned in (("", False), ("CLI_CONFIG_ZF_STORAGE:INTERNAL=n\n", True)):
+            with self.subTest(cached=cached):
+                (build_dir / "CMakeCache.txt").write_text(cache + cached)
+                self.log.write_text("")
+                result = self.run_script("build.sh", "--board", "pico2", "--storage", "none")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual("Module selection changed; cleaning" in result.stdout, cleaned)
+                self.assertEqual("/cmake/pristine.cmake" in self.commands(), cleaned)
+
     def test_sdk_registered_outside_home_is_selected_after_install(self):
         wrong_sdk = self.workspace / "zephyr-sdk-0.18.0"
         wrong_sdk.mkdir()

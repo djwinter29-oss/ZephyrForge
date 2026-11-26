@@ -1,12 +1,3 @@
-#ifdef CONFIG_SOC_FAMILY_RPI_PICO
-#include <hardware/flash.h>
-#else
-#include <esp_flash.h>
-#if CONFIG_ESP_SPIRAM
-#include <esp_psram.h>
-#endif
-#endif
-
 #include "platform/board.h"
 #include <zephyr/sys/util.h>
 #include "protocol/report_codec.h"
@@ -30,15 +21,16 @@
 #else
 #include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
 
-#define RAM_TOTAL_BYTES (512u * 1024u)
+#if DT_NODE_EXISTS(DT_NODELABEL(sramhp))
+#define RAM_TOTAL_BYTES DT_REG_SIZE(DT_NODELABEL(sramhp))
+#else
+/* ESP32-S3 internal SRAM: the instruction, data and data-cache-capable blocks. */
+#define RAM_TOTAL_BYTES (DT_REG_SIZE(DT_NODELABEL(sram0)) + DT_REG_SIZE(DT_NODELABEL(sram1)) + \
+			 DT_REG_SIZE(DT_NODELABEL(sram2)))
+#endif
 /* Report 1 UID prefix: the six-byte eFuse base MAC; the remaining UID bytes stay zero. */
 #define UID_SOURCE_SIZE 6u
 #define PIN_FROM_MUX(mux) ((mux) & ESP32_PIN_NUM_MASK)
-
-#if CONFIG_ESP_SPIRAM
-extern char _ext_ram_start[];
-extern char _ext_ram_end[];
-#endif
 #endif
 #if IS_ENABLED(CONFIG_ZF_STORAGE)
 #define SD_PINCTRL DT_PHANDLE_BY_IDX(DT_ALIAS(zephyrforge_sd), pinctrl_0, 0)
@@ -65,46 +57,6 @@ static char serial[2 * ZF_UID_SIZE + 1];
 static uint8_t reset_cause;
 static zf_memory_inventory_t memory_inventory;
 
-#ifdef CONFIG_SOC_FAMILY_RPI_PICO
-static void read_memory_inventory(void)
-{
-	/* JEDEC Read ID returns the manufacturer, memory type and log2 of the capacity in bytes. */
-	const uint8_t command[4] = {0x9Fu};
-	uint8_t id[4] = {0};
-	/* The command suspends XIP; no interrupt handler may execute from flash until it returns. */
-	unsigned int key = irq_lock();
-
-	flash_do_cmd(command, id, sizeof(id));
-	irq_unlock(key);
-	memory_inventory.flash_available = id[1] != 0x00u && id[1] != 0xFFu && id[3] >= 16u && id[3] <= 31u;
-	if (memory_inventory.flash_available) {
-		memory_inventory.flash_total_bytes = 1u << id[3];
-	} else {
-		LOG_ERR("Flash capacity read failed: JEDEC ID %02x %02x %02x", id[1], id[2], id[3]);
-	}
-}
-#else
-static void read_memory_inventory(void)
-{
-#if CONFIG_ESP_SPIRAM
-	memory_inventory.psram_available = esp_psram_is_initialized();
-	if (memory_inventory.psram_available) {
-		memory_inventory.psram_total_bytes = esp_psram_get_size();
-		memory_inventory.psram_reserved_bytes = (uintptr_t)_ext_ram_end - (uintptr_t)_ext_ram_start;
-	} else {
-		LOG_ERR("PSRAM inventory unavailable: external RAM is not initialized");
-	}
-#endif
-	int err = esp_flash_get_physical_size(esp_flash_default_chip, &memory_inventory.flash_total_bytes);
-
-	memory_inventory.flash_available = err == ESP_OK;
-	if (err != ESP_OK) {
-		memory_inventory.flash_total_bytes = 0;
-		LOG_ERR("Module flash capacity read failed: %d", err);
-	}
-}
-#endif
-
 void zf_board_init(void)
 {
 	uint32_t cause = 0;
@@ -118,7 +70,7 @@ void zf_board_init(void)
 		reset_cause = zf_report_reset_cause(cause);
 		(void)hwinfo_clear_reset_cause();
 	}
-	read_memory_inventory();
+	zf_soc_memory_inventory(&memory_inventory);
 }
 
 const uint8_t *zf_board_uid(void)

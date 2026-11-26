@@ -88,3 +88,5 @@
         - -Wall
         - -Wextra
         - -Werror
+        # Board identity defaults; per-test define sets for other boards take precedence.
+        - -include firmware/tests/unit/support/board_defaults.h
