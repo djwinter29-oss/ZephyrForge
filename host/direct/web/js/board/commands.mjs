@@ -226,7 +226,7 @@ export class Commands {
     if (!hardware) throw new BoardError(REASON.COMMAND_BLOCKED);
     const descriptor = OPCODES[opcode];
     const bit = descriptor?.capability ?? 0;
-    const legacyMsc = opcode === OP.MSC && (s.state.settings?.board_flags & CONFIG_FLAGS.MSC);
+    const legacyMsc = opcode === OP.MSC && ((s.state.settings?.board_flags ?? 0) & CONFIG_FLAGS.MSC);
     if (bit && !(hardware.capabilities & bit) && !legacyMsc) {
       throw new BoardError(REASON.CAPABILITY_UNAVAILABLE);
     }
