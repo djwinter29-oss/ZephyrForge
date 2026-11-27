@@ -32,4 +32,4 @@ No real board, BLE connection, Wi-Fi association or SD card was used.
 The dashboard does not implement PicoForge's saved settings, LED/reboot controls,
 USB drive handoff, benchmarks, card identity, Wi-Fi CLI console or unsupported telemetry.
 Build/wiring references are distinguished from live device values.
-See [qualification gaps](../qualification-gaps.md).
+See [qualification gaps](../README.md).

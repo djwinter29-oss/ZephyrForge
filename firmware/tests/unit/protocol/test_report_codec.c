@@ -1,0 +1,326 @@
+#include "unity.h"
+#include "protocol/report_codec.h"
+
+#include <string.h>
+
+void zf_app_lock(void)
+{
+}
+
+void zf_app_unlock(void)
+{
+}
+
+void test_benchmark_layout_and_nonterminal_error_suppression(void)
+{
+	zf_benchmark_t status = {.sequence = 9, .state = ZF_BENCHMARK_FAILED, .flags = ZF_BENCHMARK_FILE_REMAINS,
+				.target_bytes = 0x00100000, .written_bytes = 0x01020304,
+				.error = ZF_BENCHMARK_ERROR_IO, .filesystem_result = 1};
+	const uint8_t expected[ZF_BENCHMARK_SIZE] = {1, 9, 7, 1, 0, 0, 0x10, 0, 4, 3, 2, 1,
+						 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 1, 0, 0};
+	uint8_t out[ZF_BENCHMARK_SIZE];
+
+	zf_report_encode_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	status.state = ZF_BENCHMARK_CLEANUP;
+	zf_report_encode_benchmark(&status, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[28]);
+	TEST_ASSERT_EQUAL_UINT8(0, out[29]);
+}
+
+void test_identity_layout(void)
+{
+	zf_identity_t identity = {
+		.uid = {0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0},
+		.firmware = {0, 2, 1},
+		.mcu = ZF_MCU_ESP32S3,
+		.board_model = ZF_BOARD_DEVKITC,
+		.capabilities = 0x97,
+		.ram_total_bytes = 524288,
+		.ram_reserved_bytes = 0x01020304,
+	};
+	uint8_t expected[ZF_IDENTITY_SIZE] = {1, 0x03, 0x00, 0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0, 0, 2, 1,
+						    3, 1, 1, 0x97, 0x00, 0x00, 0x08, 0x00, 0x04, 0x03, 0x02, 0x01};
+	uint8_t out[ZF_IDENTITY_SIZE];
+
+	zf_report_encode_identity(&identity, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+}
+
+void test_memory_inventory_layout_and_unavailable_components(void)
+{
+	zf_memory_inventory_t memory = {.psram_available = true, .flash_available = true,
+		.psram_total_bytes = 8u * 1024u * 1024u, .psram_reserved_bytes = 1024u * 1024u,
+		.flash_total_bytes = 16u * 1024u * 1024u};
+	const uint8_t expected[ZF_MEMORY_SIZE] = {1, 3, 0, 0, 0, 0, 128, 0, 0, 0, 16, 0, 0, 0, 0, 1};
+	uint8_t out[ZF_MEMORY_SIZE];
+	uint8_t unavailable[ZF_MEMORY_SIZE] = {1};
+
+	zf_report_encode_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	memory.psram_available = false;
+	memory.flash_available = false;
+	zf_report_encode_memory(&memory, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unavailable, out, sizeof(out));
+}
+
+void test_config_layout_reflects_saved_radios(void)
+{
+	zf_config_t config = {.stored_clock_mhz = 240, .stored_radios = 0x03, .monitor_uart_tx_gpio = 43,
+			      .monitor_uart_rx_gpio = 44, .reset_cause = 3,
+			      .storage_gpios = {12, 11, 13, 14, 15, 10}};
+	const uint8_t expected[ZF_CONFIG_SIZE] = {1, 240, 0, 0, 0, 43, 44, 12, 11, 13, 14, 15, 10, 0x1C, 3, 255, 255};
+	uint8_t out[ZF_CONFIG_SIZE];
+
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out, sizeof(out));
+	config.stored_radios = 0x02;
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_HEX8(0x14, out[13]);
+	/* The monitor UART bytes are the devicetree-sampled struct fields, not compile-time literals. */
+	config.monitor_uart_tx_gpio = 4;
+	config.monitor_uart_rx_gpio = 5;
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(4, out[5]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[6]);
+}
+
+void test_config_preserves_spi_chip_select_and_unassigned_pin_slots(void)
+{
+	zf_config_t config = {.storage_gpios = {12, 11, 13, 10, 255, 255}};
+	uint8_t out[ZF_CONFIG_SIZE];
+	const uint8_t expected[] = {12, 11, 13, 10, 255, 255};
+
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, out + 7, sizeof(expected));
+}
+
+void test_config_without_storage_marks_card_pins_unassigned(void)
+{
+	const zf_config_t config = {
+		.storage_gpios = {255, 255, 255, 255, 255, 255},
+	};
+	uint8_t out[ZF_CONFIG_SIZE];
+	const uint8_t unassigned[] = {255, 255, 255, 255, 255, 255};
+
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_UINT8_ARRAY(unassigned, out + 7, sizeof(unassigned));
+	TEST_ASSERT_EQUAL_UINT8(255, out[16]);
+}
+
+void test_telemetry_layout(void)
+{
+	zf_telemetry_t telemetry = {
+		.temperature_valid = true,
+		.temperature_centi_c = -125,
+		.uptime_ms = 0x0000000100000002ull,
+		.core0_load = 2500,
+		.system_clock_hz = 240000000,
+		.sequence = 9,
+		.usb_configured = true,
+	};
+	uint8_t out[ZF_TELEMETRY_SIZE];
+
+	zf_report_encode_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(0x83, out[2]);
+	TEST_ASSERT_EQUAL_HEX8(0xFF, out[3]);
+	TEST_ASSERT_EQUAL_HEX8(2, out[4]);
+	TEST_ASSERT_EQUAL_HEX8(1, out[8]);
+	TEST_ASSERT_EQUAL_HEX8(0xC4, out[12]);
+	TEST_ASSERT_EQUAL_HEX8(0x09, out[13]);
+	TEST_ASSERT_EQUAL_HEX8(0xFF, out[14]);
+	TEST_ASSERT_EQUAL_HEX8(0xFF, out[15]);
+	TEST_ASSERT_EQUAL_HEX8(0x00, out[16]);
+	TEST_ASSERT_EQUAL_HEX8(0x0E, out[19]);
+	TEST_ASSERT_EQUAL_UINT8(9, out[20]);
+	TEST_ASSERT_EQUAL_HEX8(0x05, out[21]);
+	telemetry.temperature_valid = false;
+	telemetry.usb_configured = false;
+	zf_report_encode_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(0, out[2]);
+	TEST_ASSERT_EQUAL_HEX8(0, out[3]);
+	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
+	telemetry.led_available = true;
+	telemetry.led_colour = 6;
+	zf_report_encode_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(6, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(8, out[21]);
+	telemetry.led_available = false;
+	zf_report_encode_telemetry(&telemetry, out);
+	TEST_ASSERT_EQUAL_HEX8(0, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(0, out[21]);
+}
+
+void test_storage_layout(void)
+{
+	zf_storage_t storage = {.sequence = 4, .configured = true, .sample_valid = true};
+	uint8_t out[ZF_STORAGE_SIZE];
+
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x41, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(0, out[3]);
+	for (size_t i = 4; i < ZF_STORAGE_SIZE; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
+	storage.initialized = true;
+	storage.presence_known = true;
+	storage.present = true;
+	storage.capacity_valid = true;
+	storage.bus_clock_hz = 25000000;
+	storage.bus_mode = ZF_STORAGE_BUS_SD4;
+	storage.block_count = 0x00F00000;
+	storage.filesystem_format = 3;
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_UINT8(4, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(0x6F, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(1, out[3]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STORAGE_BUS_SD4, out[4]);
+	TEST_ASSERT_EQUAL_HEX8(0x40, out[5]);
+	TEST_ASSERT_EQUAL_HEX8(0x78, out[6]);
+	TEST_ASSERT_EQUAL_HEX8(0x7D, out[7]);
+	TEST_ASSERT_EQUAL_HEX8(0x01, out[8]);
+	TEST_ASSERT_EQUAL_UINT8(1, out[9]);
+	TEST_ASSERT_EQUAL_HEX8(0xF0, out[12]);
+	TEST_ASSERT_EQUAL_UINT8(3, out[30]);
+	storage.capacity_valid = false;
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x4F, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STORAGE_BUS_SD4, out[4]);
+	for (size_t i = 10; i < 14; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
+}
+
+void test_card_detect_allocation_and_msc_availability_are_reported(void)
+{
+	zf_config_t config = {.card_detect_available = true, .card_detect_gpio = 8, .msc_supported = true};
+	uint8_t out[ZF_CONFIG_SIZE];
+
+	zf_report_encode_config(&config, out);
+	TEST_ASSERT_EQUAL_HEX8(0x45, out[13]);
+	TEST_ASSERT_EQUAL_UINT8(8, out[16]);
+}
+
+void test_usb_owned_storage_report_never_exposes_stale_card_fields(void)
+{
+	zf_storage_t storage = {
+		.configured = true, .sample_valid = true, .presence_known = true, .present = true,
+		.initialized = true, .capacity_valid = true, .block_count = 100,
+		.bus_clock_hz = 25000000, .msc_enabled = true, .cid_valid = true, .cid = {0x1b},
+	};
+	uint8_t out[ZF_STORAGE_SIZE];
+
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(1, out[2]);
+	for (size_t i = 3; i < 30; ++i) {
+		TEST_ASSERT_EQUAL_UINT8(0, out[i]);
+	}
+	TEST_ASSERT_EQUAL_UINT8(1, out[31]);
+}
+
+void test_initialized_unmounted_card_reports_cid_capacity_and_bus(void)
+{
+	zf_storage_t storage = {
+		.configured = true, .sample_valid = true, .presence_known = true, .present = true,
+		.initialized = true, .capacity_valid = true, .block_count = 12345,
+		.bus_clock_hz = 25000000, .bus_mode = ZF_STORAGE_BUS_SD4, .cid_valid = true,
+		.cid = {0x1b, 0x53, 0x44, 0x43, 0x41, 0x52, 0x44, 0x31, 0x21, 0x12, 0x34, 0x56, 0x78, 0x01, 0xaa, 0xff},
+	};
+	uint8_t out[ZF_STORAGE_SIZE];
+
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x7f, out[2]);
+	TEST_ASSERT_EQUAL_UINT8(ZF_STORAGE_BUS_SD4, out[4]);
+	TEST_ASSERT_EQUAL_MEMORY(storage.cid, out + 14, sizeof(storage.cid));
+	TEST_ASSERT_EQUAL_UINT8(0, out[30]);
+	storage.initialized = false;
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_HEX8(0x47, out[2]);
+	TEST_ASSERT_EACH_EQUAL_UINT8(0, out + 3, 27);
+}
+
+void test_wireless_layout_clears_reserved_flags(void)
+{
+	zf_wireless_t wireless = {
+		.wifi_state = 3, .detail = 2, .ble_state = 2, .flags = 0xFF, .ipv4 = {192, 168, 1, 7},
+		.ssid_length = 3, .ssid = {'l', 'a', 'b'}, .scan_state = 2, .scan_generation = 0x0102,
+		.scan_count = 5, .test_generation = 6, .staged_state = 8,
+	};
+	uint8_t out[ZF_WIRELESS_SIZE];
+
+	zf_report_encode_wireless(&wireless, out);
+	TEST_ASSERT_EQUAL_HEX8(0xF3, out[4]);
+	TEST_ASSERT_EQUAL_UINT8(192, out[5]);
+	TEST_ASSERT_EQUAL_UINT8(3, out[9]);
+	TEST_ASSERT_EQUAL_MEMORY("lab", out + 10, 3);
+	TEST_ASSERT_EQUAL_UINT8(0, out[13]);
+	TEST_ASSERT_EQUAL_UINT8(2, out[42]);
+	TEST_ASSERT_EQUAL_HEX8(0x02, out[43]);
+	TEST_ASSERT_EQUAL_HEX8(0x01, out[44]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[45]);
+	TEST_ASSERT_EQUAL_UINT8(6, out[46]);
+	TEST_ASSERT_EQUAL_UINT8(8, out[47]);
+}
+
+void test_wireless_report_clamps_oversized_ssid_length(void)
+{
+	zf_wireless_t wireless = {
+		.ssid_length = 255, .scan_state = 2, .scan_generation = 0x0102,
+		.scan_count = 5, .test_generation = 6, .staged_state = 8,
+	};
+	uint8_t out[ZF_WIRELESS_SIZE];
+
+	memset(wireless.ssid, 'x', sizeof(wireless.ssid));
+	zf_report_encode_wireless(&wireless, out);
+	TEST_ASSERT_EQUAL_UINT8(ZF_SSID_MAX_BYTES, out[9]);
+	TEST_ASSERT_EACH_EQUAL_UINT8('x', out + 10, ZF_SSID_MAX_BYTES);
+	/* The trailing fields keep their own bytes: no SSID write reaches them. */
+	TEST_ASSERT_EQUAL_UINT8(2, out[42]);
+	TEST_ASSERT_EQUAL_HEX8(0x02, out[43]);
+	TEST_ASSERT_EQUAL_HEX8(0x01, out[44]);
+	TEST_ASSERT_EQUAL_UINT8(5, out[45]);
+	TEST_ASSERT_EQUAL_UINT8(6, out[46]);
+	TEST_ASSERT_EQUAL_UINT8(8, out[47]);
+}
+
+void test_storage_report_clamps_unknown_filesystem_format(void)
+{
+	zf_storage_t storage = {.configured = true, .sample_valid = true, .filesystem_format = 7};
+	uint8_t out[ZF_STORAGE_SIZE];
+
+	zf_report_encode_storage(&storage, out);
+	TEST_ASSERT_EQUAL_UINT8(0, out[30]);
+}
+
+void test_scan_entry_result_encodes_generation_and_bounds_ssid_length(void)
+{
+	uint8_t ssid[ZF_SSID_MAX_BYTES] = {0};
+	uint8_t out[ZF_SCAN_ENTRY_RESULT_SIZE];
+
+	memcpy(ssid, "network", 7);
+	zf_report_encode_scan_entry_result(out, 0x1234, 5, ssid, ZF_SSID_MAX_BYTES + 1, -42, 0xFF);
+	TEST_ASSERT_EQUAL_HEX8(0x34, out[0]);
+	TEST_ASSERT_EQUAL_HEX8(0x12, out[1]);
+	TEST_ASSERT_EQUAL_HEX8(5, out[2]);
+	TEST_ASSERT_EQUAL_HEX8(ZF_SSID_MAX_BYTES, out[3]);
+	TEST_ASSERT_EQUAL_MEMORY(ssid, out + 4, sizeof(ssid));
+	TEST_ASSERT_EQUAL_HEX8((uint8_t)-42, out[36]);
+	TEST_ASSERT_EQUAL_HEX8(0x07, out[37]);
+}
+
+void test_helpers(void)
+{
+	const uint8_t uid[ZF_UID_SIZE] = {0xA0, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0, 0};
+	char hex[17];
+
+	zf_report_uid_hex(uid, hex);
+	TEST_ASSERT_EQUAL_STRING("A0B1C2D3E4F50000", hex);
+	TEST_ASSERT_EQUAL_UINT8(1, zf_report_reset_cause(0x08 | 0x02));
+	TEST_ASSERT_EQUAL_UINT8(2, zf_report_reset_cause(0x10));
+	TEST_ASSERT_EQUAL_UINT8(3, zf_report_reset_cause(0x02));
+	TEST_ASSERT_EQUAL_UINT8(0, zf_report_reset_cause(0x01));
+	TEST_ASSERT_EQUAL_UINT16(ZF_LOAD_UNAVAILABLE, zf_report_load_basis_points(1, 0));
+	TEST_ASSERT_EQUAL_UINT16(2500, zf_report_load_basis_points(25, 100));
+	TEST_ASSERT_EQUAL_UINT16(10000, zf_report_load_basis_points(200, 100));
+}

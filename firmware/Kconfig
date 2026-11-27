@@ -1,6 +1,137 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2026 Ji Dong
 
+menu "ZephyrForge modules"
+
+# Each module defaults on when the board devicetree describes its hardware. Disable one with
+# -DCONFIG_ZF_<MODULE>=n or menuconfig; the module selects the Zephyr subsystems it needs.
+
+config ZF_USB_HID
+	bool "USB HID management"
+	default y
+	depends on DT_HAS_ZEPHYR_HID_DEVICE_ENABLED
+	select USB_DEVICE_STACK_NEXT
+	select USBD_HID_SUPPORT
+	help
+	  Vendor HID management interface on the native USB device, without CDC.
+
+config ZF_LED
+	bool "Addressable RGB LED"
+	default y
+	depends on DT_HAS_WORLDSEMI_WS2812_SPI_ENABLED
+	select LED_STRIP
+	help
+	  Include the board's addressable RGB LED control when its LED strip is described in devicetree.
+
+config ZF_STORAGE
+	bool "SD card storage"
+	default y
+	depends on DT_HAS_ZEPHYR_SDMMC_DISK_ENABLED
+	select DISK_ACCESS
+	select SDHC
+	select FILE_SYSTEM
+	select FAT_FILESYSTEM_ELM
+	select FS_FATFS_EXFAT
+	help
+	  Removable SD card described by a board storage overlay, mounted as FAT or exFAT at boot and never
+	  formatted.
+
+config ZF_USB_MSC
+	bool "USB mass storage"
+	default y
+	depends on ZF_STORAGE && ZF_USB_HID
+	select USBD_MSC_CLASS
+	help
+	  Exports the mounted SD card over USB on request. Without it, card-export commands report unsupported.
+
+config ZF_STORAGE_BENCHMARK
+	bool "Storage benchmark"
+	default y
+	depends on ZF_STORAGE && ZF_USB_HID
+	help
+	  Temporary-file verification and throughput measurement on the mounted card. Starting a run needs native
+	  USB HID control, so boards without it never include the benchmark.
+
+config ZF_STORAGE_BENCHMARK_CHUNK_SIZE
+	int "Storage benchmark transfer size"
+	default 32768
+	range 4096 32768
+	depends on ZF_STORAGE_BENCHMARK
+	help
+	  Size in bytes of the aligned verification buffer. Smaller values reduce static RAM at the cost of more
+	  filesystem calls.
+
+config ZF_WIFI
+	bool "Wi-Fi station"
+	default y
+	depends on DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED || DT_HAS_INFINEON_AIROC_WIFI_ENABLED
+	select NETWORKING
+	select WIFI
+	select NET_IPV4
+	select NET_TCP
+	select NET_DHCPV4
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_MGMT_EVENT_INFO
+	help
+	  IPv4 Wi-Fi station managed from the dashboard.
+
+config ZF_TCP_SHELL
+	bool "Wi-Fi diagnostic shell"
+	default n
+	depends on ZF_WIFI
+	select SHELL
+	select SHELL_BACKEND_TELNET
+	help
+	  Diagnostic shell on TCP port 2323. It is unauthenticated plaintext for trusted networks only.
+
+config ZF_UART_SHELL
+	bool "UART diagnostic shell"
+	default n
+	select SHELL
+	select SHELL_BACKEND_SERIAL
+	help
+	  Diagnostic shell on the monitor UART. The shell is unauthenticated and should only be enabled on trusted
+	  physical connections. Without the TCP shell it adds the kernel shell, whose "kernel thread stacks" command
+	  reports stack high-water marks.
+
+config ZF_CPU_LOAD
+	bool "CPU load telemetry"
+	default y
+	select THREAD_RUNTIME_STATS
+	select SCHED_THREAD_USAGE_ALL
+	help
+	  Include per-core runtime accounting in telemetry. Disable to reduce scheduler accounting overhead.
+
+config ZF_TEMPERATURE
+	bool "Die-temperature telemetry"
+	default y
+	depends on DT_HAS_ESPRESSIF_ESP32_TEMP_ENABLED || DT_HAS_RASPBERRYPI_PICO_TEMP_ENABLED
+	select SENSOR
+	help
+	  Include die-temperature sampling when the selected board describes a supported sensor. The
+	  telemetry field remains present and reports unavailable when this module is disabled.
+
+config ZF_SETTINGS_SAVE
+	bool "Persistent settings save"
+	default y if SOC_FAMILY_ESPRESSIF_ESP32
+	depends on FLASH_MAP && $(dt_nodelabel_enabled,storage_partition)
+	help
+	  Include the asynchronous flash-backed boot settings writer. Settings remain readable when disabled.
+	  Enabled by default on Espressif targets; other boards with a storage_partition can opt in.
+
+config ZF_BLUETOOTH
+	bool "Bluetooth LE management"
+	default y
+	depends on DT_HAS_ESPRESSIF_ESP32_BT_HCI_ENABLED
+	select BT
+	select BT_PERIPHERAL
+	select BT_DEVICE_NAME_DYNAMIC
+	select BT_GATT_SERVICE_CHANGED
+	select BT_GATT_CACHING
+	help
+	  Authenticated BLE management peripheral.
+
 config ZF_SDHC_RPI_PICO_PIO
 	bool "Native four-bit SD host on an RP2040/RP2350 PIO block"
 	default y
@@ -22,9 +153,120 @@ config ZF_SDHC_RPI_PICO_PIO
 config ZF_PICO_NETWORK_RANDOM
 	bool
 	default y
-	depends on SOC_FAMILY_RPI_PICO && WIFI
+	depends on SOC_FAMILY_RPI_PICO && ZF_WIFI
 	select PICOSDK_USE_TIMER
 	help
 	  Use the Pico SDK PRNG for noncryptographic network identifiers. This does not provide a CSPRNG.
+
+endmenu
+
+# Subsystem defaults for enabled modules. They precede the Zephyr tree, so they take priority over its defaults
+# while project and board .conf files can still override them.
+
+if ZF_USB_HID
+config USBD_THREAD_STACK_SIZE
+	default 4096
+choice USBD_LOG_LEVEL_CHOICE
+	default USBD_LOG_LEVEL_WRN
+endchoice
+choice UDC_DRIVER_LOG_LEVEL_CHOICE
+	default UDC_DRIVER_LOG_LEVEL_WRN
+endchoice
+endif
+
+if ZF_STORAGE
+# Never format a card: a failed mount must leave the card untouched.
+config FS_FATFS_MOUNT_MKFS
+	default n
+config FS_FATFS_MKFS
+	default n
+endif
+
+if ZF_USB_MSC
+config USBD_MSC_STACK_SIZE
+	default 4096
+endif
+
+if ZF_WIFI
+config NET_IPV6
+	default n
+config NET_MGMT_EVENT_QUEUE_SIZE
+	default 16
+config NET_MGMT_EVENT_QUEUE_TIMEOUT
+	default 5000
+config NET_PKT_RX_COUNT
+	default 10
+config NET_PKT_TX_COUNT
+	default 10
+config NET_BUF_RX_COUNT
+	default 20
+config NET_BUF_TX_COUNT
+	default 20
+config NET_RX_STACK_SIZE
+	default 2048
+config NET_TX_STACK_SIZE
+	default 2048
+# The dashboard owns Wi-Fi and network management; keep both off every shell.
+config NET_SHELL
+	default n
+config NET_L2_WIFI_SHELL
+	default n
+config HEAP_MEM_POOL_SIZE
+	default 65536 if DT_HAS_INFINEON_AIROC_WIFI_ENABLED
+endif
+
+if ZF_TCP_SHELL
+config SHELL_PROMPT_TELNET
+	default "ZephyrForge> "
+config SHELL_TELNET_PORT
+	default 2323
+config SHELL_TELNET_SUPPORT_COMMAND
+	default n
+# No log output on the network shell. The upstream level choice is anonymous, so set the resulting level directly.
+config SHELL_TELNET_INIT_LOG_LEVEL
+	default 0
+endif
+
+if ZF_UART_SHELL
+config SHELL_PROMPT_UART
+	default "ZephyrForge> "
+endif
+
+# Keep optional diagnostic shells from exposing broad system or storage controls.
+config SHELL_LOG_BACKEND
+	default n
+config SHELL_HISTORY
+	default n
+config DEVICE_SHELL_INIT_CMD
+	default n
+config DATE_SHELL
+	default n
+config DEVMEM_SHELL
+	default n
+# The kernel shell reports thread stack high-water marks. Shell commands reach every backend, so it stays off
+# whenever the unauthenticated network shell is built.
+config KERNEL_SHELL
+	default y if ZF_UART_SHELL && !ZF_TCP_SHELL
+	default n
+config FILE_SYSTEM_SHELL
+	default n
+config FLASH_SHELL
+	default n
+
+if ZF_BLUETOOTH
+config BT_MAX_CONN
+	default 1
+config BT_DEVICE_NAME
+	default "ZephyrForge"
+config BT_DEVICE_NAME_MAX
+	default 28
+config BT_DEVICE_APPEARANCE
+	default 0
+config BT_RX_STACK_SIZE
+	default 4096
+# The authenticated BLE service owns Bluetooth control; keep it off every shell.
+config BT_SHELL
+	default n
+endif
 
 source "Kconfig.zephyr"

@@ -55,24 +55,24 @@ const vectors = {
   radio_init_failed_while_connected: `01020100012a2a2a2a0b${ssid}${"00".repeat(27)}`,
 };
 
-test("identity requires ZephyrForge product 3, the 0x96 capability set, ESP32-S3 and valid RAM", () => {
+test("identity requires ZephyrForge product 3, the 0xd6 capability set, ESP32-S3 and valid RAM", () => {
   const report = identity();
   const decoded = decodeIdentityReport(report);
   assert.equal(decoded.product_name, "ZephyrForge");
   assert.equal(decoded.serial_number, "0102030405060708");
   assert.equal(decoded.firmware_version, "1.2.3");
   assert.deepEqual([decoded.mcu, decoded.board_name, decoded.transport], ["ESP32-S3", "ESP32-S3-DevKitC-1", "sdmmc"]);
-  assert.equal(decoded.capabilities, 0x96);
+  assert.equal(decoded.capabilities, 0xd6);
   for (const bytes of [report.slice(0, 25), Uint8Array.from([1, ...report]), new Uint8Array(42)]) {
     assert.throws(() => decodeIdentityReport(bytes));
   }
-  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0xcf], [17, 0x9e], [17, 0xbe],
+  for (const [offset, value] of [[0, 2], [1, 2], [1, 1], [17, 0], [17, 0x7d], [17, 0x9e], [17, 0xbe],
     [14, 1]]) {
     const bad = report.slice(); bad[offset] = value;
     assert.throws(() => decodeIdentityReport(bad), `${offset}: ${value}`);
   }
   assert.equal(decodeIdentityReport(identity(2 | 128)).capabilities, 0x82, "capabilities may be a subset");
-  assert.equal(decodeIdentityReport(identity(0x8e)).transport, "spi");
+  assert.equal(decodeIdentityReport(identity(0xce)).transport, "spi");
   const reserved = report.slice(); reserved[16] = 255;
   assert.equal(decodeIdentityReport(reserved).product_name, "ZephyrForge", "identity reserved byte is ignored");
   const unknown = report.slice(); unknown[14] = 99; unknown[15] = 99;
@@ -365,11 +365,14 @@ test("strict result validation enforces details, scan padding, commit masks and 
   for (const [op, state, error, detail] of [[6, 3, 3, 16], [7, 3, 3, 17], [8, 3, 3, 18],
     [9, 3, 3, 19], [5, 3, 3, 20], [9, 3, 3, 21], [12, 3, 3, 22], [12, 3, 3, 23],
     [8, 5, 5, 25], [11, 5, 5, 26], [5, 3, 3, 27], [5, 5, 5, 28],
-    [2, 5, 5, 29], [3, 5, 5, 29], [4, 5, 5, 29], [5, 5, 5, 29]]) {
+    [2, 5, 5, 29], [3, 5, 5, 29], [4, 5, 5, 29], [5, 5, 5, 29],
+    [6, 5, 5, 30], [8, 5, 5, 29], [9, 5, 5, 30], [10, 5, 5, 29], [11, 5, 5, 30],
+    [5, 6, 6, 31]]) {
     const bytes = result(1, op, state, error); bytes[5] = detail;
     assert.equal(decodeControlResult(bytes, { ble: detail === 28 }).detail, detail);
     if (detail === 28) assert.throws(() => decodeControlResult(bytes));
-    if (detail === 29 && [2, 5].includes(op)) assert.equal(decodeControlResult(bytes, { ble: true }).detail, 29);
+    if ([28, 29, 30].includes(detail) && [2, 5].includes(op))
+      assert.equal(decodeControlResult(bytes, { ble: true }).detail, detail);
     bytes[6] = 1; assert.throws(() => decodeControlResult(bytes));
     bytes[6] = 0; bytes[2] = 1; assert.throws(() => decodeControlResult(bytes));
   }

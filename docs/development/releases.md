@@ -1,11 +1,94 @@
 # Release procedure
 
-Use this guide to prepare and publish packages. To install firmware, use [flashing](../guides/flashing.md).
+[Documentation](../README.md) / Development / Releases
 
-## Release sequence
+Use this guide to publish packages. For installation, see [Flashing](../guides/flashing.md).
+Complete [one-time publisher setup](#before-the-first-release) for the channels you use, then follow the
+stable-tag checklist below.
 
-Configure publication settings once using [Before the first release](#before-the-first-release). For each release,
-run the preflight, pass PR checks on the same commit, then [tag and publish it](#publish-a-stable-tag).
+- [Publish a stable tag](#publish-a-stable-tag)
+- [Inspect release assets](#release-assets)
+- [Understand publication and retries](#direct-pages-pypi-and-retries)
+- [Use packaging helpers locally](#package-and-publication-helpers)
+
+## Publish a stable tag
+
+1. On the intended source ref, run [Release build packages](../../.github/workflows/release.yml) manually with
+   the proposed tag, for example `v0.1.0`. The preflight builds and tests packages and attaches artifacts.
+   Creating the tag is a separate step.
+2. Inspect the artifacts, dependency license notices, and [hardware qualification limits](../validation/README.md).
+   Review radio and regulatory requirements before distributing radio-enabled binaries. Confirm preflight and
+   PR checks passed on the exact commit you plan to tag.
+3. Check out that commit, then create and push the tag. Use `vMAJOR.MINOR.PATCH` with components from 0 to 255
+   and no leading zeros, as enforced by the [version helper](../../tools/firmware/release-version.sh).
+
+   ```sh
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+4. Check the published [release assets](#release-assets) and `SHA256SUMS.txt`. Verify that the release links to
+   flashing, wiring, and qualification documentation at its source tag. Check
+   [Direct Pages and PyPI](#direct-pages-pypi-and-retries) if those channels are configured.
+
+Release and preflight builds use the validated version for firmware (`ZEPHYRFORGE_VERSION`), the .NET packages,
+Direct, and the Python wheel. Package smoke checks verify the resulting identity before publication.
+For source-checkout version derivation, see [host development](host-tools.md).
+
+## Direct Pages, PyPI and retries
+
+After a successful tag-triggered release, Pages downloads the **published release asset**, not
+an untrusted PR artifact or a fresh build from `main`. It verifies the tag's source commit and
+the Direct checksum and archive version/source metadata. The archive's `web/` directory,
+with the project license, is served as the site root.
+
+After the same release, **Publish Python to PyPI** downloads the released wheel, checks it against
+`SHA256SUMS.txt` and the tag's source commit, and uploads that exact file. PyPI versions are immutable:
+rerun only failed jobs after fixing external configuration, and publish corrections under a new version.
+
+A manual **Publish Direct Pages** or **Publish Python to PyPI** run can republish an existing,
+non-draft, non-prerelease tag.
+A manual **Publish .NET Packages** run rebuilds an existing tag and attaches run artifacts;
+it does not modify an existing GitHub release. A Pages or PyPI setup/deployment failure does not undo
+the separately completed GitHub release.
+
+## Before the first release
+
+1. Enable GitHub Actions and allow the project's pinned actions in the repository or organization policy.
+2. For Direct, set **Settings > Pages > Build and deployment > Source** to **GitHub Actions** and review
+   protection rules for the `github-pages` environment.
+3. For Python, configure a PyPI Trusted Publisher or pending publisher for project `zephyrforge`, owner
+   `djwinter29-oss`, repository `ZephyrForge`, workflow `publish-pypi.yml`, and environment `pypi`.
+   Confirm project-name availability for new publishers.
+4. Create the GitHub `pypi` environment, restrict it to the default branch, and configure any required
+   reviewer approval. Trusted Publishing uses OIDC.
+
+## Release assets
+
+| Asset | Contents/use |
+| --- | --- |
+| Firmware ZIPs | [Filename patterns and board/storage identifiers](../guides/flashing.md#flash-a-release-image) |
+| `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
+| `zephyrforge-VERSION-py3-none-any.whl` | Python host package with the `zephyrforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
+| `zephyrforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
+| `zephyrforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
+| `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
+| `SHA256SUMS.txt` | SHA-256 of every package |
+
+Firmware packages contain the flashable image, `zephyr.elf` from the same build, `BUILD-INFO.txt`, `LICENSE` and
+`licenses/`. The ELF carries symbols and load addresses: use it with a debug probe, `picotool`, GDB or to decode
+crash addresses. ESP32 boards are flashed from `zephyr.bin`, not the ELF.
+Packages omit `FLASHING.txt`, the documentation tree, Zephyr configuration, devicetree, and runner/dependency YAML
+files.
+`BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board, storage
+variant, and the SHA-256 of the image and ELF. W firmware packages include Infineon HAL and blob license notices.
+`BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
+These images provide Wi-Fi only; a release build does not qualify the radio hardware.
+
+For host installation, see [Python](../guides/dashboards/python.md#install),
+[.NET](../guides/dashboards/dotnet.md#run-the-host), and
+[Direct](../guides/dashboards/direct.md#choose-how-to-run-it). Windows and macOS packages ship without publisher
+signatures or notarization. Local OS security policy may require explicit approval.
 
 ## GitHub workflows
 
@@ -51,117 +134,14 @@ Invoke Python scripts with `python` and shell scripts with `bash`. Use fresh sta
 `SOURCE_SHA` may be empty for manual publication downloads; tag and checksum checks still apply.
 The download helpers do not publish anything themselves. Package smoke checks start only local loopback hosts.
 
-## Package identities
+### Reproduce the Python release wheel
 
-Python uses Hatchling and hatch-vcs: [pyproject.toml](../../host/python/pyproject.toml) builds the
-`zephyrforge` wheel. CI explicitly copies `host/web/src` into the package before building; the wheel bundles it as
-`zephyrforge/web` without a custom build hook. For local builds, follow the
-[asset-staging procedure](host-tools.md#python-host-checks-and-packaging). Git tags determine ordinary package versions;
-release builds explicitly supply the validated version through `SETUPTOOLS_SCM_PRETEND_VERSION`.
-The release installs the wheel in a clean environment and runs
-[the installed-wheel check](../../tools/check_python_wheel.py) outside the checkout. Host Validation runs browser
-checks; release workflows smoke-test the extracted Direct and Python packages over HTTP.
-
-.NET uses MinVer to derive ordinary build versions from Git tags. Release publication uses the validated version
-through `MinVerVersionOverride`, including manual preflight builds that have no tag yet. The extracted-host check
-verifies both the package metadata and the dashboard display against that version.
-
-Direct packages stamp a static copy with the validated release version and record its source commit and dirty
-state in `web/build.json`. The extracted server preserves that identity without consulting Git. Pages checks the
-page and build identity against the published tag before deployment.
-See [Direct development](host-tools.md#direct-versions-and-local-serving) for checkout version rules.
-
-## Before the first release
-
-1. Enable GitHub Actions and ensure repository/organization policy permits the pinned actions.
-2. For Direct publication, set **Settings > Pages > Build and deployment > Source** to
-   **GitHub Actions**. Review protection rules for the `github-pages` environment.
-   Pages setup is a repository-administrator action, not performed by this checkout.
-3. Run **Release build packages** manually on the intended source ref with, for example,
-   `tag: v0.1.0`. This preflight builds/tests packages and attaches run artifacts, but creates
-   **no tag, GitHub release or Pages deployment**.
-4. Inspect the artifacts, licensing and [qualification limits](../validation/qualification-gaps.md).
-   Local validation is not evidence that GitHub-hosted Linux/macOS/Windows jobs have run.
-5. On PyPI, configure a Trusted Publisher (or a pending publisher for a new project) for project
-   `zephyrforge`, owner `djwinter29-oss`, repository `ZephyrForge`, workflow `publish-pypi.yml` and
-   environment `pypi`. Confirm the project name is available to this owner first.
-6. Create the GitHub `pypi` environment, restrict it to the default branch, and configure any
-   required reviewer approval. No PyPI token is stored in the repository.
-
-## Publish a stable tag
-
-After the preflight and PR checks pass on the exact source commit:
+Use a fresh checkout of the release commit and an active Python 3.12 venv. The build helper stages the license
+and shared dashboard in the package source, then writes the wheel to `dist/`. The check helper installs it
+into `build/wheel-check` and tests the installed package with the expected version.
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+VERSION=$(bash tools/firmware/release-version.sh v0.1.0)
+SETUPTOOLS_SCM_PRETEND_VERSION="$VERSION" bash tools/release/build-wheel.sh
+VERSION="$VERSION" bash tools/release/check-wheel.sh
 ```
-
-Only exact `vMAJOR.MINOR.PATCH` tags with components from 0 to 255 and no leading zeros are accepted by the shared
-[version helper](../../tools/firmware/release-version.sh). Prerelease tags are not published.
-Tagged builds inject the validated firmware version through `ZEPHYRFORGE_VERSION`; ordinary
-builds keep the source default. .NET package versions and the Python wheel version match the release tag.
-
-The release publishes:
-
-| Asset | Contents/use |
-| --- | --- |
-| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sdmmc.zip` | Native four-bit SDMMC simple-boot BIN image, build identity and project/dependency licenses |
-| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-sd-spi.zip` | SD-over-SPI image with the same package contents, card detection, FAT and USB drive handoff |
-| `zephyrforge-firmware-vVERSION-esp32s3-devkitc-none.zip` | ESP32-S3 BIN image without SD or filesystem support |
-| `zephyrforge-firmware-vVERSION-esp32c6-devkitc-sd-spi.zip` | ESP32-C6 BIN image with SD-over-SPI and no USB HID/MSC |
-| `zephyrforge-firmware-vVERSION-esp32c6-devkitc-none.zip` | ESP32-C6 BIN image without SD or filesystem support |
-| `zephyrforge-firmware-vVERSION-BOARD-sdmmc.zip` | Raspberry Pi Pico native four-bit SDMMC UF2 image for `BOARD` `pico`, `pico_w`, `pico2` or `pico2_w`, with the same package contents |
-| `zephyrforge-firmware-vVERSION-BOARD-sd-spi.zip` | Raspberry Pi Pico SD-over-SPI UF2 image for the same four boards |
-| `zephyrforge-firmware-vVERSION-BOARD-none.zip` | No-storage UF2 for the same four Pico boards |
-| `zephyrforge-direct-vVERSION.zip` | Independent Direct `web/` app, `server.py`, project license and `RELEASE.txt` source metadata; run `python3 server.py` |
-| `zephyrforge-VERSION-py3-none-any.whl` | Python host package with the `zephyrforge` command, bundled `host/web/src` bridge dashboard and license; also published to PyPI |
-| `zephyrforge-host-vVERSION-linux-x64.tar.gz` | Self-contained Linux .NET host, dashboard assets and dependency notices |
-| `zephyrforge-host-vVERSION-win-x64.zip` | Self-contained Windows .NET host |
-| `zephyrforge-host-vVERSION-osx-arm64.tar.gz` | Self-contained Apple Silicon .NET host |
-| `SHA256SUMS.txt` | SHA-256 of every package |
-
-Firmware packages contain only the flashable image, `BUILD-INFO.txt`, `LICENSE` and `licenses/`.
-They omit `FLASHING.txt`, the documentation tree, ELF, Zephyr configuration, devicetree, and runner/dependency YAML
-files.
-`BUILD-INFO.txt` identifies the build-time firmware version, source commit and dirty state, target board and storage
-variant. W firmware packages include Infineon HAL and blob license notices.
-`BUILD-INFO.txt` also records SHA-256 hashes of the embedded CYW43439 Wi-Fi firmware and CLM blob.
-These images provide Wi-Fi only; a release build does not qualify the radio hardware.
-
-Install the wheel with `python -m pip install zephyrforge-VERSION-py3-none-any.whl` and run `zephyrforge web`.
-Standalone .NET hosts do not require an installed .NET runtime. Their smoke tests start the extracted host and make
-an HTTP request without hardware.
-Windows/macOS packages are not publisher-signed or notarized; local OS security policy may
-require explicit approval. No signing credentials are configured by these workflows.
-
-Release notes link to the [release-image flashing procedure](../guides/flashing.md#flash-a-release-image),
-the [board/storage wiring guides](../README.md#wire-an-sd-card) and qualification limits
-**at the release tag**, not the default branch. These guides are the authoritative instructions; save them
-before working offline. Pico ZIPs contain `zephyr.uf2`; ESP32-S3 ZIPs contain `zephyr.bin`.
-Firmware ZIPs are flashable images, not relocatable west build directories. Use the
-[source-build flash wrapper](../guides/flashing.md#from-a-source-build) for west-based uploads.
-Choose the archive matching the board and wiring. Before changing buses, follow the
-[card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
-
-## Direct Pages, PyPI and retries
-
-After a successful tag-triggered release, Pages downloads the **published release asset**, not
-an untrusted PR artifact or a fresh build from `main`. It verifies the tag's source commit and
-the Direct checksum and archive version/source metadata. The archive's `web/` directory,
-with the project license, is served as the site root.
-WebHID and Web Bluetooth still require a supported browser and explicit device permission.
-
-After the same release, **Publish Python to PyPI** downloads the released wheel, checks it against
-`SHA256SUMS.txt` and the tag's source commit, and uploads that exact file. PyPI versions are immutable:
-rerun only failed jobs after fixing external configuration, and publish corrections under a new version.
-
-A manual **Publish Direct Pages** or **Publish Python to PyPI** run can republish an existing,
-non-draft, non-prerelease tag.
-A manual **Publish .NET Packages** run rebuilds an existing tag and attaches run artifacts;
-it does not modify an existing GitHub release. A Pages or PyPI setup/deployment failure does not undo
-the separately completed GitHub release.
-
-Before distributing binaries, review Zephyr, Espressif HAL/blob, Raspberry Pi Pico HAL, CMSIS, FatFs, mbedTLS,
-hidapi, Flask and HidSharp licenses, and the radio/regulatory requirements that apply to radio-enabled binaries.
-Do not describe a successful software build as SD-card or wireless hardware qualification.

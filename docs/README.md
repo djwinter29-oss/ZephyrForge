@@ -1,53 +1,50 @@
 # Documentation
 
-For a first installation, follow [getting started](guides/getting-started.md). For an existing setup or a code
-change, choose the relevant guide below.
+## Start here
 
-## Set up and use a board
+- **New board:** [Get a board running](getting-started.md) takes you from image selection to live telemetry.
+- **Firmware already installed:** [Choose a dashboard](guides/dashboards/README.md), then
+  [connect and use it](guides/dashboard-use.md).
+- **Building an application:** [Build firmware](development/firmware-build.md), then use
+  [firmware development](development/firmware.md) for extension points and tests.
 
-- [Hardware](guides/hardware.md) - identify your board, connectors, and electrical limits.
-- [Flashing](guides/flashing.md) - install a release image or upload a source build.
-- [Wireless](guides/wireless.md) - scan/test Wi-Fi, save credentials, and connect over BLE.
-- [C6 commissioning](guides/boards/esp32c6-commissioning.md) - set the first BLE Control key through the flashing port.
-- [Diagnostic shells](guides/console.md) - read logs and use the diagnostic terminal.
+## Use a board
 
-Dashboard installation and use: [Direct](../host/direct/README.md),
-[Python](../host/python/README.md), or [.NET](../host/dotnet/ZephyrForge/README.md).
-
-### Wire an SD card
-
-Choose the guide for both your board and the image's storage bus. GPIO numbers are not interchangeable across boards.
-
-| Board | Native four-bit SDMMC | SD-over-SPI |
-| --- | --- | --- |
-| ESP32-S3 N16R8 | [Wiring](guides/boards/esp32s3-sdmmc.md) | [Wiring](guides/boards/esp32s3-sd-spi.md) |
-| ESP32-C6 N8 | Not supported | [Wiring](guides/boards/esp32c6-sd-spi.md) |
-| Pico family | [Wiring](guides/boards/pico-sdmmc.md) | [Wiring](guides/boards/pico-sd-spi.md) |
+| Task | Read |
+| --- | --- |
+| Identify a board, connector, or reserved pin | [Boards and connections](hardware/README.md) |
+| Install or replace firmware | [Flash firmware](guides/flashing.md) |
+| Set the first Control key on a C6 | [Commission an ESP32-C6](guides/esp32c6-commissioning.md) |
+| Read status, save settings, or recover a command | [Use a dashboard](guides/dashboard-use.md) |
+| Prepare a card, export it over USB, or run a benchmark | [Use an SD card](guides/sd-card.md) |
+| Set up Wi-Fi or Bluetooth | [Wireless setup](guides/wireless.md) |
+| Read logs or open a diagnostic terminal | [Diagnostic shells](guides/console.md) |
 
 ## Build and develop
 
-- [Architecture](reference/architecture.md) - service boundaries, startup, and locking.
-- [Firmware builds](development/firmware-build.md) - workspace setup, board/storage selection, and image outputs.
-- [Firmware development](development/firmware.md) - where to add application code and how to test it.
-- [Host development](development/host-tools.md) - dashboards, codecs, packaging, and software checks.
-- [Releases](development/releases.md) - package and publish a release.
-- [Contributing](../CONTRIBUTING.md) - prepare a change for review.
+| Task | Read |
+| --- | --- |
+| Understand services, startup, and locking | [Firmware architecture](development/architecture.md) |
+| Build an image or enable/disable modules | [Firmware builds](development/firmware-build.md) |
+| Add firmware behavior and run its tests | [Firmware development](development/firmware.md) |
+| Change a host or dashboard and run its checks | [Host development](development/host-tools.md) |
+| Package and publish a release | [Release procedure](development/releases.md) |
+| Submit a change | [Contributing](../CONTRIBUTING.md) |
 
 ## Look up a contract
 
-Use these when implementing firmware or a client. They define the exact fields, behavior, and error handling.
+These pages own exact fields, APIs, and error semantics; operating instructions stay in the guides above.
 
-- [USB HID](reference/usb-hid.md) - discovery, report layouts, control commands, and host validation.
-- [Bluetooth LE](reference/bluetooth.md) - advertising, GATT, authentication, and BLE control.
-- [Boot settings](reference/settings.md) - record format, defaults, load/save lifecycle, API, and flash safety.
-- [SD storage](reference/sdcard.md) - driver configuration, mounting, ownership, reporting, and benchmarks.
-- [Shared dashboard HTTP API](../host/web/README.md) - Python/.NET routes, JSON fields, and request/error semantics.
+| Contract | Contents |
+| --- | --- |
+| [USB HID](reference/usb-hid.md) | Device discovery, report layouts, commands, and host validation |
+| [Bluetooth LE](reference/bluetooth-le.md) | Advertising, GATT, authentication, and BLE control; reuses USB report layouts |
+| [Dashboard HTTP API](reference/http-api.md) | Python/.NET routes, JSON fields, responses, and errors |
+| [Boot settings](reference/boot-settings.md) | Defaults, record format, load/save API, and flash safety |
+| [SD storage](reference/sd-storage.md) | Driver configuration, mount lifecycle, ownership, and benchmark execution |
+| [Security boundaries](reference/security.md) | Management links, local hosts, and stored credentials |
 
 ## Check what has been tested
 
-- [Qualification gaps](validation/qualification-gaps.md) - what remains unverified.
-- [Firmware qualification](validation/firmware-qualification.md) - target-test procedures and acceptance criteria.
-- [Validation records](validation/records/README.md) - dated software and hardware observations.
-
-Builds and simulated tests are not hardware qualification. Records apply to the revision, board, and configuration
-they describe; they are not installation instructions for the current release.
+- [Validation and qualification](validation/README.md) - board coverage, open gaps, and dated records.
+- [Firmware qualification procedure](validation/firmware-qualification.md) - how to run and record target checks.

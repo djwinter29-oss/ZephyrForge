@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .models import BootSettings, ControlResult, SupportedHardwareIdentity, WirelessNetwork
 
 from .common import (
-    CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
+    CAP_MSC, CAP_REBOOT, CAP_SELF_TEST, CAP_WIRELESS, CLOCK_PROFILES_MHZ,
     CONTROL_ERROR_NAMES, CONTROL_PAYLOAD_SIZE, CONTROL_REPORT_ID, CONTROL_STATUS_NAMES, REPORT_VERSION,
     ControlDetail, ControlError, ControlOpcode, ControlStatus, InvalidRequest, ProtocolError,
     ALLOWED_STATUS_ERRORS, OPCODE_STATUSES, report_bytes, feature_payload, validate_settings,
@@ -123,13 +123,18 @@ def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
         if opcode in (ControlOpcode.REBOOT, ControlOpcode.MSC, ControlOpcode.SELF_TEST,
                       ControlOpcode.SAVE_SETTINGS):
             allowed |= {ControlDetail.CONFLICTING_WORK, ControlDetail.USB_MSC_OWNS_STORAGE,
-                        ControlDetail.REBOOT_PENDING}
+                        ControlDetail.REBOOT_PENDING, ControlDetail.SETTINGS_SAVE_PENDING}
+        if opcode in (ControlOpcode.REBOOT, ControlOpcode.SAVE_SETTINGS):
+            allowed.add(ControlDetail.USB_STAGED_CREDENTIALS_BLOCK_BLE_SAVE)
         if opcode in (ControlOpcode.SAVE_SETTINGS, ControlOpcode.STAGE_SSID, ControlOpcode.STAGE_PASSWORD,
                       ControlOpcode.STAGE_KEY, ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_SCAN):
             allowed.add(ControlDetail.WIFI_TEST_ACTIVE)
         if opcode in (ControlOpcode.SAVE_SETTINGS, ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_SCAN,
                       ControlOpcode.WIFI_ENTRY):
             allowed.add(ControlDetail.WIFI_SCAN_ACTIVE)
+        if opcode in (ControlOpcode.STAGE_SSID, ControlOpcode.STAGE_PASSWORD, ControlOpcode.STAGE_KEY,
+                      ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_CANCEL, ControlOpcode.WIFI_SCAN):
+            allowed |= {ControlDetail.REBOOT_PENDING, ControlDetail.SETTINGS_SAVE_PENDING}
     elif status == ControlStatus.FAILED and opcode == ControlOpcode.SELF_TEST:
         allowed = {
             ControlDetail.CARD_UNAVAILABLE,
@@ -137,6 +142,8 @@ def _validate_detail(opcode: int, status: int, error: int, detail: int) -> None:
             ControlDetail.BENCHMARK_FILE_EXISTS,
             ControlDetail.PREFLIGHT_FILESYSTEM_IO,
         }
+    elif status == ControlStatus.FAILED and opcode == ControlOpcode.SAVE_SETTINGS:
+        allowed = {ControlDetail.NONE, ControlDetail.SETTINGS_SAVED_REBOOT_FAILED}
     if detail not in allowed:
         raise ValueError("invalid HID control detail for opcode/status/error")
 
@@ -183,9 +190,9 @@ def parse_control_result_report(
         raise ValueError("unknown HID opcode must be unsupported")
     if opcode_enum in _UNSUPPORTED_OPCODES and status not in (ControlStatus.IDLE, ControlStatus.UNSUPPORTED):
         raise ValueError("HID control result reports an operation ZephyrForge does not provide")
-    # Opcode 5 may be Unsupported for a forced save even though settings save is advertised.
     if status == ControlStatus.UNSUPPORTED and error == ControlError.CAPABILITY and identity is not None:
         required = CAP_REBOOT if opcode_enum == ControlOpcode.REBOOT else (
+            CAP_MSC if opcode_enum == ControlOpcode.MSC else
             CAP_SELF_TEST if opcode_enum == ControlOpcode.SELF_TEST else None)
         if opcode_enum is not None and ControlOpcode.STAGE_SSID <= opcode_enum <= ControlOpcode.WIFI_ENTRY:
             required = CAP_WIRELESS

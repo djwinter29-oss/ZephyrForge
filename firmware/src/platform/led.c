@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Ji Dong
  */
 
-#include "platform/zf_platform.h"
+#include "platform/led.h"
 
 #include <errno.h>
 #include <zephyr/device.h>
@@ -11,9 +11,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(zephyrforge_led, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(zf_led, LOG_LEVEL_INF);
 
-#if DT_NODE_EXISTS(DT_NODELABEL(zephyrforge_led))
 static const struct device *const strip = DEVICE_DT_GET(DT_NODELABEL(zephyrforge_led));
 K_MUTEX_DEFINE(led_lock);
 static uint8_t current_colour;
@@ -56,7 +55,7 @@ static void led_worker(struct k_work *work)
 
 K_WORK_DEFINE(led_work, led_worker);
 
-void zf_platform_led_init(void)
+void zf_led_init(void)
 {
 	int err = device_is_ready(strip) ? transmit(0) : -ENODEV;
 
@@ -73,7 +72,7 @@ void zf_platform_led_init(void)
 	k_mutex_unlock(&led_lock);
 }
 
-int zf_platform_led_request(uint8_t colour)
+int zf_led_request(uint8_t colour)
 {
 	int err = 0;
 
@@ -99,27 +98,10 @@ int zf_platform_led_request(uint8_t colour)
 	return err;
 }
 
-void zf_platform_led_status(uint8_t *colour, bool *ready)
+void zf_led_status(uint8_t *colour, bool *ready)
 {
 	k_mutex_lock(&led_lock, K_FOREVER);
 	*colour = available ? current_colour : 0;
 	*ready = available;
 	k_mutex_unlock(&led_lock);
 }
-#else
-void zf_platform_led_init(void)
-{
-}
-
-int zf_platform_led_request(uint8_t colour)
-{
-	ARG_UNUSED(colour);
-	return -ENOTSUP;
-}
-
-void zf_platform_led_status(uint8_t *colour, bool *ready)
-{
-	*colour = 0;
-	*ready = false;
-}
-#endif

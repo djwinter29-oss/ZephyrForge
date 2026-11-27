@@ -72,6 +72,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash zephyrforge/tools/firmware/build.sh --board "$BOARD" --storage "$STORAGE"
 
+      - name: Check settings writer selection
+        run: |
+          config="$FIRMWARE_BUILD/zephyr/.config"
+          if [[ "$BOARD" == esp32* ]]; then
+            grep -Fxq 'CONFIG_ZF_SETTINGS_SAVE=y' "$config" || {
+              echo "Expected the settings writer in the default $BOARD image." >&2
+              exit 1
+            }
+          elif grep -Fxq 'CONFIG_ZF_SETTINGS_SAVE=y' "$config"; then
+            echo "Unexpected settings writer in the $BOARD image." >&2
+            exit 1
+          fi
+
       - name: Collect firmware, build identity and dependency licenses
         run: bash zephyrforge/tools/release/package-firmware.sh
 
@@ -81,3 +94,54 @@ jobs:
           name: zephyrforge-${{ matrix.board }}-${{ matrix.storage }}-software-build
           path: zephyrforge/build/firmware-package/
           if-no-files-found: error
+
+  module-variants:
+    name: Module variant ${{ matrix.title }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # build.sh fails when the resolved Kconfig does not honor a requested module switch.
+        include:
+          - {args: "--board esp32s3 --without wifi", title: "ESP32-S3 without Wi-Fi"}
+          - {args: "--board esp32s3 --without bluetooth", title: "ESP32-S3 without Bluetooth"}
+          - {args: "--board esp32s3 --without usb-hid", title: "ESP32-S3 without USB HID"}
+          - {args: "--board esp32s3 --without usb-msc", title: "ESP32-S3 without USB MSC"}
+          - {args: "--board esp32s3 --without benchmark", title: "ESP32-S3 without benchmark"}
+          - {args: "--board esp32s3 --without settings-save", title: "ESP32-S3 without settings save"}
+          - {args: "--board esp32s3 --without led --without cpu-load --without temperature",
+             title: "ESP32-S3 without LED and telemetry sensors"}
+          - {args: "--board esp32s3 --with uart-shell", title: "ESP32-S3 with UART and kernel shells"}
+          - {args: "--board esp32s3 --with tcp-shell --with uart-shell", title: "ESP32-S3 with both shells"}
+          - {args: "--board esp32s3 --storage none --without wifi --without bluetooth --without led
+                    --without cpu-load --without temperature --without settings-save",
+             title: "ESP32-S3 minimal USB HID"}
+          - {args: "--board esp32c6 --storage none --without wifi --without temperature",
+             title: "ESP32-C6 Bluetooth only"}
+          - {args: "--board pico --with settings-save", title: "Pico with settings save"}
+          - {args: "--board pico_w --storage none --without wifi", title: "Pico W without Wi-Fi"}
+    env:
+      ZEPHYRFORGE_VERSION: ${{ inputs.version }}
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      BUILD_ARGS: ${{ matrix.args }}
+    steps:
+      - name: Checkout manifest repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: zephyrforge
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Use source commit timestamp for build dates
+        run: echo "SOURCE_DATE_EPOCH=$(git -C zephyrforge show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build module variant
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # BUILD_ARGS is a fixed matrix value; word splitting is intended.
+        run: bash zephyrforge/tools/firmware/build.sh $BUILD_ARGS

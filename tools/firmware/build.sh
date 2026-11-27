@@ -4,8 +4,28 @@ board=esp32s3
 storage=sdmmc
 storage_selected=false
 conf=prj.conf
-usb_config=";profiles/usb.conf"
-storage_config=""
+disabled=()
+enabled=()
+benchmark_chunk_size=""
+module_names=(wifi bluetooth tcp-shell uart-shell cpu-load temperature settings-save usb-hid usb-msc benchmark led)
+module_symbols=(
+	WIFI BLUETOOTH TCP_SHELL UART_SHELL CPU_LOAD TEMPERATURE SETTINGS_SAVE
+	USB_HID USB_MSC STORAGE_BENCHMARK LED
+)
+
+module_symbol()
+{
+	local i
+
+	for i in "${!module_names[@]}"; do
+		if [[ "${module_names[$i]}" == "$1" ]]; then
+			printf '%s' "${module_symbols[$i]}"
+			return 0
+		fi
+	done
+	return 1
+}
+
 while (($#)); do
 	case "$1" in
 		--board)
@@ -14,8 +34,41 @@ while (($#)); do
 		--storage)
 			(($# >= 2)) || { printf 'Error: --storage requires sdmmc, sd-spi or none.\n' >&2; exit 1; }
 			storage="$2"; storage_selected=true; shift 2 ;;
+		--without)
+			(($# >= 2)) || { printf 'Error: --without requires a module name.\n' >&2; exit 1; }
+			module_symbol "$2" >/dev/null || {
+				printf 'Error: unknown optional module: %s\n' "$2" >&2
+				exit 1
+			}
+			disabled+=("$2")
+			shift 2 ;;
+		--with)
+			(($# >= 2)) || { printf 'Error: --with requires a module name.\n' >&2; exit 1; }
+			module_symbol "$2" >/dev/null || {
+				printf 'Error: unknown optional module: %s\n' "$2" >&2
+				exit 1
+			}
+			enabled+=("$2")
+			shift 2 ;;
+		--benchmark-chunk-size)
+			(($# >= 2)) || { printf 'Error: --benchmark-chunk-size requires a byte count.\n' >&2; exit 1; }
+			if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+				printf 'Error: benchmark chunk size must be a multiple of 4 from 4096 to 32768.\n' >&2
+				exit 1
+			fi
+			benchmark_chunk_size=$((10#$2))
+			((benchmark_chunk_size >= 4096 && benchmark_chunk_size <= 32768 && benchmark_chunk_size % 4 == 0)) || {
+				printf 'Error: benchmark chunk size must be a multiple of 4 from 4096 to 32768.\n' >&2
+				exit 1
+			}
+			shift 2 ;;
 		-h|--help)
-			printf 'Usage: bash tools/firmware/build.sh [--board esp32s3|esp32c6|pico|pico_w|pico2|pico2_w] [--storage sdmmc|sd-spi|none]\n'
+			printf '%s\n' \
+				'Usage: bash tools/firmware/build.sh [--board BOARD] [--storage PROFILE]' \
+				'       [--with MODULE | --without MODULE] (repeatable)' \
+				'       [--benchmark-chunk-size BYTES]' \
+				'       Modules: wifi bluetooth tcp-shell uart-shell cpu-load temperature' \
+				'               settings-save usb-hid usb-msc benchmark led'
 			exit 0 ;;
 		*) printf 'Error: unknown argument: %s\n' "$1" >&2; exit 1 ;;
 	esac
@@ -24,27 +77,22 @@ if [[ "$board" == esp32c6 && "$storage_selected" == false ]]; then
 	storage=none
 fi
 case "$storage" in
-	sdmmc) build=firmware; mode=sdmmc; storage_enabled=ON; benchmark=ON
-		storage_config=";profiles/storage.conf" ;;
-	sd-spi) build=firmware-sd-spi; mode=sd_spi; storage_enabled=ON; benchmark=ON
-		storage_config=";profiles/storage.conf" ;;
-	none) build=firmware-no-storage; storage_enabled=OFF; benchmark=OFF ;;
+	sdmmc) build=firmware; mode=sdmmc ;;
+	sd-spi) build=firmware-sd-spi; mode=sd_spi ;;
+	none) build=firmware-no-storage ;;
 	*) printf 'Error: --storage must be sdmmc, sd-spi or none.\n' >&2; exit 1 ;;
 esac
 case "$board" in
 	esp32s3) target=esp32s3_devkitc/esp32s3/procpu; family=esp32s3
-		conf+=";profiles/wifi.conf;profiles/bluetooth.conf;profiles/tcp-shell.conf;boards/esp32s3/board.conf"
+		conf+=";boards/esp32s3/board.conf"
 		toolchain=xtensa-espressif_esp32s3_zephyr-elf ;;
 	esp32c6) family=esp32c6
-		usb_config=""
-		benchmark=OFF
 		[[ "$storage" != sdmmc ]] || {
 			printf 'Error: ESP32-C6 supports SD over SPI or no storage, not native SDMMC.\n' >&2
 			exit 1
 		}
 		target=esp32c6_devkitc/esp32c6/hpcore
 		build="${build/firmware/firmware-esp32c6}"
-		conf+=";profiles/wifi.conf;profiles/bluetooth.conf"
 		toolchain=riscv64-zephyr-elf ;;
 	pico) target=rpi_pico/rp2040; soc=rp2040 ;;
 	pico_w) target=rpi_pico/rp2040/w; soc=rp2040 ;;
@@ -53,20 +101,46 @@ case "$board" in
 	*) printf 'Error: --board must be esp32s3, esp32c6, pico, pico_w, pico2 or pico2_w.\n' >&2; exit 1 ;;
 esac
 [[ "$board" != pico* ]] || family=rpi_pico
-# Overlay order: family board, Pico SoC flash layout, storage wiring, then wireless tweaks.
+# Overlays describe hardware: family board, Pico SoC flash layout, then SD card wiring. Kconfig enables each module
+# whose hardware the devicetree describes.
 overlay="boards/$family/board.overlay"
 [[ -z "${soc:-}" ]] || overlay+=";boards/$family/soc/$soc.overlay"
 [[ "$storage" == none ]] || overlay+=";boards/$family/storage/$mode.overlay"
 if [[ "$board" == pico* ]]; then
 	build="${build/firmware/firmware-$board}"
-	if [[ "$board" == *_w ]]; then
-		overlay+=";boards/rpi_pico/wireless/w.overlay"
-		conf+=";profiles/wifi.conf;boards/rpi_pico/wireless/w.conf"
-	fi
 	toolchain=arm-zephyr-eabi
 fi
-conf+="$usb_config$storage_config"
-[[ -z "$usb_config" || -z "$storage_config" ]] || conf+=";profiles/usb-msc.conf"
+seen_modules=" "
+for feature in "${enabled[@]}" "${disabled[@]}"; do
+	if [[ "$seen_modules" == *" $feature "* ]]; then
+		printf 'Error: module %s was specified more than once.\n' "$feature" >&2
+		exit 1
+	fi
+	seen_modules+="$feature "
+done
+for feature in "${enabled[@]}"; do
+	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
+		printf 'Error: module %s cannot be both enabled and disabled.\n' "$feature" >&2
+		exit 1
+	fi
+done
+kconfig=()
+# Keep customized images separate from the default directories used by flashing and release wrappers.
+for i in "${!module_names[@]}"; do
+	feature=${module_names[$i]}
+	symbol=${module_symbols[$i]}
+	if [[ " ${disabled[*]} " == *" $feature "* ]]; then
+		kconfig+=("-DCONFIG_ZF_$symbol=n")
+		build+="-no-$feature"
+	elif [[ " ${enabled[*]} " == *" $feature "* ]]; then
+		kconfig+=("-DCONFIG_ZF_$symbol=y")
+		build+="-with-$feature"
+	fi
+done
+if [[ -n "$benchmark_chunk_size" ]]; then
+	kconfig+=("-DCONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=$benchmark_chunk_size")
+	build+="-benchmark-$benchmark_chunk_size"
+fi
 export ZEPHYRFORGE_VALIDATE_BUILD_CONFIG=1
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 unset ZEPHYRFORGE_VALIDATE_BUILD_CONFIG
@@ -106,17 +180,17 @@ if [[ -f "$cache" ]]; then
 		printf 'Build toolchain changed; cleaning %s before rebuilding.\n' "$root/build/$build"
 		needs_pristine=true
 	fi
+	# CMake keeps earlier -DCONFIG_ZF_* overrides, which would silently survive a changed request.
+	cached_kconfig="$(sed -n 's/^CLI_\(CONFIG_ZF_[A-Z0-9_]*\):[^=]*=/-D\1=/p' "$cache" | sort)"
+	if [[ "$cached_kconfig" != "$(printf '%s\n' "${kconfig[@]}" | sed '/^$/d' | sort)" ]]; then
+		printf 'Module selection changed; cleaning %s before rebuilding.\n' "$root/build/$build"
+		needs_pristine=true
+	fi
 	if "$needs_pristine"; then
 		cmake "-DBINARY_DIR=$root/build/$build" "-DSOURCE_DIR=$root/firmware" \
 			-P "$ZEPHYR_BASE/cmake/pristine.cmake"
 	fi
 fi
-source_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$root/firmware/src/app/zephyrforge.h")"
-[[ -n "$source_version" ]] || {
-	printf 'Error: source firmware version is missing from zephyrforge.h.\n' >&2
-	exit 1
-}
-firmware_version="${ZEPHYRFORGE_VERSION:-$source_version}"
 source_commit="$(git -C "$root" rev-parse HEAD)"
 if [[ -z "$(git -C "$root" status --porcelain)" ]]; then
 	source_dirty=false
@@ -138,19 +212,47 @@ image_file=zephyr.bin
 mkdir -p "$build_dir"
 rm -f "$build_identity" "$build_identity.tmp"
 # Select configuration explicitly because Zephyr does not discover nested board folders.
-python -m west build --pristine auto --no-sysbuild -b "$target" "$root/firmware" \
+python -m west build --cmake-only --pristine auto --no-sysbuild -b "$target" "$root/firmware" \
   -d "$root/build/$build" -- \
   -DCONF_FILE="$conf" \
   -DDTC_OVERLAY_FILE="$overlay" \
   -DZEPHYR_SDK_INSTALL_DIR="$ZEPHYR_SDK_INSTALL_DIR" \
   -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
-  -DZEPHYRFORGE_VERSION="$firmware_version" \
-  -DZF_ENABLE_STORAGE="$storage_enabled" \
-  -DZF_ENABLE_STORAGE_BENCHMARK="$benchmark"
+  -DZEPHYRFORGE_VERSION="${ZEPHYRFORGE_VERSION:-}" \
+  "${kconfig[@]}"
+# Kconfig owns module dependencies and hardware availability; it drops a requested value it cannot honor with
+# only a warning, so fail before compiling when the resolved configuration differs from the request.
+config="$build_dir/zephyr/.config"
+for i in "${!module_names[@]}"; do
+	feature=${module_names[$i]}
+	symbol=CONFIG_ZF_${module_symbols[$i]}
+	if [[ " ${enabled[*]} " == *" $feature "* ]] && ! grep -Fxq "$symbol=y" "$config"; then
+		printf 'Error: %s is unavailable for this board, storage profile or module selection.\n' "$feature" >&2
+		exit 1
+	fi
+	if [[ " ${disabled[*]} " == *" $feature "* ]] && grep -Fxq "$symbol=y" "$config"; then
+		printf 'Error: %s could not be disabled.\n' "$feature" >&2
+		exit 1
+	fi
+done
+if [[ -n "$benchmark_chunk_size" ]] &&
+	! grep -Fxq "CONFIG_ZF_STORAGE_BENCHMARK_CHUNK_SIZE=$benchmark_chunk_size" "$config"; then
+	printf 'Error: --benchmark-chunk-size requires the benchmark module.\n' >&2
+	exit 1
+fi
+python -m west build -d "$root/build/$build"
+# Record the version CMake generated, which is the default when ZEPHYRFORGE_VERSION is unset.
+firmware_version="$(sed -n 's/^#define ZEPHYRFORGE_VERSION "\(.*\)"/\1/p' "$build_dir/zephyrforge/app/version.h")"
+[[ -n "$firmware_version" ]] || {
+	printf 'Error: the build did not generate a firmware version.\n' >&2
+	exit 1
+}
 image_hash="$(sha256sum "$build_dir/zephyr/$image_file" | awk '{print $1}')"
+elf_hash="$(sha256sum "$build_dir/zephyr/zephyr.elf" | awk '{print $1}')"
 {
 	printf 'FIRMWARE_VERSION=%s\nSOURCE_COMMIT=%s\nSOURCE_DIRTY=%s\nBOARD=%s\nTARGET=%s\nSTORAGE=%s\nIMAGE_SHA256=%s\n' \
 		"$firmware_version" "$source_commit" "$source_dirty" "$board" "$target" "$storage" "$image_hash"
+	printf 'ELF_SHA256=%s\n' "$elf_hash"
 	if [[ -n "$radio_firmware_hash" ]]; then
 		printf 'RADIO_FIRMWARE_SHA256=%s\nRADIO_CLM_SHA256=%s\n' "$radio_firmware_hash" "$radio_clm_hash"
 	fi

@@ -59,7 +59,7 @@
 - Run the smallest existing checks that cover the change; add regression tests for non-trivial behavior.
 - Keep `tools/` for human-operated utilities; do not put test scripts or test suites anywhere under it.
   Place tests in the relevant component's test directory instead.
-- Portable firmware: `bundle exec ceedling test:all`; use a focused suite when appropriate.
+- Portable firmware: `ceedling test:all`; use a focused suite when appropriate.
 - Target firmware: from an initialized Zephyr workspace, run `bash zephyrforge/tools/firmware/build.sh`.
   Native tests do not validate Zephyr driver integration.
 - Python: `python3 -m unittest discover -s host/python/tests -v`.

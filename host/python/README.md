@@ -1,118 +1,14 @@
 # Python host
 
-USB HID control, diagnostics, and a local dashboard for ZephyrForge firmware on the ESP32-S3-DevKitC and Raspberry Pi
-Pico boards.
-The host talks to the board's native USB HID interface (VID:PID `0xCAFE:0x4021`) using the
-[USB HID contract](../../docs/reference/usb-hid.md).
-Basic monitoring needs no SD card. Wireless controls depend on the connected firmware's capabilities.
+USB HID host and local dashboard for ZephyrForge. Python and .NET serve the same frontend; Direct is independent.
 
-Python and .NET serve the same dashboard. This host connects over USB HID, not the USB-UART bridge or Bluetooth LE.
-For browser-native USB/BLE connections, use [Direct](../direct/README.md).
-Physical test coverage is limited to selected ESP32-S3 setups; see
-[qualification gaps](../../docs/validation/qualification-gaps.md).
-
-## Install
-
-Use Python 3.10 or newer in a virtual environment:
-
-```sh
-python -m venv .venv
-```
-
-Activate it with `source .venv/bin/activate` on Linux/macOS or `.venv\Scripts\Activate.ps1` in Windows PowerShell, then:
-
-```sh
-python -m pip install zephyrforge
-zephyrforge web
-```
-
-Open **http://127.0.0.1:8001/**. The wheel includes the dashboard assets; Node.js and .NET are not required.
-Runtime dependencies are Flask and HIDAPI, pinned in [pyproject.toml](pyproject.toml).
-Native HID access still requires the operating system's usual libraries, drivers, and permissions.
-The dashboard displays the installed distribution version, matching `pip show zephyrforge`, for wheels and editable
-installs. Uninstalled source checkouts report `0.0.0-debug`.
-
-You can also install a wheel downloaded from
-[GitHub Releases](https://github.com/djwinter29-oss/ZephyrForge/releases/latest). For board setup, start with
-[getting started](../../docs/guides/getting-started.md).
-
-### Run from a source checkout
-
-For an explicit development installation in your active environment, from the repository root:
-
-```sh
-python -m pip install --editable host/python
-zephyrforge web
-```
-
-Reinstall the editable package after changing commits or tags to refresh its installed version metadata.
-Alternatively, `bash tools/host/run-python.sh web` refreshes the editable installation on every launch, so its
-dashboard version matches the package metadata for the current checkout. The script reuses its virtual environment;
-if installation fails, it does not start the host with stale metadata. Stop an already-running host before relaunching.
-
-Source-checkout launches need no asset copy. Building a wheel or source distribution requires
-[explicit asset staging](../../docs/development/host-tools.md#python-host-checks-and-packaging) first; there is no
-custom build hook.
-
-## Commands
-
-```sh
-zephyrforge web
-zephyrforge web --port 8011
-zephyrforge status
-zephyrforge status --serial SERIAL
-zephyrforge reboot --serial SERIAL --confirm
-python -m zephyrforge --help
-```
-
-`status` prints JSON diagnostics from the reports received within a five-second collection window; unavailable
-fields remain `null`. It includes self-test status when the board advertises that capability, without extending
-the collection window. `reboot` requires explicit confirmation and uses the board's saved settings.
-All three commands accept either `--serial SERIAL` or `--device-path PATH` to select a board.
-The server always binds to `127.0.0.1`. Python and .NET default to ports 8001 and 8002.
-
-Use **Rescan** and the dashboard's board selector to switch between attached boards. Run only one HID host connection
-per board; separate host processes can conflict for access.
-
-On Linux, grant your user access to the HID device once with
-[hid-permissions-setup.sh](../../tools/host/hid-permissions-setup.sh), then reconnect the board and restart the
-dashboard. It installs `/etc/udev/rules.d/99-zephyrforge-hid.rules` for `CAFE:4021` and may prompt for sudo:
-
-```sh
-bash tools/host/hid-permissions-setup.sh
-```
-
-The checkout wrapper checks HID permissions before starting and defaults to the `web` command.
-
-## Dashboard operations
-
-- **Monitor:** live board identity, runtime, memory, pins, SD-card details, and Wi-Fi state.
-- **Boot configuration:** save the clock (Default, 80, 160 or 240 MHz) and the Wi-Fi/BLE switches with
-  **Save&Reboot**. The SD profile field remains Standard; select SDMMC, SPI or no storage when building the image.
-  **Reboot Board** uses the already saved settings. See
-  [settings and save safety](../../docs/reference/settings.md).
-- **Wireless:** provision Wi-Fi and a Control key over USB. Bluetooth connections use the independent Direct
-  dashboard. See [wireless setup](../../docs/guides/wireless.md).
-- **USB drive:** explicitly export an initialized SD card, then safely eject in the OS before confirming return
-  to firmware. See [SD ownership](../../docs/reference/sdcard.md#usb-drive-handoff).
-- **Wi-Fi diagnostic shell:** click fresh connected Wi-Fi status to open the existing browser terminal. It is
-  unauthenticated plaintext; use only a trusted, isolated network and never enter secrets. See
-  [diagnostic shells](../../docs/guides/console.md).
-
-For operation availability and request details, see the [shared HTTP API](../web/README.md#http-api).
-Return an exported card to firmware before saving. The native diagnostic shell is separate from dashboard
-management and is not protected by the BLE Control key; dashboard management uses USB HID, not CDC.
-
-Controls follow the connected firmware's advertised capabilities. A timeout or disconnect can leave a command
-outcome uncertain; reconcile it before sending another write.
-
-## Development
-
-For API routes, request fields, and response semantics, see the
-[shared dashboard HTTP API](../web/README.md#http-api). For tests, type checks, package APIs, and asset staging,
-see [host development](../../docs/development/host-tools.md#python-host-checks-and-packaging).
+- [Install, run, and use the CLI](https://github.com/djwinter29-oss/ZephyrForge/blob/main/docs/guides/dashboards/python.md)
+- [Dashboard controls and recovery](https://github.com/djwinter29-oss/ZephyrForge/blob/main/docs/guides/dashboard-use.md)
+- [HTTP API](https://github.com/djwinter29-oss/ZephyrForge/blob/main/docs/reference/http-api.md)
+- [Development and packaging](https://github.com/djwinter29-oss/ZephyrForge/blob/main/docs/development/host-tools.md#python-host-checks-and-packaging)
 
 ## License
 
-The package uses the **BSD-3-Clause** license. Its [LICENSE](LICENSE) mirrors the
-[repository license](../../LICENSE) and is included in built wheels; keep both copies identical.
+The package uses the **BSD-3-Clause** license. Its [package license](https://github.com/djwinter29-oss/ZephyrForge/blob/main/host/python/LICENSE)
+mirrors the [repository license](https://github.com/djwinter29-oss/ZephyrForge/blob/main/LICENSE) and is included in
+built wheels; keep both copies identical.

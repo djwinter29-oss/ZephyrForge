@@ -22,6 +22,7 @@ from .common import (
     CAP_REBOOT,
     CAP_SAVE_SETTINGS,
     CAP_SELF_TEST,
+    CAP_MSC,
     CAP_SPI,
     CAP_SDMMC,
     CAP_WIRELESS,
@@ -56,6 +57,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
             "reboot_available": False,
             "settings_supported": False,
             "self_test_supported": False,
+            "msc_supported": False,
             "wireless_supported": False,
         }
     uid = payload[3:11]
@@ -63,9 +65,8 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
     mcu_id, board_model, _, capabilities = payload[14:18]
     ram_total, ram_reserved = struct.unpack_from("<II", payload, 18)
     transport = capabilities & (CAP_SPI | CAP_SDMMC)
-    if (transport not in (0, CAP_SPI, CAP_SDMMC)
-            or capabilities & ~(CAP_LED | CAP_SAVE_SETTINGS | CAP_SELF_TEST | CAP_WIRELESS | CAP_SPI | CAP_SDMMC)
-            != CAP_REBOOT):
+    supported = CAP_LED | CAP_SAVE_SETTINGS | CAP_SELF_TEST | CAP_MSC | CAP_WIRELESS | CAP_SPI | CAP_SDMMC
+    if transport not in (0, CAP_SPI, CAP_SDMMC) or capabilities & ~supported != CAP_REBOOT:
         raise ValueError("HID identity capabilities do not match the ZephyrForge profile")
     if board_model in BOARD_MCUS and mcu_id != BOARD_MCUS[board_model]:
         raise ValueError("board model and MCU disagree in HID identity report")
@@ -92,6 +93,7 @@ def parse_identity_report(report: bytes | bytearray | list[int]) -> HardwareIden
         "settings_supported": bool(capabilities & CAP_SAVE_SETTINGS),
         "storage_transport": "spi" if transport == CAP_SPI else "sdmmc" if transport == CAP_SDMMC else None,
         "self_test_supported": bool(capabilities & CAP_SELF_TEST),
+        "msc_supported": bool(capabilities & CAP_MSC),
         "wireless_supported": bool(capabilities & CAP_WIRELESS),
         "ram_total_bytes": ram_total,
         "ram_reserved_bytes": ram_reserved,

@@ -31,4 +31,4 @@ It does not establish a pass for every combination of dashboard, host OS, card o
 The checks did not measure sustained throughput, benchmark results, memory-accounting accuracy, power-loss recovery,
 removal-during-write safety, endurance, radio coexistence, RF/EMC compliance or production qualification.
 
-See [qualification gaps](../qualification-gaps.md) for the current boundaries.
+See [qualification gaps](../README.md) for the current boundaries.

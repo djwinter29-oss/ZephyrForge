@@ -1,5 +1,7 @@
 # Host development
 
+[Documentation](../README.md) / Development / Hosts and dashboards
+
 Python and .NET connect to USB HID and serve the same dashboard and HTTP API. Direct is a separate browser
 application using WebHID or Web Bluetooth.
 
@@ -18,11 +20,13 @@ checks, and the .NET 10 SDK for .NET and shared-dashboard browser checks.
 
 Tests use simulated devices and loopback HTTP, not real hardware. CI runs them through
 [Host Validation](../../.github/workflows/host-validation.yml); [release checks](releases.md) also exercise extracted
-packages. These are not physical USB, BLE, or firmware tests.
+packages.
 
 Keep report decoding, field names, and error semantics aligned across all three clients and the
 [USB HID contract](../reference/usb-hid.md). A protocol change needs matching firmware, host, specification, and
 test changes. Keep hosts on loopback, report failures clearly, and never replay an uncertain command.
+Keep device access and protocol validation separate from rendering; rendering performs no I/O, and action
+eligibility must agree between controls and command handlers.
 
 ## Python host checks and packaging
 
@@ -34,31 +38,19 @@ python3 -m unittest discover -s host/python/tests -v
 (cd host/python && pyright)
 ```
 
-For running against a board, use the [Python host guide](../../host/python/README.md).
-
-The package provides `status`, `web`, and `reboot` commands. It validates USB HID reports against the
-[protocol contract](../reference/usb-hid.md), and the dashboard serializes access through one monitor per board.
+For running against a board, use the [Python host guide](../guides/dashboards/python.md).
 
 The installed package can be imported without opening a device. Source-checkout launches and editable installs use
 the shared dashboard directly. Wheel and source-distribution builds need an explicit copy of those assets; there is
 no custom build hook. Python type checks run in strict mode across the runtime package and compile-only API
 contracts. Dependencies are declared in `pyproject.toml`, and hatch-vcs derives package versions from Git tags.
+Reinstall a manual editable installation after changing commits or tags to refresh its installed version metadata;
+the [checkout launch wrapper](../guides/dashboards/python.md#run-from-a-source-checkout) does this on every launch.
 
-To stage assets and check a wheel locally on Linux or macOS, run from the repository root:
-
-```sh
-rm -rf host/python/src/zephyrforge/web
-mkdir -p host/python/src/zephyrforge/web
-cp -R host/web/src/. host/python/src/zephyrforge/web/
-python3 -m pip wheel --no-deps host/python --wheel-dir build/wheels
-python3 -m venv build/wheel-check
-build/wheel-check/bin/python -m pip install build/wheels/*.whl
-build/wheel-check/bin/python -I tools/check_python_wheel.py
-```
-
-Repeat staging before each package build so removed or changed assets are not left in the staged copy. After
-packaging, remove `host/python/src/zephyrforge/web` to resume serving the shared checkout assets. A source
-distribution built after staging contains the assets needed for its wheel.
+For release wheels, use the [same build and check helpers as CI](releases.md#reproduce-the-python-release-wheel).
+For a source distribution, copy the contents of `host/web/src/` into
+`host/python/src/zephyrforge/web/` before building, starting from a fresh checkout to avoid stale assets.
+The source distribution includes those assets for downstream wheel builds.
 
 ## .NET builds and versions
 
@@ -66,7 +58,7 @@ distribution built after staging contains the assets needed for its wheel.
 dotnet test host/dotnet/ZephyrForge.Tests
 ```
 
-For running against a board, use the [.NET host guide](../../host/dotnet/ZephyrForge/README.md).
+For running against a board, use the [.NET host guide](../guides/dashboards/dotnet.md).
 
 The .NET host uses MinVer with `vMAJOR.MINOR.PATCH` Git tags, patch increments and `dev` prerelease identifiers.
 Builds need Git history and tags to calculate development versions. The dashboard displays the assembly's
@@ -74,28 +66,17 @@ informational version without an SDK-appended commit hash. After a commit, tag o
 `dotnet build host/dotnet/ZephyrForge/ZephyrForge.csproj --no-incremental` to refresh both the assembly version and
 cached dependency metadata.
 For an explicit package version, pass `-p:MinVerVersionOverride=1.2.3` to `dotnet publish`.
+Run the host with `ASPNETCORE_ENVIRONMENT=Development` to expose `/openapi/v1.json`.
 
 ## Shared dashboard
 
 Both hosts serve the same static assets: Python uses the checkout or installed package,
 and .NET includes the assets during build and publication.
 
-| Layer | Responsibility |
-|---|---|
-| Static assets | Page, icon and styles; no inline code |
-| Composition | Wires modules to page events; owns no device workflow |
-| Board session | Discovery, selection and stale-status fencing |
-| Command recovery | Per-board acknowledgements, uncertain outcomes and explicit Re-sync |
-| Settings workflow | Boot-settings draft, confirmation and plain or combined wireless save |
-| Device actions | Reboot, USB drive handoff, benchmark and LED commands |
-| API client | Board, status, settings, reboot, re-sync and wireless routes |
-| Presentation | Rendering without device or network I/O |
-| Operation policy | Control eligibility shared by rendering and command handlers |
-| Wireless forms | Wi-Fi scan/test requests and dialogs, and the Control key dialog |
-
-Unit tests cover individual responsibilities; integration tests exercise the assembled page and shared status
-contract. Browser checks drive Chromium against both hosts with fake boards.
-See the [shared dashboard HTTP API](../../host/web/README.md) for routes and request rules.
+The frontend uses ES modules without a bundle step or inline code. Unit tests cover individual workflows;
+integration tests exercise the assembled page and shared status contract. Browser checks drive Chromium against
+both hosts with fake boards.
+See the [shared dashboard HTTP API](../reference/http-api.md) for routes and request rules.
 
 ```sh
 node host/web/tests/run-tests.mjs
@@ -112,11 +93,8 @@ installs them on Debian and Ubuntu.
 ## Direct integration
 
 Direct is a separate browser application; it does not load or share runtime assets with `host/web/`. It connects to
-devices through WebHID or Web Bluetooth and serves its static page from a loopback server.
-
-Keep protocol validation, device access and page rendering separate when changing Direct. State-changing commands
-must remain serialized; an uncertain result requires explicit reconciliation and must not be replayed. The test
-suite checks browser behavior and architectural boundaries, while type checks cover all browser modules.
+devices through WebHID or Web Bluetooth. Its tests check browser behavior and those architectural boundaries;
+type checks cover all browser modules.
 
 ### Direct versions and local serving
 
@@ -131,6 +109,24 @@ Restart after source or Git changes.
 Release ZIPs and Pages retain their stamped version regardless of the surrounding checkout. `build.json` records
 version, commit, and dirty state. Inconsistent page/build identity is rejected, not restamped. A custom
 `--directory` without metadata is served unchanged.
+
+### Direct protocol behavior
+
+Direct validates the [USB HID](../reference/usb-hid.md) and
+[BLE](../reference/bluetooth-le.md) contracts before enabling controls. After reconnecting, it verifies the same
+board and reads outstanding results without resending commands.
+
+For Service Changed compatibility, Direct attempts subscription before discovery. If the browser reports
+`NotAllowedError`, `NotFoundError`, `NotSupportedError`, or `SecurityError`, it warns and continues with browser
+cache behavior; other subscription errors abort setup. It still rediscovers the service and does not reuse cached
+handles across connections.
+
+BLE reads and writes are serialized, including each proof with its command. Direct waits 250 ms between status-read
+rounds, in addition to read latency. Telemetry becomes stale after 3 seconds without a valid receipt; storage and
+benchmark status after 6 seconds. Wireless status expires after three polling intervals: 1.5 seconds during a
+test/scan and 6 seconds otherwise. Invalid reports do not refresh receipt times; disconnect clears snapshots. The
+browser chooses the negotiated MTU. Commands whose queued write deadline expires are canceled rather than sent
+later.
 
 ### Direct tests and type checks
 

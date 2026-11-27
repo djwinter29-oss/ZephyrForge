@@ -18,4 +18,4 @@ No USB device or board was opened, flashed or reset. This validates wrapper beha
 and runner option compatibility, not physical upload, application boot or radio operation.
 No SD-card testing was performed. The dedicated wrapper tests and CI test step were
 subsequently removed in favor of manual operation; the observations above are historical,
-not a maintained automated suite. See [qualification gaps](../qualification-gaps.md).
+not a maintained automated suite. See [qualification gaps](../README.md).

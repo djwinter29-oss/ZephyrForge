@@ -3,7 +3,7 @@
 Executed on **2026-11-20**. Application source was `124b75f507c9ab8f7f5303cdb7ab09394a3f2bd5` with the
 native board's clock ceiling changed from 25 to 40 MHz.
 SPI remains at 25 MHz. Card-speed negotiation uses the existing Zephyr SD stack, not a new retry mechanism.
-The [SD reference](../../reference/sdcard.md#driver-and-filesystem-configuration) owns configuration and recovery.
+The [SD reference](../../reference/sd-storage.md#driver-and-filesystem-configuration) owns configuration and recovery.
 
 ## Configuration and test access
 

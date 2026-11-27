@@ -1,7 +1,10 @@
 # Firmware qualification procedure
 
-Use this procedure to qualify an ESP32-S3-DevKitC-1 N16R8 image. It starts with software checks, then moves through
-USB runner checks and manual hardware tests. Record results in new dated [validation records](records/README.md).
+[Documentation](../README.md) / [Validation](README.md) / Firmware qualification
+
+- **Check installed firmware:** start with the [USB runner](#runnable-usb-target-checks) for read-only diagnostics.
+- **Qualify an ESP32-S3-DevKitC-1 N16R8 image:** follow the [test stages](#test-stages), including the software gate
+  and manual matrices. Add results to the dated [validation records](README.md#validation-records).
 
 C6 and Pico do not yet have complete board-specific procedures. Their images need separate test plans; see
 [adapting checks](#adapting-checks-to-other-boards).
@@ -36,11 +39,12 @@ the board, ports, card, network, and test interval; agreement on one action does
 ## Ownership and safety prerequisites
 
 - Use only the board and ports selected for this run. Never select an arbitrary connected board.
-- Use the N16R8 image and [wiring](../reference/sdcard.md#pin-allocation) matching the selected storage transport.
+- Use the N16R8 image and [wiring](../hardware/sd-card-wiring.md#esp32-s3-devkitc-1-n16r8) matching the selected
+  storage transport.
   Preserve 16 MB flash, 8 MB octal PSRAM, native USB pins and the native image's 10 mA SD pad drive.
 - Use a backed-up, dedicated card containing only expendable test data. Prepare FAT16, FAT32 or exFAT on a computer;
   no check may format or repair a card from firmware. Before changing buses, follow the
-  [card power-cycle instruction](../reference/sdcard.md#safety-and-ownership).
+  [card power-cycle instruction](../guides/sd-card.md#before-you-start).
 - Provision any required Wi-Fi network and BLE Control key through the existing dashboards. Keep credentials out
   of logs, screenshots, command lines, and result records. Control-key authentication is not BLE link encryption.
 
@@ -68,39 +72,44 @@ state-changing command or conceal a failed run with retries. Reconcile the board
 
 ## Software gate
 
-Prepare the tools and workspace using [firmware development](../development/firmware.md).
-Before physical checks, run the portable suites and both S3 storage builds from the repository root:
+For qualification, complete these checks before testing the board:
 
-```sh
-bundle exec ceedling test:all
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [ZF_STORAGE_SPI=1, ZF_ENABLE_STORAGE_BENCHMARK=1]}}' test:test_hid_reports test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [ZF_ENABLE_STORAGE=0, ZF_ENABLE_STORAGE_BENCHMARK=0]}}' test:test_hid_reports test:test_control
-bash tools/firmware/build.sh
-bash tools/firmware/build.sh --storage sd-spi
-python3 -m unittest discover -s firmware/tests/tooling -v
-```
-
-The SPI and no-storage runs check feature-gated report and control behavior as well as the default native image.
+1. Run the [portable C suite](../development/firmware.md#host-native-unit-tests) and the
+   [SPI and no-storage report and control tests](../development/firmware.md#storage-feature-gates).
+2. Build ESP32-S3 SDMMC and SPI images using the
+   [build wrapper](../development/firmware-build.md#build-with-the-wrapper).
+3. Run the [firmware tooling tests](../development/firmware.md#build-and-tooling-checks).
 
 Inspect generated configuration: correct PROCPU target, 16 MB flash, 8 MB octal PSRAM, selected storage driver,
 four-bit native bus, and both FAT mkfs options disabled. Builds and portable mocks are not physical qualification.
 
-## Runnable USB target checks
+### Runner unit tests
 
-Install the existing [Python host package](../../host/python/README.md) in a venv, identify the exact serial in the
-dashboard, and close that dashboard. Before connecting to a board, run the target runner's unit tests:
+Before an on-board qualification run, check the runner itself from the repository root:
 
 ```sh
 python3 -m unittest discover -s firmware/tests/hardware -v
 ```
 
-The target runner opens only the explicitly selected ZephyrForge HID device.
+## Runnable USB target checks
+
+The runner starts with [read-only HID checks](#read-only-checks). [Wi-Fi scans](#wi-fi-scans) and the
+[card-writing benchmark](#storage-benchmark) are opt-in. Use [the report guide](#reading-the-runner-report)
+to interpret the JSON and exit status.
+
+For an installed-image read-only check, use a running board with USB HID management and install the
+[Python host package](../guides/dashboards/python.md#install) in an active venv. Find the exact board serial in the
+dashboard, then close it and any other management clients. On Linux, check
+[HID permissions](../guides/dashboard-use.md#linux-usb-permissions) if needed. The read-only check works with
+the installed firmware and can run with the card slot empty.
 
 ### Read-only checks
 
-The default run reads reports and reopens the HID handle; it sends no state-changing commands:
+From the repository root, run the default check. It reads reports and reopens the HID handle without
+sending state-changing commands.
 
 ```sh
+mkdir -p build
 python3 firmware/tests/hardware/run.py --serial BOARD_SERIAL \
   --cycles 100 --reopens 10 > build/firmware-hid-check.json
 ```
@@ -111,9 +120,11 @@ rejects unexpected uptime resets, and fails sampled configuration/wireless Featu
 
 ### Wi-Fi scans
 
-With approval to scan the selected network, repeat scans while checking management responsiveness:
+On a shared bench, [agree on the scan](#agree-on-the-test-actions). Repeat scans from the repository root
+while checking management responsiveness.
 
 ```sh
+mkdir -p build
 python3 firmware/tests/hardware/run.py --serial BOARD_SERIAL --cycles 100 --reopens 10 \
   --wifi-scans 20 --allow-state-changes > build/firmware-wifi-check.json
 ```
@@ -123,9 +134,11 @@ Results exclude SSIDs, passwords, Control keys and full wireless reports.
 
 ### Storage benchmark
 
-This check writes to the card. Start with 32 MiB on the approved expendable card:
+Use a backed-up, expendable card mounted by firmware, with enough free space for the selected size.
+On a shared bench, [agree on card writes](#agree-on-the-test-actions). Start with 32 MiB from the repository root.
 
 ```sh
+mkdir -p build
 python3 firmware/tests/hardware/run.py --serial BOARD_SERIAL --cycles 100 --reopens 10 \
   --benchmark-mib 32 --allow-state-changes --allow-card-writes > build/firmware-benchmark-32-check.json
 ```
@@ -138,20 +151,19 @@ fails or its outcome is unclear, it stops instead of canceling or retrying it.
 A passing run requires observed benchmark activity before accepting its terminal result, exact completed byte counts,
 zero mismatches or errors, successful cleanup, and restoration of the original identified card's firmware mount.
 If a run finishes before activity can be observed, treat it as inconclusive rather than attributing an old result.
-The benchmark uses only the reserved file and safety rules in the [storage contract](../reference/sdcard.md).
-
-### Interpreting results
-
-`--max-latency-ms` and `--timeout-seconds` allow recorded threshold changes; use the default 1000 ms/900 s first.
-Native HID Feature calls can block in the OS, so supervise the process externally. A zero exit and JSON
-`result: passed` cover only the selected checks, not the manual matrix below.
+The benchmark uses only the reserved file and safety rules in the [storage contract](../reference/sd-storage.md).
 
 ### Reading the runner report
+
+Exit status 0 and JSON `result: passed` mean the selected runner checks passed. Use the default thresholds
+first: 1000 ms for sampled reads and 900 s for benchmark completion. If you adjust them with
+`--max-latency-ms` or `--timeout-seconds`, record the values.
 
 The JSON records measured maxima and selected check counts. `checks.samples` counts baseline cycles and handle
 reopens; report counters also include benchmark monitoring. Input latency includes the requested polling wait.
 Identity and command-acknowledgement Feature calls are not individually timed. The runner measures completed calls;
-it cannot interrupt a HID operation blocked in the operating system. Record a runner hang as a failure.
+it cannot interrupt a HID operation blocked in the operating system. Supervise the process externally and
+record a runner hang as a failure.
 
 A nonzero exit means the run failed. Stop, preserve the output, and reconcile the board before recovery.
 
@@ -189,9 +201,10 @@ The single-copy settings save is not power-loss atomic.
 | DHCP renewal | Use an AP configured with a short lease; observe at least 3 lease renewals | Connectivity and management recover without reboot; address/state changes match observations |
 | RF coexistence and soak | Run Wi-Fi traffic, BLE reads and USB monitoring for 2 hours, including 20 scans and a long storage run | No reset, stuck test or scan, exhausted connection resources, or persistent transport outage |
 
-Settings saves erase, program, and verify flash synchronously in a transport callback while holding the application
-mutex. The 20 ms management-loop period does not guarantee callback latency. Capture the
-[flash-operation timing entry](../reference/settings.md#saving) with the host measurements; it excludes mutex wait
+Settings saves erase, program, and verify flash on a dedicated work queue outside the application mutex. USB and
+BLE report Pending while the write runs; BLE clients poll for a terminal result. The main loop wakes on module
+events and deadlines, with a one-second maximum idle wait; this is not a response-time guarantee. Capture the
+[flash-operation timing entry](../reference/boot-settings.md#saving) with host measurements; it excludes lock wait
 and full transport-response time.
 
 Use UART logs and Direct for manual BLE observations. The USB runner is not a BLE central; it cannot qualify MTU
@@ -203,7 +216,7 @@ endurance, and RF, EMC, and regulatory qualification remain separate product wor
 These are prerequisites for a future board-specific procedure, not evidence that S3 results carry over.
 Select that board's image, pin allocation, and available commands before adapting the matrices.
 
-**ESP32-C6:** run [initial physical commissioning](../guides/boards/esp32c6-commissioning.md) separately and record
+**ESP32-C6:** run [initial physical commissioning](../guides/esp32c6-commissioning.md) separately and record
 its verified outcome before management testing. The USB runner cannot manage C6; BLE checks need a separate
 procedure. Keep keys out of logs and records, and follow the commissioning utility's no-replay rules.
 

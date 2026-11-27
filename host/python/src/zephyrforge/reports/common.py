@@ -79,6 +79,8 @@ class ControlDetail(IntEnum):
     STAGED_CREDENTIAL_COMMIT_REQUIRED = 27
     USB_STAGED_CREDENTIALS_BLOCK_BLE_SAVE = 28
     REBOOT_PENDING = 29
+    SETTINGS_SAVE_PENDING = 30
+    SETTINGS_SAVED_REBOOT_FAILED = 31
 
 
 class WifiState(IntEnum):
@@ -208,7 +210,7 @@ CAP_SDMMC = 1 << 4
 
 CAP_SELF_TEST = 1 << 5
 
-CAP_FORCE_SAVE = 1 << 6
+CAP_MSC = 1 << 6
 
 CAP_WIRELESS = 1 << 7
 
@@ -277,7 +279,7 @@ OPCODE_STATUSES = {
 }
 for _opcode in tuple(ControlOpcode)[5:]:
     OPCODE_STATUSES[_opcode] = {CONTROL_COMPLETED, CONTROL_INVALID, CONTROL_UNSUPPORTED, CONTROL_FAILED}
-    if _opcode not in (ControlOpcode.WIFI_CANCEL, ControlOpcode.TCP_PROOF):
+    if _opcode != ControlOpcode.TCP_PROOF:
         OPCODE_STATUSES[_opcode].add(CONTROL_BUSY)
     if _opcode in (ControlOpcode.WIFI_TEST, ControlOpcode.WIFI_SCAN):
         OPCODE_STATUSES[_opcode].add(CONTROL_PENDING)

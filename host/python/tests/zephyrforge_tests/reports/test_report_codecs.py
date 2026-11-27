@@ -34,7 +34,7 @@ from zephyrforge_tests.support.report_fixtures import (
     telemetry_report,
 )
 
-FIRMWARE_HEADER = REPO_ROOT / "firmware/src/app/usb/hid_reports.h"
+FIRMWARE_HEADER = REPO_ROOT / "firmware/src/protocol/report_codec.h"
 
 
 class ProtocolTests(unittest.TestCase):
@@ -184,11 +184,14 @@ class ProtocolTests(unittest.TestCase):
                 other = parse_identity_report(identity_report(product=product))
                 self.assertFalse(other["supported"])
                 self.assertEqual(other["product_name"], name)
-        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0xCF),
-                        identity_report(capabilities=0xCE), identity_report(capabilities=0xBE),
-                        identity_report(capabilities=0x9e), identity_report(mcu=2, board=1)):
+        for invalid in (identity_report(capabilities=0), identity_report(capabilities=0x7D),
+                        identity_report(capabilities=0xBE), identity_report(capabilities=0x9e),
+                        identity_report(mcu=2, board=1)):
             with self.subTest(report=invalid), self.assertRaises(ValueError):
                 parse_identity_report(invalid)
+        msc = parse_identity_report(identity_report(capabilities=0xD6))
+        self.assertTrue(msc["msc_supported"])
+        self.assertFalse(parse_identity_report(identity_report())["msc_supported"])
         unknown_mcu = parse_identity_report(identity_report(mcu=9, board=0))
         self.assertEqual(unknown_mcu["mcu"], "unknown (9)")
         self.assertEqual(unknown_mcu["board_model"], "Unknown / unspecified")
@@ -395,6 +398,19 @@ class ProtocolTests(unittest.TestCase):
         ):
             with self.subTest(report=malformed), self.assertRaises(ValueError):
                 parse_control_result_report(malformed, self.identity)
+
+    def test_control_result_accepts_save_pending_and_saved_reboot_failure_details(self):
+        for opcode in (2, 3, 5, 6, 8, 9, 10, 11):
+            with self.subTest(opcode=opcode):
+                result = parse_control_result_report(
+                    control_result(opcode, 5, 5, data=bytes([30]) + bytes(62)), self.identity)
+                self.assertEqual(result["detail"], 30)
+        failed = parse_control_result_report(control_result(5, 6, 6, data=bytes([31]) + bytes(62)), self.identity)
+        self.assertEqual(failed["detail"], 31)
+        flash_failure = parse_control_result_report(control_result(5, 6, 6), self.identity)
+        self.assertEqual(flash_failure["detail"], 0)
+        with self.assertRaises(ValueError):
+            parse_control_result_report(control_result(4, 6, 6, data=bytes([31]) + bytes(62)), self.identity)
 
     def test_profile_unsupported_results_do_not_contradict_capabilities(self):
         for opcode in (1, 3, 4, 5, 13):
