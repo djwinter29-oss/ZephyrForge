@@ -118,7 +118,7 @@ void setUp(void)
 	zf_wifi_scan_active_IgnoreAndReturn(false);
 #if IS_ENABLED(CONFIG_ZF_STORAGE)
 	zf_storage_in_use_IgnoreAndReturn(false);
-	zf_storage_msc_available_IgnoreAndReturn(true);
+	zf_storage_msc_available_IgnoreAndReturn(IS_ENABLED(CONFIG_ZF_USB_MSC));
 #endif
 }
 

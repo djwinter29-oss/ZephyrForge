@@ -28,7 +28,7 @@ bool zf_ble_gatt_failed(void)
 
 void setUp(void)
 {
-	zf_storage_msc_available_IgnoreAndReturn(true);
+	zf_storage_msc_available_IgnoreAndReturn(IS_ENABLED(CONFIG_ZF_USB_MSC));
 	ble_failed = false;
 }
 
