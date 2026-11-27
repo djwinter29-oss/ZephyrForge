@@ -58,7 +58,7 @@ int zf_settings_flash_read(uint8_t *record, size_t size) {
 int zf_settings_flash_write(const uint8_t *record, size_t size) {
     (void)record; (void)size; return -ENOTSUP;
 }
-int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_done_t done) {
+int zf_settings_flash_write_async(const uint8_t *record, size_t size, zf_settings_save_done_t done) {
     (void)record; (void)size; (void)done; return -ENOTSUP;
 }
 void zf_app_lock(void) {}

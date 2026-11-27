@@ -81,7 +81,7 @@ The portable benchmark rejects a zero or oversized request before touching stora
 suite checks the failure result and confirms that no files were opened or deleted:
 
 ```sh
-bundle exec ceedling test:test_benchmark_engine
+ceedling test:test_benchmark_engine
 ```
 
 Images include this module when `CONFIG_ZF_STORAGE_BENCHMARK` is set, its default when storage and USB HID are
@@ -93,24 +93,21 @@ Run the enabled and disabled [feature-gate checks](#storage-feature-gates) as we
 ## Host-native unit tests
 
 Portable C tests use Ceedling, Unity, and CMock; they need neither Zephyr nor hardware.
-Install Ruby 3.3, Bundler 2.6.9, and GCC (`gcc` on `PATH`). From the repository root:
+Install Ruby 3.3 and GCC (`gcc` on `PATH`), then install the latest Ceedling. From the repository root:
 
 ```sh
-gem install bundler -v 2.6.9
-bundle config set --local path build/gems
-bundle install
-bundle exec ceedling test:all
+gem install ceedling
+ceedling test:all
 ```
 
-`Gemfile` pins Ceedling and `Gemfile.lock` locks its dependencies. Update the lockfile when changing tools.
-Generated mocks, runners, test binaries, and installed gems stay in ignored build directories.
+Generated mocks, runners, and test binaries stay in ignored build directories.
 
 For a focused check or a clean rebuild:
 
 ```sh
-bundle exec ceedling test:test_control
-bundle exec ceedling test:test_ble_auth
-bundle exec ceedling clobber test:all
+ceedling test:test_control
+ceedling test:test_ble_auth
+ceedling clobber test:all
 ```
 
 The suites cover control admission and results, report layouts, storage ownership, benchmark cancellation,
@@ -123,9 +120,9 @@ the tests do not mount, format, or write a real card.
 Run the report-composition and control suites with SPI, no storage, and storage without USB mass storage.
 
 ```sh
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1]}}' test:test_report_builder test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [CONFIG_ZF_STORAGE=0, CONFIG_ZF_USB_MSC=0, CONFIG_ZF_STORAGE_BENCHMARK=0]}}' test:test_report_builder test:test_control
-bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
+ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1]}}' test:test_report_builder test:test_control
+ceedling --mixin '={project: {build_root: build/ceedling-no-storage}, defines: {test: [CONFIG_ZF_STORAGE=0, CONFIG_ZF_USB_MSC=0, CONFIG_ZF_STORAGE_BENCHMARK=0]}}' test:test_report_builder test:test_control
+ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
 ```
 
 The no-MSC configuration retains storage while checking that card-export commands are unsupported.

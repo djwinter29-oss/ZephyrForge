@@ -140,17 +140,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Ruby and locked gems
+      - name: Setup Ruby
         uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
         with:
           ruby-version: "3.3"
-          bundler-cache: true
+
+      - name: Install Ceedling
+        run: gem install ceedling
 
       - name: Run Ceedling
         run: |
-          bundle exec ceedling test:all
-          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1, CONFIG_ZF_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
-          bundle exec ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
+          ceedling test:all
+          ceedling --mixin '={project: {build_root: build/ceedling-sd-spi}, defines: {test: [CONFIG_SPI_SDHC=1, CONFIG_ZF_STORAGE_BENCHMARK=1]}}' test:test_report_builder test:test_control
+          ceedling --mixin '={project: {build_root: build/ceedling-no-msc}, defines: {test: [CONFIG_ZF_USB_MSC=0]}}' test:test_report_builder test:test_control
 
   wifi-native:
     name: Wi-Fi lifecycle tests
